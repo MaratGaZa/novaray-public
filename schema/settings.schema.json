@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://novaray.org/schemas/settings.schema.json",
+  "title": "NovaRayUserSettings",
+  "description": "JSON Schema для файла пользовательских настроек NovaRay (UserSettings)",
+  "type": "object",
+  "required": [
+    "version",
+    "client",
+    "split_tunneling"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URI или локальный путь к JSON Schema"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Версия схемы настроек"
+    },
+    "client": {
+      "$ref": "#/definitions/ClientSettings"
+    },
+    "split_tunneling": {
+      "$ref": "#/definitions/SplitTunnelingSettings"
+    }
+  },
+  "definitions": {
+    "ClientSettings": {
+      "type": "object",
+      "required": [
+        "auto_connect_on_launch",
+        "kill_switch",
+        "system_notifications",
+        "dns_servers",
+        "local_socks_port",
+        "local_http_port"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "auto_connect_on_launch": {
+          "type": "boolean",
+          "description": "Автоматическое подключение при запуске"
+        },
+        "kill_switch": {
+          "type": "boolean",
+          "description": "Блокировка трафика при разрыве VPN туннеля"
+        },
+        "system_notifications": {
+          "type": "boolean",
+          "description": "Показ системных уведомлений"
+        },
+        "dns_servers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Список адресов DNS серверов"
+        },
+        "local_socks_port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Локальный порт SOCKS5 inbound"
+        },
+        "local_http_port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Локальный порт HTTP inbound"
+        }
+      }
+    },
+    "SplitTunnelingSettings": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "mode",
+        "direct_domains",
+        "direct_ips",
+        "direct_apps"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Флаг активности раздельного туннелирования"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "proxy_all",
+            "bypass_selected",
+            "proxy_selected",
+            "block_selected"
+          ],
+          "description": "Режим маршрутизации раздельного туннелирования"
+        },
+        "direct_domains": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(domain:[a-zA-Z0-9_.-]+|geosite:category-ru|[a-zA-Z0-9_.-]+)$"
+          },
+          "description": "Список правил доменов (например domain:example.com, geosite:category-ru)"
+        },
+        "direct_ips": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "oneOf": [
+              {
+                "const": "geoip:private"
+              },
+              {
+                "format": "ipv4"
+              },
+              {
+                "format": "ipv6"
+              }
+            ]
+          },
+          "description": "Список IP правил (geoip:private или валидный IPv4/IPv6 адрес; CIDR и GeoIP датасеты отложены до Milestone 2)"
+        },
+        "direct_apps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Список идентификаторов приложений"
+        }
+      }
+    }
+  }
+}

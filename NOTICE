@@ -1,0 +1,20 @@
+NovaRay
+Copyright (C) 2026 MaratGaZa
+
+NovaRay source code and repository documentation are licensed under the GNU General Public License
+version 3 or any later version (GPL-3.0-or-later). See LICENSE.
+
+NovaRay is an independent project and is not affiliated with, sponsored by, or endorsed by SagerNet
+or the sing-box project. The planned sing-box integration targets sing-box v1.13.18. sing-box is
+licensed under GPL-3.0-or-later and its upstream license adds a restriction against derivative works
+using the sing-box or SagerNet name, or implying association, without consent. Consult the exact
+upstream license before distributing a sing-box binary or derivative work:
+https://github.com/SagerNet/sing-box/blob/v1.13.18/LICENSE
+
+This source snapshot does not vendor a sing-box binary. Any future binary distribution must retain
+applicable notices, provide corresponding source as required, and repeat the legal review for the
+selected packaging and distribution channel.
+
+The project owner attests that the included macOS icon was created by or for the owner and that the
+owner has the right to publish the asset catalog under GPL-3.0-or-later. The dated attestation is
+retained in private migration evidence.

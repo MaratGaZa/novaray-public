@@ -1,0 +1,405 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01000001 /* NovaRaySpikeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000011 /* NovaRaySpikeApp.swift */; };
+		01000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000012 /* ContentView.swift */; };
+		01000003 /* TunnelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000013 /* TunnelManager.swift */; };
+		01000004 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000014 /* PacketTunnelProvider.swift */; };
+		01000006 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000017 /* main.swift */; };
+		01000007 /* NovaRayAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 01000018 /* NovaRayAssets.xcassets */; };
+		01000005 /* org.novaray.spike.packettunnel.systemextension in CopyFiles */ = {isa = PBXBuildFile; fileRef = 02000002 /* org.novaray.spike.packettunnel.systemextension */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		01000020 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 00000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02000001;
+			remoteInfo = NovaRayPacketTunnel;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		01000030 /* Embed System Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "Contents/Library/SystemExtensions";
+			dstSubfolderSpec = 1;
+			files = (
+				01000005 /* org.novaray.spike.packettunnel.systemextension in CopyFiles */,
+			);
+			name = "Embed System Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		01000010 /* NovaRaySpikeApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NovaRaySpikeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		01000011 /* NovaRaySpikeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NovaRaySpikeApp.swift; sourceTree = "<group>"; };
+		01000012 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		01000013 /* TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelManager.swift; sourceTree = "<group>"; };
+		01000015 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		01000016 /* NovaRaySpikeApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NovaRaySpikeApp.entitlements; sourceTree = "<group>"; };
+		01000018 /* NovaRayAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = NovaRayAssets.xcassets; path = ../../assets/icons/macos/NovaRayAssets.xcassets; sourceTree = "<group>"; };
+
+		02000002 /* org.novaray.spike.packettunnel.systemextension */ = {isa = PBXFileReference; explicitFileType = wrapper.system-extension; includeInIndex = 0; path = org.novaray.spike.packettunnel.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
+		01000014 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		01000017 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		02000015 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		02000016 /* NovaRayPacketTunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NovaRayPacketTunnel.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		01000040 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02000040 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		00000002 = {
+			isa = PBXGroup;
+			children = (
+				01000018 /* NovaRayAssets.xcassets */,
+				01000050 /* NovaRaySpikeApp */,
+				02000050 /* NovaRayPacketTunnel */,
+				00000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		00000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				01000010 /* NovaRaySpikeApp.app */,
+				02000002 /* org.novaray.spike.packettunnel.systemextension */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		01000050 /* NovaRaySpikeApp */ = {
+			isa = PBXGroup;
+			children = (
+				01000011 /* NovaRaySpikeApp.swift */,
+				01000012 /* ContentView.swift */,
+				01000013 /* TunnelManager.swift */,
+				01000015 /* Info.plist */,
+				01000016 /* NovaRaySpikeApp.entitlements */,
+			);
+			path = NovaRaySpikeApp;
+			sourceTree = "<group>";
+		};
+		02000050 /* NovaRayPacketTunnel */ = {
+			isa = PBXGroup;
+			children = (
+				01000017 /* main.swift */,
+				01000014 /* PacketTunnelProvider.swift */,
+				02000015 /* Info.plist */,
+				02000016 /* NovaRayPacketTunnel.entitlements */,
+			);
+			path = NovaRayPacketTunnel;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		01000000 /* NovaRaySpikeApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 01000070 /* Build configuration list for PBXNativeTarget "NovaRaySpikeApp" */;
+			buildPhases = (
+				01000060 /* Sources */,
+				01000040 /* Frameworks */,
+				01000061 /* Resources */,
+				01000030 /* Embed System Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				01000021 /* PBXTargetDependency */,
+			);
+			name = NovaRaySpikeApp;
+			productName = NovaRaySpikeApp;
+			productReference = 01000010 /* NovaRaySpikeApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		02000001 /* NovaRayPacketTunnel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02000070 /* Build configuration list for PBXNativeTarget "NovaRayPacketTunnel" */;
+			buildPhases = (
+				02000060 /* Sources */,
+				02000040 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NovaRayPacketTunnel;
+			productName = NovaRayPacketTunnel;
+			productReference = 02000002 /* org.novaray.spike.packettunnel.systemextension */;
+			productType = "com.apple.product-type.system-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		00000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					01000000 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					02000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 00000070 /* Build configuration list for PBXProject "NovaRaySpike" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 00000002;
+			productRefGroup = 00000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				01000000 /* NovaRaySpikeApp */,
+				02000001 /* NovaRayPacketTunnel */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		01000061 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				01000007 /* NovaRayAssets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		01000060 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				01000001 /* NovaRaySpikeApp.swift in Sources */,
+				01000002 /* ContentView.swift in Sources */,
+				01000003 /* TunnelManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02000060 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				01000006 /* main.swift in Sources */,
+				01000004 /* PacketTunnelProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		01000021 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 02000001 /* NovaRayPacketTunnel */;
+			targetProxy = 01000020 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		00000071 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		00000072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		01000071 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = NovaRaySpikeApp/NovaRaySpikeApp.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NovaRaySpikeApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.novaray.spike.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		01000072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = NovaRaySpikeApp/NovaRaySpikeApp.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NovaRaySpikeApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.novaray.spike.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		02000071 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NovaRayPacketTunnel/NovaRayPacketTunnel.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NovaRayPacketTunnel/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.novaray.spike.packettunnel;
+				PRODUCT_NAME = org.novaray.spike.packettunnel;
+				SKIP_INSTALL = YES;
+				WRAPPER_EXTENSION = systemextension;
+			};
+			name = Debug;
+		};
+		02000072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NovaRayPacketTunnel/NovaRayPacketTunnel.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NovaRayPacketTunnel/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.novaray.spike.packettunnel;
+				PRODUCT_NAME = org.novaray.spike.packettunnel;
+				SKIP_INSTALL = YES;
+				WRAPPER_EXTENSION = systemextension;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		00000070 /* Build configuration list for PBXProject "NovaRaySpike" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00000071 /* Debug */,
+				00000072 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		01000070 /* Build configuration list for PBXNativeTarget "NovaRaySpikeApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				01000071 /* Debug */,
+				01000072 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		02000070 /* Build configuration list for PBXNativeTarget "NovaRayPacketTunnel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				02000071 /* Debug */,
+				02000072 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = 00000001 /* Project object */;
+}

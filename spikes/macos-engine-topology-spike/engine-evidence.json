@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "snapshot_date": "2026-08-16",
+  "task_reference": "development-task-12",
+  "status": "evidence-only",
+  "selected_engine": null,
+  "candidates": [
+    {
+      "id": "xray-core",
+      "upstream": "https://github.com/XTLS/Xray-core",
+      "release": "v26.3.27",
+      "revision": "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
+      "license": {
+        "upstream_declaration": "MPL-2.0",
+        "legal_review_complete": false
+      },
+      "macos_arm64_artifact": {
+        "name": "Xray-macos-arm64-v8a.zip",
+        "url": "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-macos-arm64-v8a.zip",
+        "sha256": "2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf",
+        "downloaded_or_executed_in_this_spike": false
+      },
+      "subprocess": {
+        "build_path": "CGO_ENABLED=0 go build -o xray -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -v ./main",
+        "config_validation": "xray run -test -c CONFIG.json",
+        "readiness": "No dedicated stable readiness API was verified; a bounded local probe and observed process state are still required.",
+        "logging": "stdout/stderr can be supervised, but format, redaction and backpressure contracts still require a runtime spike.",
+        "graceful_stop": "Exact signal and timeout behavior was not executed in this spike."
+      },
+      "embedding": {
+        "path": "XTLS/libXray native Apple wrapper",
+        "wrapper_release": "v26.3.27",
+        "wrapper_revision": "38ae3cd8914d5bc2a7f81122fc6206efe3c07ad6",
+        "api_stability_guaranteed": false,
+        "constraints": [
+          "Only one independently built Go runtime may be loaded in a process.",
+          "The wrapper documents Swift-compatible gomobile and cgo Apple outputs.",
+          "NetworkExtension runtime, memory pressure, cancellation and panic containment remain unverified."
+        ]
+      },
+      "sources": [
+        "https://github.com/XTLS/Xray-core/tree/v26.3.27",
+        "https://github.com/XTLS/Xray-core/blob/v26.3.27/LICENSE",
+        "https://github.com/XTLS/Xray-core/blob/v26.3.27/README.md",
+        "https://xtls.github.io/en/document/command.html",
+        "https://github.com/XTLS/libXray/tree/v26.3.27"
+      ]
+    },
+    {
+      "id": "sing-box",
+      "upstream": "https://github.com/SagerNet/sing-box",
+      "release": "v1.13.18",
+      "revision": "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+      "license": {
+        "upstream_declaration": "GPL-3.0-or-later with an additional naming/association restriction",
+        "legal_review_complete": false
+      },
+      "macos_arm64_artifact": {
+        "name": "sing-box-1.13.18-darwin-arm64.tar.gz",
+        "url": "https://github.com/SagerNet/sing-box/releases/download/v1.13.18/sing-box-1.13.18-darwin-arm64.tar.gz",
+        "sha256": "9fbc05946b584423457a2778035e0cee2d9b239a4af5ae1932d9b79991149107",
+        "downloaded_or_executed_in_this_spike": false
+      },
+      "subprocess": {
+        "build_path": "go build -tags TAGS ./cmd/sing-box using pinned release/DEFAULT_BUILD_TAGS and release/LDFLAGS",
+        "config_validation": "sing-box check -c CONFIG.json",
+        "readiness": "No NovaRay-compatible stable readiness contract was verified; a bounded local probe and observed process state are still required.",
+        "logging": "CLI logging exists, but format, redaction and backpressure contracts still require a runtime spike.",
+        "graceful_stop": "Exact signal and timeout behavior was not executed in this spike."
+      },
+      "embedding": {
+        "path": "experimental/libbox Apple build plus sing-box-for-apple client",
+        "apple_client_revision": "9e17f432dce4e38ab27db087e0aef6008f217277",
+        "api_stability_guaranteed": false,
+        "constraints": [
+          "The pinned source contains an Apple libbox build and NetworkExtension-aware platform interface.",
+          "The Apple client is a pinned git submodule, not evidence that NovaRay can reuse its packaging unchanged.",
+          "NetworkExtension entitlement, memory pressure, cancellation, panic containment and license compatibility remain unverified."
+        ]
+      },
+      "sources": [
+        "https://github.com/SagerNet/sing-box/tree/v1.13.18",
+        "https://github.com/SagerNet/sing-box/blob/v1.13.18/LICENSE",
+        "https://github.com/SagerNet/sing-box/blob/v1.13.18/experimental/libbox/ffi.json",
+        "https://github.com/SagerNet/sing-box/blob/v1.13.18/experimental/libbox/service.go",
+        "https://github.com/SagerNet/sing-box-for-apple/commit/9e17f432dce4e38ab27db087e0aef6008f217277",
+        "https://sing-box.sagernet.org/installation/build-from-source/",
+        "https://sing-box.sagernet.org/configuration/"
+      ]
+    }
+  ],
+  "topologies": [
+    {
+      "id": "host-app-subprocess",
+      "status": "plausible",
+      "evidence_level": "upstream-and-apple-documentation",
+      "remaining_gate": "Prove signed bundle placement, child sandbox, engine lifecycle and packet-flow ownership."
+    },
+    {
+      "id": "network-system-extension-embedded",
+      "status": "plausible",
+      "evidence_level": "upstream-source-only",
+      "remaining_gate": "Build and run one pinned wrapper inside the development-entitled extension on Apple Silicon."
+    },
+    {
+      "id": "network-system-extension-subprocess",
+      "status": "unverified",
+      "evidence_level": "no-runtime-evidence",
+      "remaining_gate": "Do not select without an Apple-supported signed runtime proof and lifecycle/residue tests."
+    },
+    {
+      "id": "helper-owned-subprocess",
+      "status": "plausible",
+      "evidence_level": "architecture-only",
+      "remaining_gate": "ADR-003 threat model, installer authorization, authenticated IPC and rollback PoC."
+    }
+  ],
+  "gates": {
+    "real_arm64_engine_executed": false,
+    "networkextension_runtime_proven": false,
+    "license_distribution_review_complete": false,
+    "engine_selected": false,
+    "adr_004_accepted": false
+  },
+  "apple_sources": [
+    "https://developer.apple.com/documentation/foundation/process",
+    "https://developer.apple.com/documentation/xcode/embedding-a-helper-tool-in-a-sandboxed-app",
+    "https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment"
+  ]
+}

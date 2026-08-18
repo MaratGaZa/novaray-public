@@ -1,0 +1,38 @@
+# Rust & Swift build artifacts
+/target/
+**/target/
+.build/
+**/.build/
+build/
+**/build/
+**/*.rs.bk
+
+# Generated analysis and temporary output
+/graphify-out/
+/tmp/*
+!/tmp/.gitkeep
+
+# macOS and editor metadata
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+/config.json
+/settings.json
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.cer
+*.key
+
+# Xcode user-local state
+DerivedData/
+**/xcuserdata/
+*.xcuserstate

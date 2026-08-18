@@ -1,0 +1,38 @@
+{
+  "$schema": "./schema/settings.schema.json",
+  "version": 1,
+  "client": {
+    "auto_connect_on_launch": false,
+    "kill_switch": true,
+    "system_notifications": true,
+    "dns_servers": [
+      "192.0.2.53",
+      "198.51.100.53"
+    ],
+    "local_socks_port": 10808,
+    "local_http_port": 10809
+  },
+  "split_tunneling": {
+    "enabled": true,
+    "mode": "bypass_selected",
+    "direct_domains": [
+      "geosite:category-ru",
+      "domain:gosuslugi.ru",
+      "domain:yandex.ru",
+      "domain:kinopoisk.ru",
+      "domain:vk.com",
+      "domain:tinkoff.ru",
+      "domain:sberbank.ru"
+    ],
+    "direct_ips": [
+      "geoip:private",
+      "198.51.100.1"
+    ],
+    "direct_apps": [
+      "com.yandex.desktop.music",
+      "ru.yandex.desktop.disk",
+      "com.tinyspeck.slackmacgap",
+      "Telegram"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "./schema/config.schema.json",
+  "version": 1,
+  "active_profile_id": "vless-reality-test-a",
+  "profiles": [
+    {
+      "id": "vless-reality-test-a",
+      "name": "Test Profile A (VLESS + Reality)",
+      "protocol": "vless",
+      "server": "192.0.2.10",
+      "port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "security": "reality",
+        "server_name": "gateway.icloud.com",
+        "public_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "short_id": "0123456789abcdef",
+        "fingerprint": "chrome"
+      }
+    },
+    {
+      "id": "vless-reality-test-b",
+      "name": "Test Profile B (VLESS + Reality)",
+      "protocol": "vless",
+      "server": "198.51.100.20",
+      "port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000002",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "security": "reality",
+        "server_name": "dl.google.com",
+        "public_key": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+        "short_id": "01234567",
+        "fingerprint": "chrome"
+      }
+    }
+  ]
+}

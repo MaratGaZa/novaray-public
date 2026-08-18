@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://novaray.org/schemas/config.schema.json",
+  "title": "NovaRayAppConfig",
+  "description": "JSON Schema для файла конфигурации профилей NovaRay (AppConfig)",
+  "type": "object",
+  "required": [
+    "version",
+    "active_profile_id",
+    "profiles"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URI или локальный путь к JSON Schema"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Версия схемы конфигурации"
+    },
+    "active_profile_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Идентификатор активного профиля"
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Список конфигурационных профилей серверов",
+      "items": {
+        "$ref": "#/definitions/ServerProfile"
+      }
+    }
+  },
+  "definitions": {
+    "ServerProfile": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "protocol",
+        "server",
+        "port",
+        "uuid"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Уникальный идентификатор профиля"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Пользовательское имя профиля"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "vless"
+          ],
+          "description": "Протокол подключения"
+        },
+        "server": {
+          "type": "string",
+          "minLength": 1,
+          "description": "IP-адрес или доменное имя сервера"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Порт сервера"
+        },
+        "uuid": {
+          "type": "string",
+          "minLength": 1,
+          "description": "UUID пользователя"
+        },
+        "transport": {
+          "type": "string",
+          "enum": [
+            "tcp",
+            "ws",
+            "grpc"
+          ],
+          "default": "tcp",
+          "description": "Транспорт VLESS; отсутствие поля означает tcp"
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HTTP Host для WebSocket или authority для gRPC; fallback: tls.server_name, затем server"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Абсолютный WebSocket path или непустой gRPC serviceName; обязателен для ws/grpc"
+        },
+        "flow": {
+          "type": "string",
+          "enum": [
+            "xtls-rprx-vision"
+          ],
+          "description": "Режим XTLS Flow"
+        },
+        "tls": {
+          "$ref": "#/definitions/TlsConfig"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              {
+                "not": {
+                  "required": ["transport"]
+                }
+              },
+              {
+                "properties": {
+                  "transport": { "const": "tcp" }
+                },
+                "required": ["transport"]
+              }
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["host"] },
+                { "required": ["path"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["transport"],
+            "properties": {
+              "transport": { "const": "ws" }
+            }
+          },
+          "then": {
+            "required": ["path"],
+            "properties": {
+              "path": { "pattern": "^/" }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["transport"],
+            "properties": {
+              "transport": { "const": "grpc" }
+            }
+          },
+          "then": {
+            "required": ["path"],
+            "properties": {
+              "path": { "pattern": "^[^/]+$" }
+            }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "required": ["transport"],
+                "properties": {
+                  "transport": { "const": "ws" }
+                }
+              },
+              {
+                "required": ["tls"],
+                "properties": {
+                  "tls": {
+                    "required": ["enabled", "security"],
+                    "properties": {
+                      "enabled": { "const": true },
+                      "security": { "const": "reality" }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "then": false
+        },
+        {
+          "if": {
+            "required": ["flow"]
+          },
+          "then": {
+            "properties": {
+              "transport": {
+                "enum": ["tcp"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TlsConfig": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "security",
+        "server_name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Флаг включения TLS/Reality"
+        },
+        "security": {
+          "type": "string",
+          "enum": [
+            "none",
+            "tls",
+            "reality"
+          ],
+          "description": "Тип шифрования и маскировки"
+        },
+        "server_name": {
+          "type": "string",
+          "description": "Server Name Indication (SNI)"
+        },
+        "public_key": {
+          "type": "string",
+          "description": "Публичный ключ Reality (Base64)"
+        },
+        "short_id": {
+          "type": "string",
+          "description": "Short ID для Reality"
+        },
+        "fingerprint": {
+          "type": "string",
+          "description": "TLS uTLS fingerprint (например chrome, firefox, safari)"
+        }
+      },
+      "if": {
+        "properties": {
+          "security": {
+            "const": "reality"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "server_name",
+          "public_key"
+        ],
+        "properties": {
+          "server_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "public_key": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

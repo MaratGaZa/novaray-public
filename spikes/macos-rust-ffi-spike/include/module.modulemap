@@ -1,0 +1,4 @@
+module NovaRayFFI {
+    header "novaray_ffi.h"
+    export *
+}

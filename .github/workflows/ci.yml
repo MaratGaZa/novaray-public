@@ -1,0 +1,294 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      macos: ${{ steps.filter.outputs.macos }}
+      docs: ${{ steps.filter.outputs.docs }}
+      agents: ${{ steps.filter.outputs.agents }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check committed PR diff whitespace
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "${BASE_SHA:-}" ] && git rev-parse --verify "${BASE_SHA}^{commit}" >/dev/null 2>&1; then
+            git diff --check "${BASE_SHA}...HEAD"
+          fi
+
+      - name: Detect changed areas
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          run_all() {
+            {
+              echo "rust=true"
+              echo "macos=true"
+              echo "docs=true"
+              echo "agents=true"
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          # Push в main и ручной запуск проверяют всё: страховка на случай слишком
+          # щедрого правила путей в pull_request.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Событие $EVENT_NAME: выполняются все проверки."
+            run_all
+            exit 0
+          fi
+
+          if [ -z "${BASE_SHA:-}" ] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "Базовый коммит недоступен: выполняются все проверки."
+            run_all
+            exit 0
+          fi
+
+          files="$(git diff --name-only "${BASE_SHA}...HEAD")"
+          if [ -z "$files" ]; then
+            echo "Список изменённых файлов пуст: выполняются все проверки."
+            run_all
+            exit 0
+          fi
+
+          echo "Изменённые файлы:"
+          echo "$files" | sed 's/^/  /'
+
+          rust=false
+          macos=false
+          docs=false
+          agents=false
+          unknown=false
+
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              .github/workflows/*)
+                rust=true; macos=true; docs=true; agents=true ;;
+              .agents/*|.agents/**/*|.claude/*|.claude/**/*|AGENTS.md|CLAUDE.md|scripts/check_agent_mirrors.py)
+                agents=true ;;
+              src/*|tests/*|schema/*|Cargo.toml|Cargo.lock|config.example.json|settings.example.json)
+                # Корневой workspace собирают Linux, Windows и macOS.
+                rust=true; macos=true ;;
+              spikes/macos-networkextension-spike/*|spikes/macos-rust-ffi-spike/*)
+                # Swift-спайк и FFI-спайк собираются только на macOS.
+                macos=true ;;
+              spikes/macos-engine-topology-spike/*)
+                docs=true ;;
+              scripts/check_markdown_links.py)
+                docs=true ;;
+              *.md)
+                docs=true ;;
+              *)
+                unknown=true ;;
+            esac
+          done <<INNER_EOF
+          $files
+          INNER_EOF
+
+          if [ "$unknown" = true ]; then
+            echo "Обнаружены файлы вне известных категорий: выполняются все проверки."
+            rust=true
+            macos=true
+            docs=true
+            agents=true
+          fi
+
+          echo "Итог: rust=$rust macos=$macos docs=$docs agents=$agents"
+          {
+            echo "rust=$rust"
+            echo "macos=$macos"
+            echo "docs=$docs"
+            echo "agents=$agents"
+          } >> "$GITHUB_OUTPUT"
+
+  agent-mirrors:
+    name: Agent mirrors (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.agents == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python_command: python3
+          - os: macos-15
+            python_command: python3
+          - os: windows-latest
+            python_command: python
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify regular-file agent mirrors
+        run: ${{ matrix.python_command }} scripts/check_agent_mirrors.py
+
+  rust-linux:
+    name: Rust quality (Linux)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust with quality components
+        run: |
+          rustup set profile minimal
+          rustup toolchain install stable --no-self-update --component rustfmt --component clippy
+          rustup default stable
+          rustc --version --verbose
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Run tests
+        run: cargo test --all-targets --locked
+
+  rust-macos-arm64:
+    name: Rust + Swift quality (macOS arm64; target 14+)
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify runner architecture
+        run: |
+          uname -a
+          test "$(uname -m)" = "arm64"
+
+      - name: Verify Swift 6 toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          swift --version | grep -E 'Swift version (6|[7-9])\.'
+
+      - name: Install stable Rust with quality components
+        run: |
+          rustup set profile minimal
+          rustup toolchain install stable --no-self-update --component rustfmt --component clippy
+          rustup default stable
+          rustc --version --verbose
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Run tests
+        run: cargo test --all-targets --locked
+
+      - name: Check Rust C ABI spike
+        run: |
+          cargo fmt --manifest-path spikes/macos-rust-ffi-spike/rust/Cargo.toml -- --check
+          cargo clippy --manifest-path spikes/macos-rust-ffi-spike/rust/Cargo.toml --all-targets --locked -- -D warnings
+          cargo test --manifest-path spikes/macos-rust-ffi-spike/rust/Cargo.toml --all-targets --locked
+
+      - name: Run Swift to Rust roundtrip
+        run: ./spikes/macos-rust-ffi-spike/scripts/run-roundtrip.sh
+
+      - name: Build Swift spike with strict Swift 6 concurrency
+        run: |
+          swift build --package-path spikes/macos-networkextension-spike --triple arm64-apple-macosx14.0 -Xswiftc -swift-version -Xswiftc 6 -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
+
+      - name: Build Xcode macOS App & System Extension spike and verify app icon
+        run: |
+          xcodebuild -project spikes/macos-networkextension-spike/NovaRaySpike.xcodeproj -target NovaRaySpikeApp -configuration Debug -arch arm64 CODE_SIGNING_ALLOWED=NO SYMROOT="$RUNNER_TEMP/novaray-xcode-build" build
+          test -f "$RUNNER_TEMP/novaray-xcode-build/Debug/NovaRaySpikeApp.app/Contents/Resources/AppIcon.icns"
+          test "$(plutil -extract CFBundleIconName raw "$RUNNER_TEMP/novaray-xcode-build/Debug/NovaRaySpikeApp.app/Contents/Info.plist")" = "AppIcon"
+
+  rust-windows-hosted:
+    name: Rust quality (Windows hosted x64; portability only)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust with Clippy
+        shell: pwsh
+        run: |
+          rustup set profile minimal
+          rustup toolchain install stable --no-self-update --component clippy
+          rustup default stable
+          rustc --version --verbose
+
+      - name: Verify Rust host target
+        shell: pwsh
+        run: |
+          $hostLine = rustc -vV | Select-String '^host:'
+          if ($hostLine -notmatch 'x86_64-pc-windows-msvc') {
+            throw "Expected x86_64-pc-windows-msvc, got: $hostLine"
+          }
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Run tests
+        run: cargo test --all-targets --locked
+
+  documentation:
+    name: Documentation links
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check local Markdown links
+        run: python3 scripts/check_markdown_links.py .
+
+      - name: Validate macOS engine topology evidence
+        run: python3 spikes/macos-engine-topology-spike/scripts/validate_manifest.py
