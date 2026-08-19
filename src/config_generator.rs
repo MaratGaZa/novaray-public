@@ -24,6 +24,13 @@ impl EngineConfigStrategy {
         }
     }
 
+    pub fn pinned_version(self) -> &'static str {
+        match self {
+            Self::Xray => "v26.3.27",
+            Self::SingBox => "v1.13.18",
+        }
+    }
+
     pub fn generate(self, profile: &ServerProfile, settings: &UserSettings) -> Value {
         match self {
             Self::Xray => XrayConfigGenerator::generate(profile, settings),

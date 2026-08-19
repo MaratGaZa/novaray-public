@@ -310,7 +310,7 @@ fn print_help() {
         "    -e, --engine-bin <PATH>       Путь к бинарнику сетевого движка (по умолчанию: xray)"
     );
     println!(
-        "        --expected-sha256 <HASH>  Обязательный SHA-256 хеш бинарника движка для запуска"
+        "        --expected-sha256 <HASH>  SHA-256 override; по умолчанию используется pinned checksum"
     );
     println!("        --no-preflight            Отключить pre-flight проверку конфигурации");
     println!("        --preflight-timeout <S>   Таймаут pre-flight проверки в секундах (по умолчанию: 5)");

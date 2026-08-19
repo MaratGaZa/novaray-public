@@ -369,7 +369,8 @@ fn test_cli_status_and_pinned_releases_commands() {
     assert!(stdout.contains("Pinned Engine Releases Catalog"));
     assert!(stdout.to_lowercase().contains("xray-core"));
     assert!(stdout.contains("v26.3.27"));
-    assert!(stdout.contains("Binary SHA:  <not pinned>"));
+    assert!(stdout
+        .contains("Binary SHA:  5d9dd24c0aba4b6cfcc6a33a5d67f854816ee17f392bf932ec8176da46f7e404"));
 }
 
 #[test]

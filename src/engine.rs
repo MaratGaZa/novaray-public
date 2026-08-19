@@ -10,6 +10,7 @@ use crate::config::{AppConfig, UserSettings};
 use crate::config_generator::EngineConfigStrategy;
 use crate::core::{ProcessSupervisor, ReadinessProbe, SupervisorOptions, SupervisorState};
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -94,7 +95,7 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
             target_arch: "arm64",
             archive_name: "Xray-macos-arm64-v8a.zip",
             archive_sha256: "2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf",
-            binary_sha256: None,
+            binary_sha256: Some("5d9dd24c0aba4b6cfcc6a33a5d67f854816ee17f392bf932ec8176da46f7e404"),
         },
         PinnedEngineRelease {
             engine_name: "xray-core",
@@ -104,7 +105,7 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
             target_arch: "arm64",
             archive_name: "Xray-linux-arm64-v8a.zip",
             archive_sha256: "4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c",
-            binary_sha256: None,
+            binary_sha256: Some("c2d20a7045250497083afea0d79db0672f6c89a25aaaf37c92de034d6b764b04"),
         },
         PinnedEngineRelease {
             engine_name: "xray-core",
@@ -114,7 +115,7 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
             target_arch: "x86_64",
             archive_name: "Xray-linux-64.zip",
             archive_sha256: "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae",
-            binary_sha256: None,
+            binary_sha256: Some("8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed"),
         },
         PinnedEngineRelease {
             engine_name: "sing-box",
@@ -199,6 +200,18 @@ pub fn find_pinned_binary_checksum(engine_name: &str, version: &str) -> Option<&
 /// Находит ожидаемый SHA-256 ZIP-архива для текущей платформы из зафиксированных релизов (обратная совместимость)
 pub fn find_pinned_checksum(engine_name: &str, version: &str) -> Option<&'static str> {
     find_pinned_archive_checksum(engine_name, version)
+}
+
+fn resolve_expected_binary_checksum<'a>(
+    strategy: EngineConfigStrategy,
+    explicit_sha256: Option<&'a str>,
+) -> Option<Cow<'a, str>> {
+    if let Some(explicit) = explicit_sha256 {
+        return Some(Cow::Borrowed(explicit));
+    }
+
+    find_pinned_binary_checksum(strategy.engine_name(), strategy.pinned_version())
+        .map(Cow::Borrowed)
 }
 
 /// Проверяет бинарный файл движка на существование, права на исполнение и соответствие SHA-256.
@@ -376,7 +389,8 @@ pub fn cleanup_runtime_config(path: &Path) -> Result<(), EngineError> {
 pub struct ProxyServiceOptions {
     /// Стратегия генерации конфигурации внешнего движка.
     pub config_strategy: EngineConfigStrategy,
-    /// Ожидаемая контрольная сумма SHA-256. `None` запрещает запуск fail-closed.
+    /// Ожидаемая контрольная сумма SHA-256. Если `None`, используется pinned binary checksum
+    /// для выбранной стратегии и текущей платформы; отсутствие такого pin запрещает запуск fail-closed.
     pub expected_sha256: Option<String>,
     /// Выполнять ли pre-flight валидацию конфигурации через CLI движка (`xray run -test -c <path>`)
     pub enable_preflight_check: bool,
@@ -481,7 +495,11 @@ impl ProxyService {
         }
 
         // 3. Верификация бинарного артефакта
-        let _artifact = verify_engine_artifact(engine_binary, options.expected_sha256.as_deref())?;
+        let expected_sha256 = resolve_expected_binary_checksum(
+            options.config_strategy,
+            options.expected_sha256.as_deref(),
+        );
+        let _artifact = verify_engine_artifact(engine_binary, expected_sha256.as_deref())?;
 
         // 4. Генерация JSON для выбранного движка
         let engine_value = options.config_strategy.generate(active_profile, settings);
@@ -612,6 +630,43 @@ mod tests {
                 checksum,
                 Some("2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf")
             );
+        }
+
+        let binary_checksum = find_pinned_binary_checksum("xray-core", "v26.3.27");
+        if std::env::consts::OS == "macos" && std::env::consts::ARCH == "aarch64" {
+            assert_eq!(
+                binary_checksum,
+                Some("5d9dd24c0aba4b6cfcc6a33a5d67f854816ee17f392bf932ec8176da46f7e404")
+            );
+        }
+    }
+
+    #[test]
+    fn test_resolve_expected_binary_checksum_prefers_explicit_then_pinned() {
+        let explicit = resolve_expected_binary_checksum(
+            EngineConfigStrategy::Xray,
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        );
+        assert_eq!(
+            explicit.as_deref(),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+
+        let pinned = resolve_expected_binary_checksum(EngineConfigStrategy::Xray, None);
+        match (std::env::consts::OS, std::env::consts::ARCH) {
+            ("macos", "aarch64") => assert_eq!(
+                pinned.as_deref(),
+                Some("5d9dd24c0aba4b6cfcc6a33a5d67f854816ee17f392bf932ec8176da46f7e404")
+            ),
+            ("linux", "aarch64") => assert_eq!(
+                pinned.as_deref(),
+                Some("c2d20a7045250497083afea0d79db0672f6c89a25aaaf37c92de034d6b764b04")
+            ),
+            ("linux", "x86_64") => assert_eq!(
+                pinned.as_deref(),
+                Some("8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed")
+            ),
+            _ => assert!(pinned.is_none()),
         }
     }
 
