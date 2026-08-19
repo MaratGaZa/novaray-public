@@ -120,6 +120,10 @@ WebSocket отклоняются как несовместимые комбин�
 ### FR-003. Network engine lifecycle
 
 - Engine поставляется проверяемым способом и имеет зафиксированную версию и checksum.
+- Автоматически pinned binary checksum поддерживается для Xray-core и sing-box на macOS arm64,
+  macOS x86_64, Linux arm64, Linux x86_64 и Windows x86_64. Иные OS/arch не входят в текущий
+  support matrix, явно помечаются в help/`pinned-releases` как неподдерживаемые и не запускаются
+  без явного trusted `--expected-sha256`.
 - Для каждой `EngineConfigStrategy` автоматически поддерживается только одна версия из pinned catalog;
   CLI/API не принимает выбираемую пользователем версию и не считает вывод `engine version` trusted
   security oracle. При несовпадении pinned binary checksum диагностика называет движок, pinned

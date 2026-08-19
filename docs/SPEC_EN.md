@@ -129,6 +129,10 @@ of being ignored.
 ### FR-003 — Engine lifecycle
 
 - Pin and verify the engine version and checksum.
+- Automatic pinned binary checksum support covers Xray-core and sing-box on macOS arm64, macOS
+  x86_64, Linux arm64, Linux x86_64, and Windows x86_64. Other OS/arch combinations are outside
+  the current support matrix, are explicitly marked unsupported by help/`pinned-releases`, and
+  cannot start without an explicit trusted `--expected-sha256`.
 - Each `EngineConfigStrategy` automatically supports only one version from the pinned catalog; the
   CLI/API does not accept a user-selectable version and does not treat `engine version` output as a
   trusted security oracle. On a pinned binary checksum mismatch, diagnostics name the engine,

@@ -195,6 +195,9 @@ Android VpnService → Android UI → release
 - [x] Уточнить fail-closed диагностику: автоматически принимать только одну pinned версию на
   strategy; различать mismatch pinned артефакта (включая возможную неподдерживаемую версию) и
   отсутствие pin для OS/arch, не доверяя `engine version` выводу как security oracle (issue #5).
+- [x] Завершить declared matrix pinned binary checksums для Xray-core и sing-box: macOS arm64/x86_64,
+  Linux arm64/x86_64 и Windows x86_64; доказать archive/binary SHA-256 официальных release assets,
+  показывать отсутствие иных targets через `pinned-releases` и покрыть matrix contract test (issue #3).
 - [x] Определить безопасный путь временной/runtime конфигурации и permissions.
 - [x] Удалять runtime secrets после остановки.
 

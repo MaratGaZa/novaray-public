@@ -133,6 +133,16 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
             engine_name: "xray-core",
             version: "v26.3.27",
             revision: "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
+            target_os: "macos",
+            target_arch: "x86_64",
+            archive_name: "Xray-macos-64.zip",
+            archive_sha256: "f5b0471d3459eff1b82e48af0aeac186abcc3298210070afbbbd8437a4e8b203",
+            binary_sha256: Some("afd0eaebb77994a18f29b00c5f50a4f7fbb77da06e24352d43035f3cad3c3786"),
+        },
+        PinnedEngineRelease {
+            engine_name: "xray-core",
+            version: "v26.3.27",
+            revision: "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
             target_os: "linux",
             target_arch: "arm64",
             archive_name: "Xray-linux-arm64-v8a.zip",
@@ -150,6 +160,16 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
             binary_sha256: Some("8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed"),
         },
         PinnedEngineRelease {
+            engine_name: "xray-core",
+            version: "v26.3.27",
+            revision: "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
+            target_os: "windows",
+            target_arch: "x86_64",
+            archive_name: "Xray-windows-64.zip",
+            archive_sha256: "d004c39288ce9ada487c6f398c7c545f7d749e44bdfdd59dbc9f865afba4e1ad",
+            binary_sha256: Some("15c2d007954ac53ba69b80ec91242786b3c0b71d52649165b4ca1d5cc96ef8f1"),
+        },
+        PinnedEngineRelease {
             engine_name: "sing-box",
             version: "v1.13.18",
             revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
@@ -163,11 +183,31 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
             engine_name: "sing-box",
             version: "v1.13.18",
             revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+            target_os: "macos",
+            target_arch: "x86_64",
+            archive_name: "sing-box-1.13.18-darwin-amd64.tar.gz",
+            archive_sha256: "500f0decfc21f7cdb2aaa4fe193b7857a41b07c38ee3a0b15bd53e3c7af3671c",
+            binary_sha256: Some("6e9749a4b40821bf07d301f099e75d871ea435861c9f5f0ac5687dc18e81b759"),
+        },
+        PinnedEngineRelease {
+            engine_name: "sing-box",
+            version: "v1.13.18",
+            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
             target_os: "linux",
             target_arch: "arm64",
             archive_name: "sing-box-1.13.18-linux-arm64.tar.gz",
             archive_sha256: "a894f6152cade4a2c9d062762d54dea0c1aee673ab4759e0829e19cace932719",
             binary_sha256: Some("1a202edaba57b6202dd0e2ece1f77a584511f40769a3a177edffde3c2b5537cb"),
+        },
+        PinnedEngineRelease {
+            engine_name: "sing-box",
+            version: "v1.13.18",
+            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+            target_os: "linux",
+            target_arch: "x86_64",
+            archive_name: "sing-box-1.13.18-linux-amd64.tar.gz",
+            archive_sha256: "d34d987ed6ae39ca3760269264fb502b867e5477db45518c829b07776245c495",
+            binary_sha256: Some("8cb29c5b743fbda33502a2b6d49cf66ce13f5d1a41fcd0afc53fff17184ccf8e"),
         },
         PinnedEngineRelease {
             engine_name: "sing-box",
@@ -796,6 +836,34 @@ mod tests {
     }
 
     #[test]
+    fn test_declared_engine_support_matrix_has_binary_checksums() {
+        let declared_targets = [
+            ("macos", "arm64"),
+            ("macos", "x86_64"),
+            ("linux", "arm64"),
+            ("linux", "x86_64"),
+            ("windows", "x86_64"),
+        ];
+
+        for strategy in [EngineConfigStrategy::Xray, EngineConfigStrategy::SingBox] {
+            for (target_os, target_arch) in declared_targets {
+                let release = get_pinned_engine_releases().iter().find(|release| {
+                    release.engine_name == strategy.engine_name()
+                        && release.version == strategy.pinned_version()
+                        && release.target_os == target_os
+                        && release.target_arch == target_arch
+                });
+                assert!(
+                    release.and_then(|release| release.binary_sha256).is_some(),
+                    "{} {} must have a binary SHA-256 for {target_os}/{target_arch}",
+                    strategy.engine_name(),
+                    strategy.pinned_version()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_resolve_expected_binary_checksum_distinguishes_explicit_pinned_and_missing_pin() {
         let explicit = resolve_expected_binary_checksum_for_target(
             EngineConfigStrategy::Xray,
@@ -837,16 +905,16 @@ mod tests {
         let missing = resolve_expected_binary_checksum_for_target(
             EngineConfigStrategy::SingBox,
             None,
-            "linux",
-            "x86_64",
+            "windows",
+            "arm64",
         );
         assert!(matches!(
             missing,
             Err(EngineError::MissingPinnedBinaryChecksum(ref details))
                 if details.engine_name == "sing-box"
                     && details.version == "v1.13.18"
-                    && details.target_os == "linux"
-                    && details.target_arch == "x86_64"
+                    && details.target_os == "windows"
+                    && details.target_arch == "arm64"
         ));
     }
 
@@ -904,8 +972,8 @@ mod tests {
             &missing_path,
             EngineConfigStrategy::SingBox,
             None,
-            "linux",
-            "x86_64",
+            "windows",
+            "arm64",
         );
 
         assert!(matches!(result, Err(EngineError::BinaryNotFound(path)) if path == missing_path));
