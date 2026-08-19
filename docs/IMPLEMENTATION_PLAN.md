@@ -405,7 +405,12 @@ machine; package identity, signatures и rollback traceable до source revision
     `--engine-config xray|sing-box` с Xray по умолчанию; путь `--engine-bin` не меняет стратегию;
     неизвестное значение возвращает usage error до I/O. Покрыть default, sing-box, invalid value и
     mapping в `ProxyServiceOptions`; после этого обновить help и примеры.
-17. Только после этого начать macOS system tunnel vertical slice на privileged helper.
+17. [x] Уточнить диагностику verification engine artifact — issue #5: одна pinned версия на
+    strategy, без user-selectable version и без доверия к выводу binary version; отдельные ошибки
+    для pinned mismatch (engine/version/OS/arch) и отсутствующего platform pin, при сохранении
+    explicit SHA-256 override и fail-closed поведения. Покрыть explicit override, mismatch и
+    missing pin unit/integration tests.
+18. Только после этого начать macOS system tunnel vertical slice на privileged helper.
 
 ## 7. Зависимости
 

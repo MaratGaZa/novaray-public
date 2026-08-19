@@ -192,6 +192,9 @@ Android VpnService → Android UI → release
 - [ ] Автоматизировать получение/сборку arm64 engine (sing-box) для macOS, Windows и Android.
 - [x] Зафиксировать version, source revision и checksum: для Xray-core `v26.3.27` зафиксированы archive sha256 с разделением archive/binary; для sing-box `v1.13.18` зафиксированы revision, archive SHA-256 и binary SHA-256 для `darwin-arm64`, `linux-arm64`, `windows-amd64`.
 - [~] Проверять checksum до запуска.
+- [x] Уточнить fail-closed диагностику: автоматически принимать только одну pinned версию на
+  strategy; различать mismatch pinned артефакта (включая возможную неподдерживаемую версию) и
+  отсутствие pin для OS/arch, не доверяя `engine version` выводу как security oracle (issue #5).
 - [x] Определить безопасный путь временной/runtime конфигурации и permissions.
 - [x] Удалять runtime secrets после остановки.
 

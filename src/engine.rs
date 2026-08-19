@@ -42,6 +42,12 @@ pub enum EngineError {
     #[error("Несоответствие контрольной суммы SHA-256 бинарного файла: ожидалось {expected}, получено {actual}")]
     ChecksumMismatch { expected: String, actual: String },
 
+    #[error(transparent)]
+    PinnedBinaryChecksumMismatch(Box<PinnedBinaryChecksumMismatch>),
+
+    #[error(transparent)]
+    MissingPinnedBinaryChecksum(Box<MissingPinnedBinaryChecksum>),
+
     #[error("Ожидаемая SHA-256 контрольная сумма бинарника движка не задана; запуск без проверки запрещён")]
     MissingExpectedChecksum,
 
@@ -59,6 +65,32 @@ pub enum EngineError {
 
     #[error("Ошибка супервизора процессов: {0}")]
     SupervisorError(String),
+}
+
+/// Контекст mismatch автоматической pinned checksum.
+#[derive(Debug, Error)]
+#[error(
+    "Бинарник не совпадает с pinned артефактом {engine_name} {version} для {target_os}/{target_arch}: ожидалось {expected}, получено {actual}. Это может означать другую/неподдерживаемую версию или изменённый артефакт; запуск запрещён"
+)]
+pub struct PinnedBinaryChecksumMismatch {
+    pub engine_name: String,
+    pub version: String,
+    pub target_os: String,
+    pub target_arch: String,
+    pub expected: String,
+    pub actual: String,
+}
+
+/// Контекст отсутствующего pinned binary checksum для выбранной платформы.
+#[derive(Debug, Error)]
+#[error(
+    "Для {engine_name} {version} нет pinned SHA-256 бинарника на {target_os}/{target_arch}; запуск без explicit --expected-sha256 запрещён"
+)]
+pub struct MissingPinnedBinaryChecksum {
+    pub engine_name: String,
+    pub version: String,
+    pub target_os: String,
+    pub target_arch: String,
 }
 
 /// Метаданные верифицированного бинарного артефакта движка
@@ -184,15 +216,29 @@ pub fn find_pinned_archive_checksum(engine_name: &str, version: &str) -> Option<
 
 /// Находит ожидаемый SHA-256 распакованного бинарника для текущей платформы из зафиксированных релизов
 pub fn find_pinned_binary_checksum(engine_name: &str, version: &str) -> Option<&'static str> {
-    let current_os = normalize_os(std::env::consts::OS);
-    let current_arch = normalize_arch(std::env::consts::ARCH);
+    find_pinned_binary_checksum_for_target(
+        engine_name,
+        version,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    )
+}
+
+fn find_pinned_binary_checksum_for_target(
+    engine_name: &str,
+    version: &str,
+    target_os: &str,
+    target_arch: &str,
+) -> Option<&'static str> {
+    let target_os = normalize_os(target_os);
+    let target_arch = normalize_arch(target_arch);
     get_pinned_engine_releases()
         .iter()
         .find(|r| {
             r.engine_name.eq_ignore_ascii_case(engine_name)
                 && r.version.eq_ignore_ascii_case(version)
-                && normalize_os(r.target_os).eq_ignore_ascii_case(current_os)
-                && normalize_arch(r.target_arch).eq_ignore_ascii_case(current_arch)
+                && normalize_os(r.target_os).eq_ignore_ascii_case(target_os)
+                && normalize_arch(r.target_arch).eq_ignore_ascii_case(target_arch)
         })
         .and_then(|r| r.binary_sha256)
 }
@@ -202,16 +248,136 @@ pub fn find_pinned_checksum(engine_name: &str, version: &str) -> Option<&'static
     find_pinned_archive_checksum(engine_name, version)
 }
 
-fn resolve_expected_binary_checksum<'a>(
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExpectedBinaryChecksumSource {
+    Explicit,
+    Pinned {
+        engine_name: String,
+        version: String,
+        target_os: String,
+        target_arch: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExpectedBinaryChecksum<'a> {
+    value: Cow<'a, str>,
+    source: ExpectedBinaryChecksumSource,
+}
+
+fn resolve_expected_binary_checksum_for_target<'a>(
     strategy: EngineConfigStrategy,
     explicit_sha256: Option<&'a str>,
-) -> Option<Cow<'a, str>> {
+    target_os: &str,
+    target_arch: &str,
+) -> Result<ExpectedBinaryChecksum<'a>, EngineError> {
     if let Some(explicit) = explicit_sha256 {
-        return Some(Cow::Borrowed(explicit));
+        return Ok(ExpectedBinaryChecksum {
+            value: Cow::Borrowed(explicit),
+            source: ExpectedBinaryChecksumSource::Explicit,
+        });
     }
 
-    find_pinned_binary_checksum(strategy.engine_name(), strategy.pinned_version())
-        .map(Cow::Borrowed)
+    let target_os = normalize_os(target_os).to_string();
+    let target_arch = normalize_arch(target_arch).to_string();
+    let engine_name = strategy.engine_name().to_string();
+    let version = strategy.pinned_version().to_string();
+
+    let value =
+        find_pinned_binary_checksum_for_target(&engine_name, &version, &target_os, &target_arch)
+            .ok_or_else(|| {
+                EngineError::MissingPinnedBinaryChecksum(Box::new(MissingPinnedBinaryChecksum {
+                    engine_name: engine_name.clone(),
+                    version: version.clone(),
+                    target_os: target_os.clone(),
+                    target_arch: target_arch.clone(),
+                }))
+            })?;
+
+    Ok(ExpectedBinaryChecksum {
+        value: Cow::Borrowed(value),
+        source: ExpectedBinaryChecksumSource::Pinned {
+            engine_name,
+            version,
+            target_os,
+            target_arch,
+        },
+    })
+}
+
+fn verify_selected_engine_artifact(
+    path: &Path,
+    strategy: EngineConfigStrategy,
+    explicit_sha256: Option<&str>,
+) -> Result<EngineArtifact, EngineError> {
+    verify_selected_engine_artifact_for_target(
+        path,
+        strategy,
+        explicit_sha256,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    )
+}
+
+fn verify_selected_engine_artifact_for_target(
+    path: &Path,
+    strategy: EngineConfigStrategy,
+    explicit_sha256: Option<&str>,
+    target_os: &str,
+    target_arch: &str,
+) -> Result<EngineArtifact, EngineError> {
+    // Проверяем сам бинарник до поиска platform pin: неверный путь не должен маскироваться
+    // отсутствием checksum для выбранных OS/arch.
+    validate_engine_binary_path(path)?;
+    let expected = resolve_expected_binary_checksum_for_target(
+        strategy,
+        explicit_sha256,
+        target_os,
+        target_arch,
+    )?;
+    match verify_engine_artifact(path, Some(expected.value.as_ref())) {
+        Err(EngineError::ChecksumMismatch {
+            expected: expected_hash,
+            actual,
+        }) => match expected.source {
+            ExpectedBinaryChecksumSource::Explicit => Err(EngineError::ChecksumMismatch {
+                expected: expected_hash,
+                actual,
+            }),
+            ExpectedBinaryChecksumSource::Pinned {
+                engine_name,
+                version,
+                target_os,
+                target_arch,
+            } => Err(EngineError::PinnedBinaryChecksumMismatch(Box::new(
+                PinnedBinaryChecksumMismatch {
+                    engine_name,
+                    version,
+                    target_os,
+                    target_arch,
+                    expected: expected_hash,
+                    actual,
+                },
+            ))),
+        },
+        result => result,
+    }
+}
+
+fn validate_engine_binary_path(path: &Path) -> Result<(), EngineError> {
+    if !path.exists() || !path.is_file() {
+        return Err(EngineError::BinaryNotFound(path.to_path_buf()));
+    }
+
+    #[cfg(unix)]
+    {
+        let permissions = std::fs::metadata(path)?.permissions();
+        if permissions.mode() & 0o111 == 0 {
+            return Err(EngineError::PermissionDenied(path.to_path_buf()));
+        }
+    }
+
+    Ok(())
 }
 
 /// Проверяет бинарный файл движка на существование, права на исполнение и соответствие SHA-256.
@@ -219,20 +385,8 @@ pub fn verify_engine_artifact(
     path: &Path,
     expected_sha256: Option<&str>,
 ) -> Result<EngineArtifact, EngineError> {
-    if !path.exists() || !path.is_file() {
-        return Err(EngineError::BinaryNotFound(path.to_path_buf()));
-    }
-
+    validate_engine_binary_path(path)?;
     let metadata = std::fs::metadata(path)?;
-
-    #[cfg(unix)]
-    {
-        let permissions = metadata.permissions();
-        let mode = permissions.mode();
-        if mode & 0o111 == 0 {
-            return Err(EngineError::PermissionDenied(path.to_path_buf()));
-        }
-    }
 
     let expected_clean = expected_sha256
         .map(str::trim)
@@ -495,11 +649,11 @@ impl ProxyService {
         }
 
         // 3. Верификация бинарного артефакта
-        let expected_sha256 = resolve_expected_binary_checksum(
+        let _artifact = verify_selected_engine_artifact(
+            engine_binary,
             options.config_strategy,
             options.expected_sha256.as_deref(),
-        );
-        let _artifact = verify_engine_artifact(engine_binary, expected_sha256.as_deref())?;
+        )?;
 
         // 4. Генерация JSON для выбранного движка
         let engine_value = options.config_strategy.generate(active_profile, settings);
@@ -642,32 +796,119 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_expected_binary_checksum_prefers_explicit_then_pinned() {
-        let explicit = resolve_expected_binary_checksum(
+    fn test_resolve_expected_binary_checksum_distinguishes_explicit_pinned_and_missing_pin() {
+        let explicit = resolve_expected_binary_checksum_for_target(
             EngineConfigStrategy::Xray,
             Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-        );
+            "linux",
+            "x86_64",
+        )
+        .unwrap();
         assert_eq!(
-            explicit.as_deref(),
-            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            explicit.value,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        assert_eq!(explicit.source, ExpectedBinaryChecksumSource::Explicit);
+
+        let pinned = resolve_expected_binary_checksum_for_target(
+            EngineConfigStrategy::Xray,
+            None,
+            "linux",
+            "x86_64",
+        )
+        .unwrap();
+        assert_eq!(
+            pinned.value,
+            "8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed"
+        );
+        assert!(matches!(
+            pinned.source,
+            ExpectedBinaryChecksumSource::Pinned {
+                ref engine_name,
+                ref version,
+                ref target_os,
+                ref target_arch,
+            } if engine_name == "xray-core"
+                && version == "v26.3.27"
+                && target_os == "linux"
+                && target_arch == "x86_64"
+        ));
+
+        let missing = resolve_expected_binary_checksum_for_target(
+            EngineConfigStrategy::SingBox,
+            None,
+            "linux",
+            "x86_64",
+        );
+        assert!(matches!(
+            missing,
+            Err(EngineError::MissingPinnedBinaryChecksum(ref details))
+                if details.engine_name == "sing-box"
+                    && details.version == "v1.13.18"
+                    && details.target_os == "linux"
+                    && details.target_arch == "x86_64"
+        ));
+    }
+
+    #[test]
+    fn test_selected_artifact_verification_distinguishes_pinned_and_explicit_mismatch() {
+        let test_bin = std::env::temp_dir().join(format!(
+            "test_checksum_diagnostics_{}.sh",
+            std::process::id()
+        ));
+        std::fs::write(&test_bin, b"#!/bin/sh\necho test\n").unwrap();
+
+        #[cfg(unix)]
+        {
+            let mut perms = std::fs::metadata(&test_bin).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&test_bin, perms).unwrap();
+        }
+
+        let pinned = verify_selected_engine_artifact_for_target(
+            &test_bin,
+            EngineConfigStrategy::Xray,
+            None,
+            "linux",
+            "x86_64",
+        );
+        assert!(matches!(
+            pinned,
+            Err(EngineError::PinnedBinaryChecksumMismatch(ref details))
+                if details.engine_name == "xray-core"
+                    && details.version == "v26.3.27"
+                    && details.target_os == "linux"
+                    && details.target_arch == "x86_64"
+        ));
+
+        let explicit = verify_selected_engine_artifact_for_target(
+            &test_bin,
+            EngineConfigStrategy::Xray,
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+            "linux",
+            "x86_64",
+        );
+        assert!(matches!(
+            explicit,
+            Err(EngineError::ChecksumMismatch { .. })
+        ));
+
+        let _ = std::fs::remove_file(&test_bin);
+    }
+
+    #[test]
+    fn test_missing_binary_takes_priority_over_missing_platform_pin() {
+        let missing_path =
+            std::env::temp_dir().join(format!("missing_engine_before_pin_{}", std::process::id()));
+        let result = verify_selected_engine_artifact_for_target(
+            &missing_path,
+            EngineConfigStrategy::SingBox,
+            None,
+            "linux",
+            "x86_64",
         );
 
-        let pinned = resolve_expected_binary_checksum(EngineConfigStrategy::Xray, None);
-        match (std::env::consts::OS, std::env::consts::ARCH) {
-            ("macos", "aarch64") => assert_eq!(
-                pinned.as_deref(),
-                Some("5d9dd24c0aba4b6cfcc6a33a5d67f854816ee17f392bf932ec8176da46f7e404")
-            ),
-            ("linux", "aarch64") => assert_eq!(
-                pinned.as_deref(),
-                Some("c2d20a7045250497083afea0d79db0672f6c89a25aaaf37c92de034d6b764b04")
-            ),
-            ("linux", "x86_64") => assert_eq!(
-                pinned.as_deref(),
-                Some("8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed")
-            ),
-            _ => assert!(pinned.is_none()),
-        }
+        assert!(matches!(result, Err(EngineError::BinaryNotFound(path)) if path == missing_path));
     }
 
     #[test]

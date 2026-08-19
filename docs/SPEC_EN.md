@@ -129,6 +129,12 @@ of being ignored.
 ### FR-003 — Engine lifecycle
 
 - Pin and verify the engine version and checksum.
+- Each `EngineConfigStrategy` automatically supports only one version from the pinned catalog; the
+  CLI/API does not accept a user-selectable version and does not treat `engine version` output as a
+  trusted security oracle. On a pinned binary checksum mismatch, diagnostics name the engine,
+  pinned version, and target OS/arch, and distinguish “different/unsupported version or modified
+  artifact” from a missing platform pin. Startup remains fail-closed; `--expected-sha256` is an
+  explicit trusted override and does not prove the binary version.
 - The `start` CLI command accepts `--engine-config xray|sing-box` to select the generated
   configuration format and pre-flight command. It defaults to `xray`; `--engine-bin` supplies
   the executable path for the selected engine and does not itself change the configuration format.
