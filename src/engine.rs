@@ -4,11 +4,11 @@
 //! - Верификацию бинарных артефактов движка (проверка наличия, прав на исполнение, сверка SHA-256 чексуммы).
 //! - Безопасную запись runtime-конфигураций с ограниченными правами доступа (0600 на Unix, чтение/запись только владельцем).
 //! - Гарантированное удаление runtime-конфигураций, содержащих секреты, при остановке или сбросе.
-//! - Оркестрацию жизненного цикла `ProxyService`: связывание `AppConfig`, генератора Xray JSON и `ProcessSupervisor`.
+//! - Оркестрацию жизненного цикла `ProxyService`: связывание `AppConfig`, engine config strategy и `ProcessSupervisor`.
 
 use crate::config::{AppConfig, UserSettings};
+use crate::config_generator::EngineConfigStrategy;
 use crate::core::{ProcessSupervisor, ReadinessProbe, SupervisorOptions, SupervisorState};
-use crate::xray_generator::XrayConfigGenerator;
 use sha2::{Digest, Sha256};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -80,7 +80,7 @@ pub struct PinnedEngineRelease {
     pub binary_sha256: Option<&'static str>,
 }
 
-/// Возвращает зафиксированные релизы сетевых движков (Xray-core v26.3.27)
+/// Возвращает зафиксированные релизы сетевых движков.
 pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
     &[
         PinnedEngineRelease {
@@ -112,6 +112,36 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
             archive_name: "Xray-linux-64.zip",
             archive_sha256: "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae",
             binary_sha256: None,
+        },
+        PinnedEngineRelease {
+            engine_name: "sing-box",
+            version: "v1.13.18",
+            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+            target_os: "macos",
+            target_arch: "arm64",
+            archive_name: "sing-box-1.13.18-darwin-arm64.tar.gz",
+            archive_sha256: "9fbc05946b584423457a2778035e0cee2d9b239a4af5ae1932d9b79991149107",
+            binary_sha256: Some("020ecf20d3faa9ec3e917762085f0581aafbd3dd87a69573ae7345fc66fabc7f"),
+        },
+        PinnedEngineRelease {
+            engine_name: "sing-box",
+            version: "v1.13.18",
+            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+            target_os: "linux",
+            target_arch: "arm64",
+            archive_name: "sing-box-1.13.18-linux-arm64.tar.gz",
+            archive_sha256: "a894f6152cade4a2c9d062762d54dea0c1aee673ab4759e0829e19cace932719",
+            binary_sha256: Some("1a202edaba57b6202dd0e2ece1f77a584511f40769a3a177edffde3c2b5537cb"),
+        },
+        PinnedEngineRelease {
+            engine_name: "sing-box",
+            version: "v1.13.18",
+            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+            target_os: "windows",
+            target_arch: "x86_64",
+            archive_name: "sing-box-1.13.18-windows-amd64.zip",
+            archive_sha256: "65045155ffdc506334f01a4353889657ddfc024f72b394081a9abaef34dfbef3",
+            binary_sha256: Some("140c46d667d16b1491f6b830812e846c25aa2b18e68bd695023c69c393ad7081"),
         },
     ]
 }
@@ -219,16 +249,33 @@ pub fn verify_engine_artifact(
     })
 }
 
-/// Выполняет pre-flight проверку сгенерированной конфигурации движком (`xray run -test -c <config_path>`) с таймаутом
+/// Выполняет pre-flight проверку сгенерированной конфигурации Xray (`xray run -test -c <config_path>`) с таймаутом.
 pub async fn preflight_check_config(
     engine_binary: &Path,
     config_path: &Path,
     timeout: Duration,
 ) -> Result<(), EngineError> {
+    preflight_check_config_with_strategy(
+        engine_binary,
+        config_path,
+        timeout,
+        EngineConfigStrategy::Xray,
+    )
+    .await
+}
+
+/// Выполняет pre-flight проверку сгенерированной конфигурации выбранным движком.
+pub async fn preflight_check_config_with_strategy(
+    engine_binary: &Path,
+    config_path: &Path,
+    timeout: Duration,
+    strategy: EngineConfigStrategy,
+) -> Result<(), EngineError> {
+    let config_path_str = config_path.to_string_lossy().to_string();
+    let args = strategy.preflight_args(&config_path_str);
     let mut cmd = tokio::process::Command::new(engine_binary);
     cmd.kill_on_drop(true)
-        .args(["run", "-test", "-c"])
-        .arg(config_path)
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
@@ -322,6 +369,8 @@ pub fn cleanup_runtime_config(path: &Path) -> Result<(), EngineError> {
 /// Опции запуска ProxyService
 #[derive(Debug, Clone)]
 pub struct ProxyServiceOptions {
+    /// Стратегия генерации конфигурации внешнего движка.
+    pub config_strategy: EngineConfigStrategy,
     /// Ожидаемая контрольная сумма SHA-256 (None для пропуска)
     pub expected_sha256: Option<String>,
     /// Выполнять ли pre-flight валидацию конфигурации через CLI движка (`xray run -test -c <path>`)
@@ -341,6 +390,7 @@ pub struct ProxyServiceOptions {
 impl Default for ProxyServiceOptions {
     fn default() -> Self {
         Self {
+            config_strategy: EngineConfigStrategy::Xray,
             expected_sha256: None,
             enable_preflight_check: true,
             preflight_timeout: Duration::from_secs(5),
@@ -428,18 +478,23 @@ impl ProxyService {
         // 3. Верификация бинарного артефакта
         let _artifact = verify_engine_artifact(engine_binary, options.expected_sha256.as_deref())?;
 
-        // 4. Генерация Xray JSON
-        let xray_value = XrayConfigGenerator::generate(active_profile, settings);
-        let xray_json = serde_json::to_string_pretty(&xray_value)?;
+        // 4. Генерация JSON для выбранного движка
+        let engine_value = options.config_strategy.generate(active_profile, settings);
+        let engine_json = serde_json::to_string_pretty(&engine_value)?;
 
         // 5. Безопасная запись временного конфига (0600)
-        let config_path = write_secure_runtime_config(None, &xray_json)?;
+        let config_path = write_secure_runtime_config(None, &engine_json)?;
         self.runtime_config_path = Some(config_path.clone());
 
-        // 6. Pre-flight проверка CLI движка (`xray run -test -c`)
+        // 6. Pre-flight проверка CLI движка
         if options.enable_preflight_check {
-            if let Err(e) =
-                preflight_check_config(engine_binary, &config_path, options.preflight_timeout).await
+            if let Err(e) = preflight_check_config_with_strategy(
+                engine_binary,
+                &config_path,
+                options.preflight_timeout,
+                options.config_strategy,
+            )
+            .await
             {
                 let _ = cleanup_runtime_config(&config_path);
                 self.runtime_config_path = None;
@@ -461,11 +516,13 @@ impl ProxyService {
 
         // 8. Запуск процесса движка
         let config_path_str = config_path.to_string_lossy().to_string();
-        let args = ["run", "-c", &config_path_str];
+        let args = options.config_strategy.run_args(&config_path_str);
 
         info!(
-            "Запуск движка {:?} с runtime-конфигурацией {:?}",
-            engine_binary, config_path
+            "Запуск движка {} {:?} с runtime-конфигурацией {:?}",
+            options.config_strategy.engine_name(),
+            engine_binary,
+            config_path
         );
         if let Err(e) = self
             .supervisor

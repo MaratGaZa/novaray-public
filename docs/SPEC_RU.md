@@ -62,7 +62,7 @@ Direct Developer ID distribution сохраняется как целевая м
 - [x] Rust crate, library и CLI target.
 - [x] Модели конфигурации с типизированными перечислениями, валидацией, Serde JSON round trips и JSON Schemas в `schema/`.
 - [x] Парсер VLESS URI с базовыми Reality-параметрами, TCP/RAW, WebSocket и gRPC и fail-closed отказом для остальных транспортов.
-- [~] Генератор Xray JSON: есть `inbounds`/`outbounds`, стандартный TLS, Reality и TCP/WebSocket/gRPC stream settings с controlled loopback traffic evidence, но нет routing/DNS/policy.
+- [~] Генерация engine JSON: Xray-генератор и сменяемая стратегия sing-box генерируют локальные SOCKS/HTTP inbounds и VLESS outbounds со стандартным TLS, Reality и TCP/WebSocket/gRPC metadata; Xray имеет controlled loopback traffic evidence, sing-box Reality/TCP проходит `sing-box check -c` на pinned `v1.13.18`, но routing/DNS/policy ещё не реализованы.
 - [~] Matcher доменов, IP и приложений с типизированным `SplitTunnelMode`; применение к трафику на уровне data-plane требует Network Extension.
 - [~] Process supervisor: spawn/kill без лог-стримов, health-check, restart и graceful shutdown.
 - [~] Route manager: публичный API является no-op заглушкой.

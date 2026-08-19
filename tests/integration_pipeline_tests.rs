@@ -1,7 +1,8 @@
 use novaray_core::config::{
     AppConfig, ClientSettings, ProtocolType, SecurityType, SplitTunnelMode, SplitTunnelingSettings,
-    UserSettings,
+    TransportType, UserSettings,
 };
+use novaray_core::config_generator::EngineConfigStrategy;
 use novaray_core::core::SupervisorState;
 
 #[cfg(unix)]
@@ -14,6 +15,7 @@ use novaray_core::engine::{
 #[cfg(unix)]
 use novaray_core::engine::{preflight_check_config, ProxyServiceOptions};
 use novaray_core::parser::VlessParser;
+use novaray_core::sing_box_generator::SingBoxConfigGenerator;
 use novaray_core::xray_generator::XrayConfigGenerator;
 use std::path::Path;
 use std::time::Duration;
@@ -137,6 +139,46 @@ fn test_engine_artifact_verification_checksum_and_permissions() {
     ));
 
     let _ = std::fs::remove_file(&mock_bin);
+}
+
+#[test]
+fn test_engine_config_strategy_preserves_xray_and_adds_sing_box() {
+    let profile = VlessParser::parse_uri("vless://00000000-0000-4000-8000-000000000001@edge.example:443?type=grpc&security=tls&sni=origin.example&fp=chrome&serviceName=svc#StrategyProfile")
+        .expect("gRPC TLS profile должен быть валиден");
+    let settings = UserSettings {
+        schema: None,
+        version: 1,
+        client: ClientSettings {
+            auto_connect_on_launch: false,
+            kill_switch: false,
+            system_notifications: true,
+            dns_servers: vec![],
+            local_socks_port: 10808,
+            local_http_port: 10809,
+        },
+        split_tunneling: SplitTunnelingSettings {
+            enabled: false,
+            mode: SplitTunnelMode::ProxyAll,
+            direct_domains: vec![],
+            direct_ips: vec![],
+            direct_apps: vec![],
+        },
+    };
+
+    assert_eq!(profile.transport, TransportType::Grpc);
+
+    let xray = EngineConfigStrategy::Xray.generate(&profile, &settings);
+    let sing_box = EngineConfigStrategy::SingBox.generate(&profile, &settings);
+
+    assert_eq!(xray, XrayConfigGenerator::generate(&profile, &settings));
+    assert_eq!(
+        sing_box,
+        SingBoxConfigGenerator::generate(&profile, &settings)
+    );
+    assert_eq!(xray["outbounds"][0]["protocol"], "vless");
+    assert_eq!(sing_box["outbounds"][0]["type"], "vless");
+    assert_eq!(xray["outbounds"][0]["streamSettings"]["network"], "grpc");
+    assert_eq!(sing_box["outbounds"][0]["transport"]["type"], "grpc");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -685,6 +727,33 @@ fn test_pinned_engine_releases_and_checksum_lookup() {
             checksum,
             Some("2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf")
         );
+    }
+
+    let sing_box_macos_arm64 = releases
+        .iter()
+        .find(|r| r.engine_name == "sing-box" && r.target_os == "macos" && r.target_arch == "arm64")
+        .expect("sing-box v1.13.18 для macos arm64 должен быть зафиксирован");
+    assert_eq!(sing_box_macos_arm64.version, "v1.13.18");
+    assert_eq!(
+        sing_box_macos_arm64.revision,
+        "45ca32dcb966f07f97fc888fe8586e359dbe8405"
+    );
+    assert_eq!(
+        sing_box_macos_arm64.archive_name,
+        "sing-box-1.13.18-darwin-arm64.tar.gz"
+    );
+    assert_eq!(
+        sing_box_macos_arm64.archive_sha256,
+        "9fbc05946b584423457a2778035e0cee2d9b239a4af5ae1932d9b79991149107"
+    );
+    assert_eq!(
+        sing_box_macos_arm64.binary_sha256,
+        Some("020ecf20d3faa9ec3e917762085f0581aafbd3dd87a69573ae7345fc66fabc7f")
+    );
+
+    let sing_box_checksum = find_pinned_checksum("sing-box", "v1.13.18");
+    if std::env::consts::OS == "macos" && std::env::consts::ARCH == "aarch64" {
+        assert_eq!(sing_box_checksum, Some(sing_box_macos_arm64.archive_sha256));
     }
 }
 
