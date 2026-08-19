@@ -77,7 +77,7 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 - [x] Rust library and CLI targets.
 - [x] Configuration models with typed enums, validation, Serde JSON round trips, and JSON Schemas under `schema/`.
 - [x] VLESS URI parsing with basic Reality parameters, TCP/RAW, WebSocket, and gRPC plus fail-closed rejection of other transports.
-- [~] Xray JSON generation with standard TLS, Reality, and TCP/WebSocket/gRPC stream settings plus controlled loopback traffic evidence, but without routing/DNS policy.
+- [~] Engine JSON generation: the Xray generator and the swappable sing-box strategy generate local SOCKS/HTTP inbounds and VLESS outbounds with standard TLS, Reality, and TCP/WebSocket/gRPC metadata; Xray has controlled loopback traffic evidence, sing-box Reality/TCP passes `sing-box check -c` on pinned `v1.13.18`, but routing/DNS policy is not implemented yet.
 - [~] Domain, IP, and app matcher with typed `SplitTunnelMode`; traffic data-plane enforcement requires network extension.
 - [~] Process spawn/kill without readiness, log draining, restart, or graceful shutdown.
 - [~] No-op RouteManager API.

@@ -310,7 +310,7 @@ fn print_help() {
         "    -e, --engine-bin <PATH>       Путь к бинарнику сетевого движка (по умолчанию: xray)"
     );
     println!(
-        "        --expected-sha256 <HASH>  Ожидаемый SHA-256 хеш бинарника движка для верификации"
+        "        --expected-sha256 <HASH>  SHA-256 override; по умолчанию используется pinned checksum"
     );
     println!("        --no-preflight            Отключить pre-flight проверку конфигурации");
     println!("        --preflight-timeout <S>   Таймаут pre-flight проверки в секундах (по умолчанию: 5)");
@@ -690,6 +690,7 @@ fn map_engine_error_to_exit_code(err: &EngineError) -> ExitCode {
         EngineError::BinaryNotFound(_) => ExitCode::EngineError,
         EngineError::PermissionDenied(_) => ExitCode::EngineError,
         EngineError::ChecksumMismatch { .. } => ExitCode::EngineError,
+        EngineError::MissingExpectedChecksum => ExitCode::EngineError,
         EngineError::PortInUse(_) => ExitCode::EngineError,
         EngineError::ConfigPreflightFailed(_) => ExitCode::EngineError,
         EngineError::AlreadyRunning(_) => ExitCode::EngineError,

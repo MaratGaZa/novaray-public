@@ -80,7 +80,9 @@ Android VpnService → Android UI → release
   реальное L4 lifecycle evidence отсутствует.
 - [x] Проверить по исходникам, поддерживают ли движки маршрутизацию по приложениям: Xray-core `v26.3.27` — нет, sing-box `v1.13.18` — `process_name`/`process_path` (macOS/Windows) и `package_name` (Android).
 - [~] Зафиксировать sing-box как production-движок в [ADR-004](../docs/ADR-004-ENGINE-INTEGRATION.md) со статусом `Proposed`.
-- [ ] Зафиксировать версию, source revision и checksum sing-box в evidence-манифесте.
+- [x] Зафиксировать версию, source revision и checksum sing-box в runtime catalog/evidence: `v1.13.18`,
+  revision `45ca32dcb966f07f97fc888fe8586e359dbe8405`, archive SHA-256 и binary SHA-256 для
+  `darwin-arm64`, `linux-arm64`, `windows-amd64`.
 - [ ] Пройти гейты ADR-004, включая per-app routing на реальном трафике и legal review.
 
 Критерий завершения фазы: оформлен базовый архитектурный пакет ADR по UI, distribution, network topology и engine; дальнейшие задачи больше не зависят от скрытых предположений.
@@ -169,8 +171,8 @@ Android VpnService → Android UI → release
 - [x] Генерируются основные Reality settings (с полем `password`, дефолтом `fingerprint` и поддержкой пустого `shortId: ""`).
 - [x] Обязательная валидация непустого Reality `public_key` и нормализация в канонический Raw URL-safe Base64.
 - [x] Исправить обычный `security=tls`, который генерирует корректный `tlsSettings` с `allowInsecure: false`.
-- [~] Проверять JSON реальной командой движка: для Xray-core подтверждено (`xray run -test -c` → `Configuration OK`, запуск и bind 10808/10809 на pinned `v26.3.27`); для sing-box не выполнено.
-- [ ] Реализовать генератор конфигурации sing-box как сменяемую стратегию рядом с Xray-генератором.
+- [x] Проверять JSON реальной командой движка: для Xray-core подтверждено (`xray run -test -c` → `Configuration OK`, запуск и bind 10808/10809 на pinned `v26.3.27`); для sing-box Reality/TCP generated config подтверждён `sing-box check -c` на pinned `v1.13.18`.
+- [x] Реализовать генератор конфигурации sing-box как сменяемую стратегию рядом с Xray-генератором.
 - [x] Fail-closed импорт VLESS URI: отсутствие `type`, `type=tcp` и alias `type=raw` разрешены; non-TCP transport, `headerType` кроме `none` и некорректный регистр критичных query keys отклоняются до создания профиля — issue development task #33, шаг 1.
 - [x] Добавить engine-neutral поля `transport`, `host`, `path` и поддержку WebSocket/gRPC; parser,
   schema, semantic validation и Xray `wsSettings`/`grpcSettings` реализованы, а оба конфига прошли
@@ -188,7 +190,7 @@ Android VpnService → Android UI → release
 ### 2.2. Engine artifact
 
 - [ ] Автоматизировать получение/сборку arm64 engine (sing-box) для macOS, Windows и Android.
-- [~] Зафиксировать version, source revision и checksum: для Xray-core `v26.3.27` зафиксированы archive sha256 с разделением archive/binary; для sing-box не зафиксировано.
+- [x] Зафиксировать version, source revision и checksum: для Xray-core `v26.3.27` зафиксированы archive sha256 с разделением archive/binary; для sing-box `v1.13.18` зафиксированы revision, archive SHA-256 и binary SHA-256 для `darwin-arm64`, `linux-arm64`, `windows-amd64`.
 - [~] Проверять checksum до запуска.
 - [x] Определить безопасный путь временной/runtime конфигурации и permissions.
 - [x] Удалять runtime secrets после остановки.

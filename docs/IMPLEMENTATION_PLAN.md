@@ -383,8 +383,13 @@ machine; package identity, signatures и rollback traceable до source revision
     0 — Success, 1 — General/IO, 2 — Usage, 3 — Validation, 4 — Engine), обработку сигналов `SIGINT`/`SIGTERM` с отменой
     до готовности и гарантированной очисткой runtime-конфигурации (`0600`), а также интеграционные тесты (`tests/cli_tests.rs`).
     Команда удалённого `disconnect`/`stop` для фонового демона отложена до появления persistent control boundary в Milestone 3 (ADR-003).
-14. Реализовать генератор конфигурации sing-box как сменяемую стратегию и зафиксировать его артефакт
-    (version, revision, checksum архива и бинарника).
+14. [x] Реализовать генератор конфигурации sing-box как сменяемую стратегию и зафиксировать его артефакт
+    (version, revision, checksum архива и бинарника) — issue development task #1:
+    добавлен `EngineConfigStrategy` с сохранением Xray path по умолчанию, `SingBoxConfigGenerator`,
+    strategy-aware pre-flight (`sing-box check -c`) и pinned metadata для sing-box `v1.13.18`
+    (`darwin-arm64`, `linux-arm64`, `windows-amd64`: revision, archive SHA-256 и binary SHA-256).
+    Generated Reality/TCP config прошёл real `sing-box check -c`; TUN/DNS/routing/system tunnel не входят
+    в эту задачу.
 15. [x] Добавить fail-closed на неподдерживаемый транспорт VLESS URI, затем поддержать WebSocket/gRPC — issue
     development task #33: шаг 1 реализует типизированный `TransportType::Tcp`,
     принимает отсутствие `type`, `type=tcp`, совместимый alias `type=raw`, отсутствие `headerType` и
