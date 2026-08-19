@@ -326,6 +326,9 @@ fn verify_selected_engine_artifact_for_target(
     target_os: &str,
     target_arch: &str,
 ) -> Result<EngineArtifact, EngineError> {
+    // Проверяем сам бинарник до поиска platform pin: неверный путь не должен маскироваться
+    // отсутствием checksum для выбранных OS/arch.
+    validate_engine_binary_path(path)?;
     let expected = resolve_expected_binary_checksum_for_target(
         strategy,
         explicit_sha256,
@@ -361,25 +364,29 @@ fn verify_selected_engine_artifact_for_target(
     }
 }
 
+fn validate_engine_binary_path(path: &Path) -> Result<(), EngineError> {
+    if !path.exists() || !path.is_file() {
+        return Err(EngineError::BinaryNotFound(path.to_path_buf()));
+    }
+
+    #[cfg(unix)]
+    {
+        let permissions = std::fs::metadata(path)?.permissions();
+        if permissions.mode() & 0o111 == 0 {
+            return Err(EngineError::PermissionDenied(path.to_path_buf()));
+        }
+    }
+
+    Ok(())
+}
+
 /// Проверяет бинарный файл движка на существование, права на исполнение и соответствие SHA-256.
 pub fn verify_engine_artifact(
     path: &Path,
     expected_sha256: Option<&str>,
 ) -> Result<EngineArtifact, EngineError> {
-    if !path.exists() || !path.is_file() {
-        return Err(EngineError::BinaryNotFound(path.to_path_buf()));
-    }
-
+    validate_engine_binary_path(path)?;
     let metadata = std::fs::metadata(path)?;
-
-    #[cfg(unix)]
-    {
-        let permissions = metadata.permissions();
-        let mode = permissions.mode();
-        if mode & 0o111 == 0 {
-            return Err(EngineError::PermissionDenied(path.to_path_buf()));
-        }
-    }
 
     let expected_clean = expected_sha256
         .map(str::trim)
@@ -887,6 +894,21 @@ mod tests {
         ));
 
         let _ = std::fs::remove_file(&test_bin);
+    }
+
+    #[test]
+    fn test_missing_binary_takes_priority_over_missing_platform_pin() {
+        let missing_path =
+            std::env::temp_dir().join(format!("missing_engine_before_pin_{}", std::process::id()));
+        let result = verify_selected_engine_artifact_for_target(
+            &missing_path,
+            EngineConfigStrategy::SingBox,
+            None,
+            "linux",
+            "x86_64",
+        );
+
+        assert!(matches!(result, Err(EngineError::BinaryNotFound(path)) if path == missing_path));
     }
 
     #[test]
