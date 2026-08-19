@@ -7,6 +7,7 @@
 //! - Обработку сигналов (Ctrl+C / SIGTERM) с гарантированной очисткой временных файлов при остановке.
 
 use crate::config::{AppConfig, UserSettings};
+use crate::config_generator::EngineConfigStrategy;
 use crate::core::SupervisorState;
 use crate::engine::{get_pinned_engine_releases, EngineError, ProxyService, ProxyServiceOptions};
 use std::path::{Path, PathBuf};
@@ -57,6 +58,7 @@ pub struct StartOptions {
     pub config_path: PathBuf,
     pub settings_path: PathBuf,
     pub engine_binary: PathBuf,
+    pub config_strategy: EngineConfigStrategy,
     pub expected_sha256: Option<String>,
     pub enable_preflight: bool,
     pub preflight_timeout_secs: u64,
@@ -69,6 +71,7 @@ impl Default for StartOptions {
             config_path: PathBuf::from("config.example.json"),
             settings_path: PathBuf::from("settings.example.json"),
             engine_binary: default_engine_binary(),
+            config_strategy: EngineConfigStrategy::Xray,
             expected_sha256: None,
             enable_preflight: true,
             preflight_timeout_secs: 5,
@@ -163,6 +166,17 @@ where
                             ));
                         }
                         opts.engine_binary = PathBuf::from(&args[i]);
+                    }
+                    "--engine-config" => {
+                        i += 1;
+                        if i >= args.len() {
+                            return Err((
+                                "Флаг --engine-config требует значения xray или sing-box"
+                                    .to_string(),
+                                ExitCode::UsageError,
+                            ));
+                        }
+                        opts.config_strategy = parse_engine_config_strategy(&args[i])?;
                     }
                     "--expected-sha256" => {
                         i += 1;
@@ -265,6 +279,20 @@ where
     }
 }
 
+fn parse_engine_config_strategy(value: &str) -> Result<EngineConfigStrategy, (String, ExitCode)> {
+    match value {
+        "xray" => Ok(EngineConfigStrategy::Xray),
+        "sing-box" => Ok(EngineConfigStrategy::SingBox),
+        _ => Err((
+            format!(
+                "Некорректное значение --engine-config: '{}'. Ожидается xray или sing-box",
+                value
+            ),
+            ExitCode::UsageError,
+        )),
+    }
+}
+
 /// Выполняет CLI команду и возвращает ExitCode
 pub async fn execute_command(cmd: CliCommand) -> ExitCode {
     match cmd {
@@ -307,7 +335,13 @@ fn print_help() {
     println!("    -c, --config <PATH>           Путь к файлу конфигурации (по умолчанию: config.example.json)");
     println!("    -s, --settings <PATH>         Путь к файлу настроек (по умолчанию: settings.example.json)");
     println!(
-        "    -e, --engine-bin <PATH>       Путь к бинарнику сетевого движка (по умолчанию: xray)"
+        "    -e, --engine-bin <PATH>       Путь к бинарнику выбранного движка (по умолчанию: xray)"
+    );
+    println!(
+        "        --engine-config <NAME>    Формат конфигурации: xray или sing-box (по умолчанию: xray)"
+    );
+    println!(
+        "                                   --engine-bin задаёт путь, но не меняет формат конфигурации"
     );
     println!(
         "        --expected-sha256 <HASH>  SHA-256 override; по умолчанию используется pinned checksum"
@@ -333,7 +367,7 @@ fn print_status() {
     println!("  Inbounds:           SOCKS5 (RFC 1928), HTTP Forward Proxy");
     println!("  Engine Routing:     Global Proxy (M2 local proxy; per-app engine routing planned for sing-box Task 14)");
     println!("  Core Matcher:       Domain, IP CIDR, App Process Name matching rules");
-    println!("  Supported Engines:  Xray-core (pinned v26.3.27), sing-box (v1.13.18 architecture target)");
+    println!("  Supported Engines:  Xray-core (default, pinned v26.3.27), sing-box (select with --engine-config sing-box)");
     println!("  Topology:           Direct Local-Proxy (M2) / Privileged Helper utun (M3 target)");
 }
 
@@ -477,12 +511,7 @@ async fn execute_start(opts: &StartOptions) -> ExitCode {
         }
     };
 
-    let service_opts = ProxyServiceOptions {
-        expected_sha256: opts.expected_sha256.clone(),
-        enable_preflight_check: opts.enable_preflight,
-        preflight_timeout: Duration::from_secs(opts.preflight_timeout_secs),
-        ..Default::default()
-    };
+    let service_opts = proxy_service_options(opts);
 
     let mut service = ProxyService::new();
 
@@ -604,6 +633,16 @@ async fn execute_start(opts: &StartOptions) -> ExitCode {
             }
             ExitCode::Success
         }
+    }
+}
+
+fn proxy_service_options(opts: &StartOptions) -> ProxyServiceOptions {
+    ProxyServiceOptions {
+        config_strategy: opts.config_strategy,
+        expected_sha256: opts.expected_sha256.clone(),
+        enable_preflight_check: opts.enable_preflight,
+        preflight_timeout: Duration::from_secs(opts.preflight_timeout_secs),
+        ..Default::default()
     }
 }
 
@@ -747,6 +786,8 @@ mod tests {
             "my_set.json",
             "--engine-bin",
             "/usr/local/bin/xray",
+            "--engine-config",
+            "sing-box",
             "--expected-sha256",
             "abc12345",
             "--no-preflight",
@@ -761,6 +802,7 @@ mod tests {
                 assert_eq!(opts.config_path, PathBuf::from("my_conf.json"));
                 assert_eq!(opts.settings_path, PathBuf::from("my_set.json"));
                 assert_eq!(opts.engine_binary, PathBuf::from("/usr/local/bin/xray"));
+                assert_eq!(opts.config_strategy, EngineConfigStrategy::SingBox);
                 assert_eq!(opts.expected_sha256.as_deref(), Some("abc12345"));
                 assert!(!opts.enable_preflight);
                 assert_eq!(opts.preflight_timeout_secs, 10);
@@ -768,6 +810,26 @@ mod tests {
             }
             _ => panic!("Ожидалась команда Start"),
         }
+    }
+
+    #[test]
+    fn test_cli_start_defaults_to_xray_and_maps_strategy_to_service_options() {
+        let CliCommand::Start(opts) = parse_args(["start"]).unwrap() else {
+            panic!("Ожидалась команда Start");
+        };
+
+        assert_eq!(opts.config_strategy, EngineConfigStrategy::Xray);
+        assert_eq!(
+            proxy_service_options(&opts).config_strategy,
+            EngineConfigStrategy::Xray
+        );
+    }
+
+    #[test]
+    fn test_cli_parse_invalid_engine_config_returns_usage_error() {
+        let error = parse_args(["start", "--engine-config", "unknown-engine"]).unwrap_err();
+        assert_eq!(error.1, ExitCode::UsageError);
+        assert!(error.0.contains("--engine-config"));
     }
 
     #[test]

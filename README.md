@@ -40,7 +40,25 @@ cargo test --all-targets
 cargo run
 ```
 
-Текущий `cargo run` только выводит сообщения и завершается. Команда не подключает VPN и не изменяет маршруты или DNS.
+`cargo run` без подкоманды выводит справку и завершается. Даже `start` пока является local-proxy
+vertical slice: он не подключает системный VPN и не изменяет маршруты или DNS.
+
+## Выбор формата конфигурации движка
+
+`novaray-core start` по умолчанию генерирует конфигурацию Xray. Для sing-box нужно выбрать
+формат явно и передать путь к соответствующему бинарнику:
+
+```bash
+cargo run -- start \
+  --config config.example.json \
+  --settings settings.example.json \
+  --engine-config sing-box \
+  --engine-bin /path/to/sing-box
+```
+
+`--engine-config` выбирает формат JSON и pre-flight команду, а `--engine-bin` только задаёт путь
+к исполняемому файлу. Допустимы `xray` и `sing-box`; неизвестное значение завершается с usage error.
+Этот local-proxy CLI не создаёт системный VPN-туннель и не изменяет маршруты или DNS.
 
 Для строгой статической проверки:
 
