@@ -729,6 +729,8 @@ fn map_engine_error_to_exit_code(err: &EngineError) -> ExitCode {
         EngineError::BinaryNotFound(_) => ExitCode::EngineError,
         EngineError::PermissionDenied(_) => ExitCode::EngineError,
         EngineError::ChecksumMismatch { .. } => ExitCode::EngineError,
+        EngineError::PinnedBinaryChecksumMismatch(_) => ExitCode::EngineError,
+        EngineError::MissingPinnedBinaryChecksum(_) => ExitCode::EngineError,
         EngineError::MissingExpectedChecksum => ExitCode::EngineError,
         EngineError::PortInUse(_) => ExitCode::EngineError,
         EngineError::ConfigPreflightFailed(_) => ExitCode::EngineError,

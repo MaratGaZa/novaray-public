@@ -78,6 +78,8 @@ cargo test --all-targets
 - application commands ↔ state-machine events;
 - CLI engine-strategy selection: default Xray, explicit sing-box, invalid value with usage exit code,
   and mapping to `ProxyServiceOptions` before any engine process starts;
+- engine checksum diagnostics: explicit SHA-256 override, pinned-version mismatch with engine/version/
+  OS/arch context, and missing platform pin before a binary is accepted;
 - network-boundary request ↔ allowlisted operation.
 
 ### L4 — Component integration
