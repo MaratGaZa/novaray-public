@@ -40,6 +40,12 @@ fn get_novaray_core_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_novaray-core"))
 }
 
+fn sha256_file(path: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).unwrap();
+    hex::encode(Sha256::digest(bytes))
+}
+
 #[derive(Debug)]
 struct TempDirGuard(PathBuf);
 
@@ -490,6 +496,7 @@ fn test_cli_start_sigterm_graceful_shutdown_and_runtime_config_cleanup() {
     let (socks_port, http_port) = allocate_test_ports();
     let (config_path, settings_path) = create_valid_test_configs(&temp_dir, socks_port, http_port);
     let mock_bin = create_mock_engine(&temp_dir);
+    let mock_sha256 = sha256_file(&mock_bin);
 
     // Запускаем novaray-core start как дочерний процесс
     let child = Command::new(&bin)
@@ -501,6 +508,8 @@ fn test_cli_start_sigterm_graceful_shutdown_and_runtime_config_cleanup() {
             settings_path.to_str().unwrap(),
             "-e",
             mock_bin.to_str().unwrap(),
+            "--expected-sha256",
+            &mock_sha256,
             "--timeout-secs",
             "30",
         ])
@@ -670,6 +679,7 @@ fn test_cli_start_abrupt_engine_crash_exits_with_engine_error() {
     let (socks_port, http_port) = allocate_test_ports();
     let (config_path, settings_path) = create_valid_test_configs(&temp_dir, socks_port, http_port);
     let mock_bin = create_crashing_mock_engine(&temp_dir);
+    let mock_sha256 = sha256_file(&mock_bin);
 
     let start_time = std::time::Instant::now();
     let output = Command::new(&bin)
@@ -681,6 +691,8 @@ fn test_cli_start_abrupt_engine_crash_exits_with_engine_error() {
             settings_path.to_str().unwrap(),
             "-e",
             mock_bin.to_str().unwrap(),
+            "--expected-sha256",
+            &mock_sha256,
             "--timeout-secs",
             "10",
         ])
@@ -716,6 +728,7 @@ fn test_cli_start_with_timeout_stops_cleanly() {
     let (socks_port, http_port) = allocate_test_ports();
     let (config_path, settings_path) = create_valid_test_configs(&temp_dir, socks_port, http_port);
     let mock_bin = create_mock_engine(&temp_dir);
+    let mock_sha256 = sha256_file(&mock_bin);
 
     let start_time = std::time::Instant::now();
     let output = Command::new(&bin)
@@ -727,6 +740,8 @@ fn test_cli_start_with_timeout_stops_cleanly() {
             settings_path.to_str().unwrap(),
             "-e",
             mock_bin.to_str().unwrap(),
+            "--expected-sha256",
+            &mock_sha256,
             "--timeout-secs",
             "1",
         ])
@@ -805,6 +820,7 @@ fn test_cli_start_port_in_use_fails_fast_with_engine_error_exit_4() {
 
     let (config_path, settings_path) = create_valid_test_configs(&temp_dir, socks_port, http_port);
     let mock_bin = create_mock_engine(&temp_dir);
+    let mock_sha256 = sha256_file(&mock_bin);
 
     let output = Command::new(&bin)
         .args([
@@ -815,6 +831,8 @@ fn test_cli_start_port_in_use_fails_fast_with_engine_error_exit_4() {
             settings_path.to_str().unwrap(),
             "-e",
             mock_bin.to_str().unwrap(),
+            "--expected-sha256",
+            &mock_sha256,
             "--timeout-secs",
             "2",
         ])
@@ -851,6 +869,7 @@ fn test_cli_start_sigterm_early_before_ready_stops_cleanly_and_cleans_up() {
 
     let (config_path, settings_path) = create_valid_test_configs(&temp_dir, socks_port, http_port);
     let mock_bin = create_slow_mock_engine(&temp_dir);
+    let mock_sha256 = sha256_file(&mock_bin);
 
     // Запускаем CLI сервис с медленным стартом движка (2 сек до бинда)
     let child = Command::new(&bin)
@@ -862,6 +881,8 @@ fn test_cli_start_sigterm_early_before_ready_stops_cleanly_and_cleans_up() {
             settings_path.to_str().unwrap(),
             "-e",
             mock_bin.to_str().unwrap(),
+            "--expected-sha256",
+            &mock_sha256,
             "--timeout-secs",
             "30",
         ])

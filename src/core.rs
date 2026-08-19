@@ -14,6 +14,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -180,6 +181,12 @@ impl ProcessSupervisor {
 
     /// Запуск произвольной программы с аргументами под управлением супервизора
     pub async fn start_with_args(&mut self, program: &str, args: &[&str]) -> Result<()> {
+        let os_args = args.iter().map(OsString::from).collect::<Vec<_>>();
+        self.start_with_os_args(OsStr::new(program), &os_args).await
+    }
+
+    /// Запуск произвольной программы с OsStr/OsString аргументами под управлением супервизора
+    pub async fn start_with_os_args(&mut self, program: &OsStr, args: &[OsString]) -> Result<()> {
         let current_state = self.state();
         if matches!(
             current_state,
@@ -191,7 +198,7 @@ impl ProcessSupervisor {
             ));
         }
 
-        info!("Запуск дочернего процесса: {} {:?}", program, args);
+        info!("Запуск дочернего процесса: {:?} {:?}", program, args);
         self.set_state(SupervisorState::Starting);
         self.is_pattern_matched.store(false, Ordering::SeqCst);
 
@@ -209,7 +216,7 @@ impl ProcessSupervisor {
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                let err_msg = format!("Не удалось запустить '{}': {}", program, e);
+                let err_msg = format!("Не удалось запустить {:?}: {}", program, e);
                 error!("{}", err_msg);
                 self.set_state(SupervisorState::Failed(err_msg.clone()));
                 return Err(anyhow!(err_msg));

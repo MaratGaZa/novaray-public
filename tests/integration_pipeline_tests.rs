@@ -45,6 +45,12 @@ fn unique_temp_file(prefix: &str, suffix: &str) -> std::path::PathBuf {
     ))
 }
 
+fn sha256_file(path: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).unwrap();
+    hex::encode(Sha256::digest(bytes))
+}
+
 static TEST_BASE_OFFSET: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
 
 fn get_base_port_offset() -> u16 {
@@ -110,11 +116,14 @@ fn test_engine_artifact_verification_checksum_and_permissions() {
         std::fs::set_permissions(&mock_bin, perms).unwrap();
     }
 
-    // 1. Проверка без указания чексуммы (вычисление фактической)
-    let artifact =
-        verify_engine_artifact(&mock_bin, None).expect("Верификация бинарника должна пройти");
+    let expected_sha256 = sha256_file(&mock_bin);
+
+    // 1. Проверка с указанием чексуммы (вычисление фактической)
+    let artifact = verify_engine_artifact(&mock_bin, Some(&expected_sha256))
+        .expect("Верификация бинарника должна пройти");
     assert_eq!(artifact.path, mock_bin);
     assert!(!artifact.sha256.is_empty());
+    assert_eq!(artifact.sha256, expected_sha256);
 
     // 2. Проверка с верной чексуммой
     let verify_correct = verify_engine_artifact(&mock_bin, Some(&artifact.sha256));
@@ -137,6 +146,24 @@ fn test_engine_artifact_verification_checksum_and_permissions() {
         verify_nonexistent,
         Err(EngineError::BinaryNotFound(_))
     ));
+
+    let _ = std::fs::remove_file(&mock_bin);
+}
+
+#[test]
+fn test_engine_artifact_verification_without_checksum_fails_closed() {
+    let mock_bin = unique_temp_file("mock_engine_no_checksum", ".sh");
+    std::fs::write(&mock_bin, b"#!/bin/sh\nexit 0\n").unwrap();
+
+    #[cfg(unix)]
+    {
+        let mut perms = std::fs::metadata(&mock_bin).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&mock_bin, perms).unwrap();
+    }
+
+    let result = verify_engine_artifact(&mock_bin, None);
+    assert!(matches!(result, Err(EngineError::MissingExpectedChecksum)));
 
     let _ = std::fs::remove_file(&mock_bin);
 }
@@ -345,10 +372,11 @@ time.sleep(30)
     let mut perms = std::fs::metadata(&mock_bin).unwrap().permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&mock_bin, perms).unwrap();
+    let mock_sha256 = sha256_file(&mock_bin);
 
     let mut proxy_service = ProxyService::new();
     let start_res = proxy_service
-        .start(&mock_bin, None, &config, &settings)
+        .start(&mock_bin, Some(&mock_sha256), &config, &settings)
         .await;
     assert!(
         start_res.is_ok(),
@@ -591,9 +619,11 @@ time.sleep(30)
     let mut perms = std::fs::metadata(&mock_bin).unwrap().permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&mock_bin, perms).unwrap();
+    let mock_sha256 = sha256_file(&mock_bin);
 
     let mut proxy_service = ProxyService::new();
     let options = ProxyServiceOptions {
+        expected_sha256: Some(mock_sha256),
         enable_preflight_check: true,
         preflight_timeout: Duration::from_secs(5),
         readiness_timeout: Duration::from_secs(10),
@@ -799,6 +829,7 @@ if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-c":
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&mock_preflight_bin, perms).unwrap();
+    let mock_sha256 = sha256_file(&mock_preflight_bin);
 
     let uri = "vless://00000000-0000-4000-8000-000000000001@127.0.0.1:8443?type=tcp&security=reality&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=&fp=chrome&sni=example.com&sid=abcd#PreflightProfile";
     let profile = VlessParser::parse_uri(uri).unwrap();
@@ -835,6 +866,7 @@ if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-c":
     // 1. Успешный запуск с pre-flight валидацией
     let mut proxy_service = ProxyService::new();
     let options = ProxyServiceOptions {
+        expected_sha256: Some(mock_sha256),
         enable_preflight_check: true,
         preflight_timeout: Duration::from_secs(5),
         ..Default::default()
@@ -1101,6 +1133,7 @@ if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-c":
     let mut perms = std::fs::metadata(&mock_engine_bin).unwrap().permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&mock_engine_bin, perms).unwrap();
+    let mock_sha256 = sha256_file(&mock_engine_bin);
 
     let uri = "vless://00000000-0000-4000-8000-000000000001@127.0.0.1:8443?type=tcp&security=reality&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=&fp=chrome&sni=example.com&sid=abcd#E2EProxyProfile";
     let profile = VlessParser::parse_uri(uri).unwrap();
@@ -1134,6 +1167,7 @@ if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-c":
 
     let mut proxy_service = ProxyService::new();
     let options = ProxyServiceOptions {
+        expected_sha256: Some(mock_sha256),
         enable_preflight_check: true,
         ..Default::default()
     };

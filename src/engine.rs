@@ -41,6 +41,9 @@ pub enum EngineError {
     #[error("Несоответствие контрольной суммы SHA-256 бинарного файла: ожидалось {expected}, получено {actual}")]
     ChecksumMismatch { expected: String, actual: String },
 
+    #[error("Ожидаемая SHA-256 контрольная сумма бинарника движка не задана; запуск без проверки запрещён")]
+    MissingExpectedChecksum,
+
     #[error("Pre-flight проверка конфигурации движком не пройдена: {0}")]
     ConfigPreflightFailed(String),
 
@@ -198,7 +201,7 @@ pub fn find_pinned_checksum(engine_name: &str, version: &str) -> Option<&'static
     find_pinned_archive_checksum(engine_name, version)
 }
 
-/// Проверяет бинарный файл движка на существование, права на исполнение и соответствие SHA-256 (если задана)
+/// Проверяет бинарный файл движка на существование, права на исполнение и соответствие SHA-256.
 pub fn verify_engine_artifact(
     path: &Path,
     expected_sha256: Option<&str>,
@@ -218,6 +221,12 @@ pub fn verify_engine_artifact(
         }
     }
 
+    let expected_clean = expected_sha256
+        .map(str::trim)
+        .filter(|expected| !expected.is_empty())
+        .map(str::to_lowercase)
+        .ok_or(EngineError::MissingExpectedChecksum)?;
+
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 8192];
@@ -232,14 +241,11 @@ pub fn verify_engine_artifact(
 
     let actual_sha256 = hex::encode(hasher.finalize());
 
-    if let Some(expected) = expected_sha256 {
-        let expected_clean = expected.trim().to_lowercase();
-        if actual_sha256 != expected_clean {
-            return Err(EngineError::ChecksumMismatch {
-                expected: expected_clean,
-                actual: actual_sha256,
-            });
-        }
+    if actual_sha256 != expected_clean {
+        return Err(EngineError::ChecksumMismatch {
+            expected: expected_clean,
+            actual: actual_sha256,
+        });
     }
 
     Ok(EngineArtifact {
@@ -271,8 +277,7 @@ pub async fn preflight_check_config_with_strategy(
     timeout: Duration,
     strategy: EngineConfigStrategy,
 ) -> Result<(), EngineError> {
-    let config_path_str = config_path.to_string_lossy().to_string();
-    let args = strategy.preflight_args(&config_path_str);
+    let args = strategy.preflight_args(config_path);
     let mut cmd = tokio::process::Command::new(engine_binary);
     cmd.kill_on_drop(true)
         .args(args)
@@ -371,7 +376,7 @@ pub fn cleanup_runtime_config(path: &Path) -> Result<(), EngineError> {
 pub struct ProxyServiceOptions {
     /// Стратегия генерации конфигурации внешнего движка.
     pub config_strategy: EngineConfigStrategy,
-    /// Ожидаемая контрольная сумма SHA-256 (None для пропуска)
+    /// Ожидаемая контрольная сумма SHA-256. `None` запрещает запуск fail-closed.
     pub expected_sha256: Option<String>,
     /// Выполнять ли pre-flight валидацию конфигурации через CLI движка (`xray run -test -c <path>`)
     pub enable_preflight_check: bool,
@@ -515,8 +520,7 @@ impl ProxyService {
         self.supervisor = ProcessSupervisor::with_options(supervisor_options);
 
         // 8. Запуск процесса движка
-        let config_path_str = config_path.to_string_lossy().to_string();
-        let args = options.config_strategy.run_args(&config_path_str);
+        let args = options.config_strategy.run_args(&config_path);
 
         info!(
             "Запуск движка {} {:?} с runtime-конфигурацией {:?}",
@@ -526,7 +530,7 @@ impl ProxyService {
         );
         if let Err(e) = self
             .supervisor
-            .start_with_args(engine_binary.to_string_lossy().as_ref(), &args)
+            .start_with_os_args(engine_binary.as_os_str(), &args)
             .await
         {
             let _ = cleanup_runtime_config(&config_path);
@@ -621,7 +625,8 @@ mod tests {
     fn test_verify_valid_file_and_checksum() {
         let temp_dir = std::env::temp_dir();
         let test_bin = temp_dir.join(format!("test_bin_{}.sh", std::process::id()));
-        std::fs::write(&test_bin, b"#!/bin/sh\necho test\n").unwrap();
+        let test_payload = b"#!/bin/sh\necho test\n";
+        std::fs::write(&test_bin, test_payload).unwrap();
 
         #[cfg(unix)]
         {
@@ -630,8 +635,11 @@ mod tests {
             std::fs::set_permissions(&test_bin, perms).unwrap();
         }
 
-        let verified = verify_engine_artifact(&test_bin, None).expect("Должно пройти проверку");
+        let expected_sha256 = hex::encode(Sha256::digest(test_payload));
+        let verified = verify_engine_artifact(&test_bin, Some(&expected_sha256))
+            .expect("Должно пройти проверку");
         assert_eq!(verified.path, test_bin);
+        assert_eq!(verified.sha256, expected_sha256);
 
         // Проверка корректной контрольной суммы
         let res_correct = verify_engine_artifact(&test_bin, Some(&verified.sha256));
@@ -646,6 +654,28 @@ mod tests {
             res_wrong,
             Err(EngineError::ChecksumMismatch { .. })
         ));
+
+        let _ = std::fs::remove_file(&test_bin);
+    }
+
+    #[test]
+    fn test_verify_existing_binary_without_checksum_fails_closed() {
+        let temp_dir = std::env::temp_dir();
+        let test_bin = temp_dir.join(format!(
+            "test_bin_without_checksum_{}.sh",
+            std::process::id()
+        ));
+        std::fs::write(&test_bin, b"#!/bin/sh\necho test\n").unwrap();
+
+        #[cfg(unix)]
+        {
+            let mut perms = std::fs::metadata(&test_bin).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&test_bin, perms).unwrap();
+        }
+
+        let res = verify_engine_artifact(&test_bin, None);
+        assert!(matches!(res, Err(EngineError::MissingExpectedChecksum)));
 
         let _ = std::fs::remove_file(&test_bin);
     }

@@ -3,6 +3,8 @@ use crate::config::{ServerProfile, UserSettings};
 use crate::sing_box_generator::SingBoxConfigGenerator;
 use crate::xray_generator::XrayConfigGenerator;
 use serde_json::Value;
+use std::ffi::OsString;
+use std::path::Path;
 
 /// Supported external engine configuration formats.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -29,17 +31,29 @@ impl EngineConfigStrategy {
         }
     }
 
-    pub fn preflight_args(self, config_path: &str) -> Vec<&str> {
+    pub fn preflight_args(self, config_path: &Path) -> Vec<OsString> {
         match self {
-            Self::Xray => vec!["run", "-test", "-c", config_path],
-            Self::SingBox => vec!["check", "-c", config_path],
+            Self::Xray => vec![
+                OsString::from("run"),
+                OsString::from("-test"),
+                OsString::from("-c"),
+                config_path.as_os_str().to_os_string(),
+            ],
+            Self::SingBox => vec![
+                OsString::from("check"),
+                OsString::from("-c"),
+                config_path.as_os_str().to_os_string(),
+            ],
         }
     }
 
-    pub fn run_args(self, config_path: &str) -> Vec<&str> {
+    pub fn run_args(self, config_path: &Path) -> Vec<OsString> {
         match self {
-            Self::Xray => vec!["run", "-c", config_path],
-            Self::SingBox => vec!["run", "-c", config_path],
+            Self::Xray | Self::SingBox => vec![
+                OsString::from("run"),
+                OsString::from("-c"),
+                config_path.as_os_str().to_os_string(),
+            ],
         }
     }
 }

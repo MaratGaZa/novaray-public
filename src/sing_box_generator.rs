@@ -17,7 +17,6 @@ impl SingBoxConfigGenerator {
         proxy_outbound.insert("server".to_string(), json!(profile.server.trim()));
         proxy_outbound.insert("server_port".to_string(), json!(profile.port));
         proxy_outbound.insert("uuid".to_string(), json!(profile.uuid.trim()));
-        proxy_outbound.insert("network".to_string(), json!("tcp"));
 
         if let Some(ref flow) = profile.flow {
             proxy_outbound.insert("flow".to_string(), json!(flow.to_string()));
@@ -54,10 +53,6 @@ impl SingBoxConfigGenerator {
                 {
                     "type": "direct",
                     "tag": "direct"
-                },
-                {
-                    "type": "block",
-                    "tag": "block"
                 }
             ],
             "route": {
@@ -138,7 +133,8 @@ fn build_transport(profile: &ServerProfile) -> Option<Value> {
             let service_name = profile.path.as_deref().map(str::trim).unwrap_or("");
             Some(json!({
                 "type": "grpc",
-                "service_name": service_name
+                "service_name": service_name,
+                "authority": profile.effective_transport_host()
             }))
         }
     }
@@ -168,7 +164,10 @@ mod tests {
         assert_eq!(proxy["server"], "edge.example");
         assert_eq!(proxy["server_port"], 443);
         assert_eq!(proxy["uuid"], "00000000-0000-4000-8000-000000000001");
-        assert_eq!(proxy["network"], "tcp");
+        assert!(
+            proxy.get("network").is_none(),
+            "network is omitted so sing-box keeps its default TCP+UDP outbound capability"
+        );
         assert_eq!(proxy["flow"], "xtls-rprx-vision");
         assert_eq!(proxy["tls"]["enabled"], true);
         assert_eq!(proxy["tls"]["server_name"], "gateway.example");
@@ -197,14 +196,24 @@ mod tests {
     }
 
     #[test]
-    fn generates_grpc_transport_without_xray_authority_field() {
+    fn generates_grpc_transport_with_effective_authority() {
         let profile = tls_profile(TransportType::Grpc, Some("grpc.example"), Some(" svc "));
         let config_json = SingBoxConfigGenerator::generate(&profile, &settings());
         let proxy = &config_json["outbounds"][0];
 
         assert_eq!(proxy["transport"]["type"], "grpc");
         assert_eq!(proxy["transport"]["service_name"], "svc");
-        assert!(proxy["transport"].get("authority").is_none());
+        assert_eq!(proxy["transport"]["authority"], "grpc.example");
+    }
+
+    #[test]
+    fn generated_config_does_not_emit_unreferenced_block_outbound() {
+        let profile = reality_profile(TransportType::Tcp, None, None);
+        let config_json = SingBoxConfigGenerator::generate(&profile, &settings());
+        let outbounds = config_json["outbounds"].as_array().unwrap();
+
+        assert_eq!(outbounds.len(), 2);
+        assert!(outbounds.iter().all(|outbound| outbound["tag"] != "block"));
     }
 
     fn reality_profile(
