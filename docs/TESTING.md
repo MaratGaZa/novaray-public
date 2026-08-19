@@ -80,6 +80,8 @@ cargo test --all-targets
   and mapping to `ProxyServiceOptions` before any engine process starts;
 - engine checksum diagnostics: explicit SHA-256 override, pinned-version mismatch with engine/version/
   OS/arch context, and missing platform pin before a binary is accepted;
+- declared engine support matrix: every catalog OS/arch entry has a binary SHA-256 and its recorded
+  archive/binary evidence is reproducible from the pinned upstream release asset;
 - network-boundary request ↔ allowlisted operation.
 
 ### L4 — Component integration

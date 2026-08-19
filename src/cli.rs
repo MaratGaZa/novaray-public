@@ -346,6 +346,9 @@ fn print_help() {
     println!(
         "        --expected-sha256 <HASH>  SHA-256 override; по умолчанию используется pinned checksum"
     );
+    println!(
+        "                                   Иные OS/arch без catalog pin требуют явный trusted override"
+    );
     println!("        --no-preflight            Отключить pre-flight проверку конфигурации");
     println!("        --preflight-timeout <S>   Таймаут pre-flight проверки в секундах (по умолчанию: 5)");
     println!("    -t, --timeout-secs <S>        Ограничить время работы сервиса N секундами (для тестов/демо)\n");
@@ -368,6 +371,7 @@ fn print_status() {
     println!("  Engine Routing:     Global Proxy (M2 local proxy; per-app engine routing planned for sing-box Task 14)");
     println!("  Core Matcher:       Domain, IP CIDR, App Process Name matching rules");
     println!("  Supported Engines:  Xray-core (default, pinned v26.3.27), sing-box (select with --engine-config sing-box)");
+    println!("  Pinned Targets:     macOS arm64/x86_64, Linux arm64/x86_64, Windows x86_64; другие targets требуют --expected-sha256");
     println!("  Topology:           Direct Local-Proxy (M2) / Privileged Helper utun (M3 target)");
 }
 
@@ -389,6 +393,8 @@ fn print_pinned_releases() {
         }
         println!();
     }
+    println!("Automatic binary pins: macOS arm64/x86_64, Linux arm64/x86_64, Windows x86_64.");
+    println!("Other OS/arch targets are unsupported by the catalog and require --expected-sha256.");
 }
 
 /// Загрузка и валидация конфигурации из файлов

@@ -410,7 +410,10 @@ machine; package identity, signatures и rollback traceable до source revision
     для pinned mismatch (engine/version/OS/arch) и отсутствующего platform pin, при сохранении
     explicit SHA-256 override и fail-closed поведения. Покрыть explicit override, mismatch и
     missing pin unit/integration tests.
-18. Только после этого начать macOS system tunnel vertical slice на privileged helper.
+18. [x] Завершить pinned binary checksum matrix — issue #3: Xray-core и sing-box для macOS arm64/x86_64,
+    Linux arm64/x86_64 и Windows x86_64; добавить archive/binary evidence, explicit unsupported-target
+    contract в `pinned-releases`/документации и test, запрещающий binary checksum gaps для declared matrix.
+19. Только после этого начать macOS system tunnel vertical slice на privileged helper.
 
 ## 7. Зависимости
 
