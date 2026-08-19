@@ -40,6 +40,7 @@ fn get_novaray_core_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_novaray-core"))
 }
 
+#[cfg(unix)]
 fn sha256_file(path: &Path) -> String {
     use sha2::{Digest, Sha256};
     let bytes = std::fs::read(path).unwrap();
