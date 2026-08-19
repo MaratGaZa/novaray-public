@@ -9,11 +9,14 @@
 use crate::config::{AppConfig, UserSettings};
 use crate::config_generator::EngineConfigStrategy;
 use crate::core::{ProcessSupervisor, ReadinessProbe, SupervisorOptions, SupervisorState};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
+use std::collections::{BTreeSet, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::{broadcast, watch};
@@ -102,22 +105,48 @@ pub struct EngineArtifact {
 }
 
 /// Зафиксированный релиз сетевого движка (архив дистрибутива и контрольные суммы)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PinnedEngineRelease {
-    pub engine_name: &'static str,
-    pub version: &'static str,
-    pub revision: &'static str,
-    pub target_os: &'static str,
-    pub target_arch: &'static str,
-    pub archive_name: &'static str,
+    pub engine_name: String,
+    pub version: String,
+    pub revision: String,
+    pub status: EngineReleaseStatus,
+    pub target_os: String,
+    pub target_arch: String,
+    pub archive_name: String,
     /// SHA-256 контрольная сумма загружаемого ZIP-архива дистрибутива
-    pub archive_sha256: &'static str,
-    /// SHA-256 контрольная сумма распакованного бинарника (None, если ещё не верифицирован для целевой платформы)
-    pub binary_sha256: Option<&'static str>,
+    pub archive_sha256: String,
+    /// SHA-256 контрольная сумма распакованного бинарника.
+    pub binary_sha256: String,
 }
 
-/// Возвращает зафиксированные релизы сетевых движков.
-pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
+/// Lifecycle policy for a catalogued engine release.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineReleaseStatus {
+    Recommended,
+    Supported,
+    Deprecated,
+    Yanked,
+}
+
+#[derive(Debug, Deserialize)]
+struct EngineCatalog {
+    schema_version: u32,
+    declared_targets: Vec<EngineTarget>,
+    releases: Vec<PinnedEngineRelease>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct EngineTarget {
+    target_os: String,
+    target_arch: String,
+}
+
+// Kept out of the build only to make the migration from the pre-#9 Rust literal auditable.
+// `engine_catalog.json` below is the sole runtime source of truth.
+#[cfg(any())]
+fn legacy_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
     &[
         PinnedEngineRelease {
             engine_name: "xray-core",
@@ -222,6 +251,152 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
     ]
 }
 
+fn parse_engine_catalog(input: &str) -> Result<EngineCatalog, String> {
+    let catalog: EngineCatalog = serde_json::from_str(input)
+        .map_err(|error| format!("engine catalog JSON is invalid: {error}"))?;
+    validate_engine_catalog(&catalog)?;
+    Ok(catalog)
+}
+
+fn engine_catalog() -> &'static EngineCatalog {
+    static CATALOG: OnceLock<EngineCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        parse_engine_catalog(include_str!("../engine_catalog.json"))
+            .expect("checked-in engine catalog must satisfy fail-closed invariants")
+    })
+}
+
+/// Returns catalogued releases from the checked-in, offline manifest.
+pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
+    &engine_catalog().releases
+}
+
+/// Returns the only default release version allowed for an engine family.
+pub fn recommended_engine_version(engine_name: &str) -> Option<&'static str> {
+    let versions = engine_catalog()
+        .releases
+        .iter()
+        .filter(|release| {
+            release.engine_name.eq_ignore_ascii_case(engine_name)
+                && release.status == EngineReleaseStatus::Recommended
+        })
+        .map(|release| release.version.as_str())
+        .collect::<BTreeSet<_>>();
+    (versions.len() == 1).then(|| *versions.first().expect("checked length"))
+}
+
+fn is_lower_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value.bytes().all(|byte| {
+            byte.is_ascii_digit() || (byte.is_ascii_lowercase() && byte.is_ascii_hexdigit())
+        })
+}
+
+fn validate_engine_catalog(catalog: &EngineCatalog) -> Result<(), String> {
+    if catalog.schema_version != 1 {
+        return Err(format!(
+            "unsupported catalog schema version {}",
+            catalog.schema_version
+        ));
+    }
+    if catalog.declared_targets.is_empty() || catalog.releases.is_empty() {
+        return Err("catalog must declare targets and releases".to_string());
+    }
+
+    let targets = catalog
+        .declared_targets
+        .iter()
+        .map(|target| {
+            (
+                normalize_os(&target.target_os).to_string(),
+                normalize_arch(&target.target_arch).to_string(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    if targets.len() != catalog.declared_targets.len() {
+        return Err("declared targets must be unique".to_string());
+    }
+
+    let mut keys = HashSet::new();
+    let mut engine_versions = BTreeSet::new();
+    for release in &catalog.releases {
+        if !is_lower_sha256(&release.archive_sha256) || !is_lower_sha256(&release.binary_sha256) {
+            return Err(format!(
+                "{} {} has a malformed checksum",
+                release.engine_name, release.version
+            ));
+        }
+        let key = (
+            release.engine_name.to_ascii_lowercase(),
+            release.version.to_ascii_lowercase(),
+            normalize_os(&release.target_os).to_string(),
+            normalize_arch(&release.target_arch).to_string(),
+        );
+        if !keys.insert(key.clone()) {
+            return Err(format!(
+                "duplicate engine catalog key: {} {} {}/{}",
+                key.0, key.1, key.2, key.3
+            ));
+        }
+        if !targets.contains(&(key.2.clone(), key.3.clone())) {
+            return Err(format!("undeclared target in catalog: {}/{}", key.2, key.3));
+        }
+        engine_versions.insert((key.0, key.1));
+    }
+
+    for (engine_name, version) in &engine_versions {
+        let entries = catalog.releases.iter().filter(|release| {
+            release.engine_name.eq_ignore_ascii_case(engine_name)
+                && release.version.eq_ignore_ascii_case(version)
+        });
+        let statuses = entries
+            .clone()
+            .map(|release| release.status)
+            .collect::<HashSet<_>>();
+        if statuses.len() != 1 {
+            return Err(format!(
+                "{engine_name} {version} must use one lifecycle status"
+            ));
+        }
+        let coverage = entries
+            .map(|release| {
+                (
+                    normalize_os(&release.target_os).to_string(),
+                    normalize_arch(&release.target_arch).to_string(),
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        if coverage != targets {
+            return Err(format!(
+                "{engine_name} {version} does not cover every declared target"
+            ));
+        }
+    }
+
+    let engines = catalog
+        .releases
+        .iter()
+        .map(|release| release.engine_name.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    for engine_name in engines {
+        let recommended = catalog
+            .releases
+            .iter()
+            .filter(|release| {
+                release.engine_name.eq_ignore_ascii_case(&engine_name)
+                    && release.status == EngineReleaseStatus::Recommended
+            })
+            .map(|release| release.version.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+        if recommended.len() != 1 {
+            return Err(format!(
+                "{engine_name} must have exactly one recommended version"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn normalize_os(os: &str) -> &str {
     match os.to_ascii_lowercase().as_str() {
         "macos" | "darwin" => "macos",
@@ -248,10 +423,10 @@ pub fn find_pinned_archive_checksum(engine_name: &str, version: &str) -> Option<
         .find(|r| {
             r.engine_name.eq_ignore_ascii_case(engine_name)
                 && r.version.eq_ignore_ascii_case(version)
-                && normalize_os(r.target_os).eq_ignore_ascii_case(current_os)
-                && normalize_arch(r.target_arch).eq_ignore_ascii_case(current_arch)
+                && normalize_os(&r.target_os).eq_ignore_ascii_case(current_os)
+                && normalize_arch(&r.target_arch).eq_ignore_ascii_case(current_arch)
         })
-        .map(|r| r.archive_sha256)
+        .map(|r| r.archive_sha256.as_str())
 }
 
 /// Находит ожидаемый SHA-256 распакованного бинарника для текущей платформы из зафиксированных релизов
@@ -277,10 +452,10 @@ fn find_pinned_binary_checksum_for_target(
         .find(|r| {
             r.engine_name.eq_ignore_ascii_case(engine_name)
                 && r.version.eq_ignore_ascii_case(version)
-                && normalize_os(r.target_os).eq_ignore_ascii_case(target_os)
-                && normalize_arch(r.target_arch).eq_ignore_ascii_case(target_arch)
+                && normalize_os(&r.target_os).eq_ignore_ascii_case(target_os)
+                && normalize_arch(&r.target_arch).eq_ignore_ascii_case(target_arch)
         })
-        .and_then(|r| r.binary_sha256)
+        .map(|r| r.binary_sha256.as_str())
 }
 
 /// Находит ожидаемый SHA-256 ZIP-архива для текущей платформы из зафиксированных релизов (обратная совместимость)
@@ -321,7 +496,9 @@ fn resolve_expected_binary_checksum_for_target<'a>(
     let target_os = normalize_os(target_os).to_string();
     let target_arch = normalize_arch(target_arch).to_string();
     let engine_name = strategy.engine_name().to_string();
-    let version = strategy.pinned_version().to_string();
+    let version = recommended_engine_version(&engine_name)
+        .ok_or(EngineError::MissingExpectedChecksum)?
+        .to_string();
 
     let value =
         find_pinned_binary_checksum_for_target(&engine_name, &version, &target_os, &target_arch)
@@ -836,6 +1013,35 @@ mod tests {
     }
 
     #[test]
+    fn test_engine_catalog_rejects_duplicate_keys_and_malformed_hashes() {
+        let source = include_str!("../engine_catalog.json");
+        let duplicate = source.replacen(
+            "\n  ]\n}\n",
+            ",\n    { \"engine_name\": \"xray-core\", \"version\": \"v26.3.27\", \"revision\": \"d2758a023cd7f4174a5a5fa4ff66e487d4342ba0\", \"status\": \"recommended\", \"target_os\": \"macos\", \"target_arch\": \"arm64\", \"archive_name\": \"duplicate.zip\", \"archive_sha256\": \"2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf\", \"binary_sha256\": \"5d9dd24c0aba4b6cfcc6a33a5d67f854816ee17f392bf932ec8176da46f7e404\" }\n  ]\n}\n",
+            1,
+        );
+        assert!(parse_engine_catalog(&duplicate).is_err());
+
+        let malformed = source.replacen(
+            "2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf",
+            "UPPERCASE",
+            1,
+        );
+        assert!(parse_engine_catalog(&malformed).is_err());
+    }
+
+    #[test]
+    fn test_engine_catalog_rejects_invalid_lifecycle_and_multiple_defaults() {
+        let source = include_str!("../engine_catalog.json");
+        let invalid_status = source.replacen("\"recommended\"", "\"unknown\"", 1);
+        assert!(parse_engine_catalog(&invalid_status).is_err());
+
+        // Re-label one row as a second default version; incomplete coverage must also fail closed.
+        let second_default = source.replacen("v1.13.18", "v1.12.0", 1);
+        assert!(parse_engine_catalog(&second_default).is_err());
+    }
+
+    #[test]
     fn test_declared_engine_support_matrix_has_binary_checksums() {
         let declared_targets = [
             ("macos", "arm64"),
@@ -846,18 +1052,20 @@ mod tests {
         ];
 
         for strategy in [EngineConfigStrategy::Xray, EngineConfigStrategy::SingBox] {
+            let version = recommended_engine_version(strategy.engine_name())
+                .expect("every supported engine has one recommended catalog version");
             for (target_os, target_arch) in declared_targets {
                 let release = get_pinned_engine_releases().iter().find(|release| {
                     release.engine_name == strategy.engine_name()
-                        && release.version == strategy.pinned_version()
+                        && release.version == version
                         && release.target_os == target_os
                         && release.target_arch == target_arch
                 });
                 assert!(
-                    release.and_then(|release| release.binary_sha256).is_some(),
+                    release.is_some_and(|release| !release.binary_sha256.is_empty()),
                     "{} {} must have a binary SHA-256 for {target_os}/{target_arch}",
                     strategy.engine_name(),
-                    strategy.pinned_version()
+                    version
                 );
             }
         }
