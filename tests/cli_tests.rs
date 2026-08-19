@@ -146,7 +146,7 @@ fn create_mock_engine(dir: &Path) -> PathBuf {
     let py_path = dir.join("mock_engine.py");
     let script = r#"import sys, socket, time, json, threading, os
 
-if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-test":
+if len(sys.argv) >= 3 and ((sys.argv[1] == "run" and sys.argv[2] == "-test") or (sys.argv[1] == "check" and sys.argv[2] == "-c")):
     sys.stdout.write("Configuration OK\n")
     sys.stdout.flush()
     sys.exit(0)
@@ -155,7 +155,8 @@ if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-c":
     config_path = sys.argv[-1]
     with open(config_path) as f:
         cfg = json.load(f)
-    socks_port = cfg["inbounds"][0]["port"]
+    inbound = cfg["inbounds"][0]
+    socks_port = inbound.get("port", inbound.get("listen_port"))
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -332,6 +333,8 @@ fn test_cli_help_and_version_flags() {
     assert!(stdout.contains("NovaRay Core CLI"));
     assert!(stdout.contains("start"));
     assert!(stdout.contains("validate"));
+    assert!(stdout.contains("--engine-config <NAME>"));
+    assert!(stdout.contains("--engine-bin задаёт путь, но не меняет формат конфигурации"));
 
     // -h
     let output = Command::new(&bin).arg("-h").output().unwrap();
@@ -485,6 +488,13 @@ fn test_cli_unknown_arguments_return_usage_error_exit_2() {
         .output()
         .unwrap();
     assert_eq!(output2.status.code(), Some(ExitCode::UsageError.as_i32()));
+
+    let output3 = Command::new(&bin)
+        .args(["start", "--engine-config", "unknown-engine"])
+        .output()
+        .unwrap();
+    assert_eq!(output3.status.code(), Some(ExitCode::UsageError.as_i32()));
+    assert!(String::from_utf8_lossy(&output3.stderr).contains("--engine-config"));
 }
 
 #[test]
@@ -724,7 +734,7 @@ fn test_cli_start_abrupt_engine_crash_exits_with_engine_error() {
 
 #[test]
 #[cfg(unix)]
-fn test_cli_start_with_timeout_stops_cleanly() {
+fn test_cli_start_with_sing_box_strategy_stops_cleanly() {
     let bin = get_novaray_core_bin();
     let temp_dir = create_temp_dir();
     let (socks_port, http_port) = allocate_test_ports();
@@ -742,6 +752,8 @@ fn test_cli_start_with_timeout_stops_cleanly() {
             settings_path.to_str().unwrap(),
             "-e",
             mock_bin.to_str().unwrap(),
+            "--engine-config",
+            "sing-box",
             "--expected-sha256",
             &mock_sha256,
             "--timeout-secs",

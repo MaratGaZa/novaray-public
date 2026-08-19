@@ -76,6 +76,8 @@ cargo test --all-targets
 - generated config ↔ реальный engine validator;
 - pinned engine evidence manifest ↔ required candidates/topologies/open gates;
 - application commands ↔ state-machine events;
+- CLI engine-strategy selection: default Xray, explicit sing-box, invalid value with usage exit code,
+  and mapping to `ProxyServiceOptions` before any engine process starts;
 - network-boundary request ↔ allowlisted operation.
 
 ### L4 — Component integration

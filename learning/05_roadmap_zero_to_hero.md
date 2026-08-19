@@ -222,6 +222,9 @@ Android VpnService → Android UI → release
 - [x] Реализовать foreground-команды `start`/`connect`, `validate`/`check`, `status`, `pinned-releases`, `--help`, `--version` поверх `ProxyService` с проверяемыми exit codes.
 - [x] Загружать `config.json`/`settings.json` с диска и вызывать `validate()` на пути загрузки.
 - [x] Показывать состояние сервиса, PID, активный профиль и локальные порты при запуске.
+- [x] Добавить `--engine-config xray|sing-box`: по умолчанию Xray, явный выбор формата
+  конфигурации и pre-flight команды, usage error для неизвестного значения и тесты mapping
+  CLI → `ProxyServiceOptions` (issue #4).
 - [ ] Реализовать удалённое управление `disconnect`/`stop` через persistent daemon/helper IPC (Milestone 3 / ADR-003).
 - [ ] Опционально включать системный прокси (`networksetup`) как временный режим до появления TUN.
 

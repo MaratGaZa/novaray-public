@@ -401,7 +401,11 @@ machine; package identity, signatures и rollback traceable до source revision
     Correction-pass PR #35 добавляет fail-closed матрицу Reality (WebSocket запрещён, gRPC разрешён),
     нормализацию пустых query-значений, server fallback для transport host, Schema↔Rust parity для TCP
     и ограничение текущей gRPC capability стандартным `serviceName` без `/`.
-16. Только после этого начать macOS system tunnel vertical slice на privileged helper.
+16. [x] Открыть выбор формата конфигурации движка в CLI — issue #4: добавить
+    `--engine-config xray|sing-box` с Xray по умолчанию; путь `--engine-bin` не меняет стратегию;
+    неизвестное значение возвращает usage error до I/O. Покрыть default, sing-box, invalid value и
+    mapping в `ProxyServiceOptions`; после этого обновить help и примеры.
+17. Только после этого начать macOS system tunnel vertical slice на privileged helper.
 
 ## 7. Зависимости
 

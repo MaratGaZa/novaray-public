@@ -129,6 +129,11 @@ of being ignored.
 ### FR-003 — Engine lifecycle
 
 - Pin and verify the engine version and checksum.
+- The `start` CLI command accepts `--engine-config xray|sing-box` to select the generated
+  configuration format and pre-flight command. It defaults to `xray`; `--engine-bin` supplies
+  the executable path for the selected engine and does not itself change the configuration format.
+  An unknown strategy value is rejected as a usage error before configuration is read or a process
+  is started.
 - Treat a readiness probe, not process spawn, as successful start.
 - Drain and redact stdout/stderr asynchronously.
 - Implement graceful stop, timeout, forced termination, and restart policy.
