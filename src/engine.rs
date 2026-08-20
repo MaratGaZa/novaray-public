@@ -452,6 +452,7 @@ fn find_pinned_binary_checksum_for_target(
         .find(|r| {
             r.engine_name.eq_ignore_ascii_case(engine_name)
                 && r.version.eq_ignore_ascii_case(version)
+                && r.status != EngineReleaseStatus::Yanked
                 && normalize_os(&r.target_os).eq_ignore_ascii_case(target_os)
                 && normalize_arch(&r.target_arch).eq_ignore_ascii_case(target_arch)
         })
@@ -1015,11 +1016,10 @@ mod tests {
     #[test]
     fn test_engine_catalog_rejects_duplicate_keys_and_malformed_hashes() {
         let source = include_str!("../engine_catalog.json");
-        let duplicate = source.replacen(
-            "\n  ]\n}\n",
-            ",\n    { \"engine_name\": \"xray-core\", \"version\": \"v26.3.27\", \"revision\": \"d2758a023cd7f4174a5a5fa4ff66e487d4342ba0\", \"status\": \"recommended\", \"target_os\": \"macos\", \"target_arch\": \"arm64\", \"archive_name\": \"duplicate.zip\", \"archive_sha256\": \"2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf\", \"binary_sha256\": \"5d9dd24c0aba4b6cfcc6a33a5d67f854816ee17f392bf932ec8176da46f7e404\" }\n  ]\n}\n",
-            1,
-        );
+        let mut duplicate: serde_json::Value = serde_json::from_str(source).unwrap();
+        let row = duplicate["releases"][0].clone();
+        duplicate["releases"].as_array_mut().unwrap().push(row);
+        let duplicate = serde_json::to_string(&duplicate).unwrap();
         assert!(parse_engine_catalog(&duplicate).is_err());
 
         let malformed = source.replacen(
@@ -1028,6 +1028,24 @@ mod tests {
             1,
         );
         assert!(parse_engine_catalog(&malformed).is_err());
+    }
+
+    #[test]
+    fn test_engine_catalog_accepts_nondefault_lifecycle_versions() {
+        let mut catalog = parse_engine_catalog(include_str!("../engine_catalog.json")).unwrap();
+        let mut deprecated = catalog.releases.clone();
+        for release in &mut deprecated {
+            if release.engine_name == "sing-box" {
+                release.version = "v1.12.0".to_string();
+                release.status = EngineReleaseStatus::Deprecated;
+            }
+        }
+        catalog.releases.extend(
+            deprecated
+                .into_iter()
+                .filter(|release| release.engine_name == "sing-box"),
+        );
+        assert!(validate_engine_catalog(&catalog).is_ok());
     }
 
     #[test]
