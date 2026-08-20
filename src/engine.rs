@@ -9,11 +9,14 @@
 use crate::config::{AppConfig, UserSettings};
 use crate::config_generator::EngineConfigStrategy;
 use crate::core::{ProcessSupervisor, ReadinessProbe, SupervisorOptions, SupervisorState};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
+use std::collections::{BTreeSet, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::{broadcast, watch};
@@ -102,124 +105,189 @@ pub struct EngineArtifact {
 }
 
 /// Зафиксированный релиз сетевого движка (архив дистрибутива и контрольные суммы)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PinnedEngineRelease {
-    pub engine_name: &'static str,
-    pub version: &'static str,
-    pub revision: &'static str,
-    pub target_os: &'static str,
-    pub target_arch: &'static str,
-    pub archive_name: &'static str,
+    pub engine_name: String,
+    pub version: String,
+    pub revision: String,
+    pub status: EngineReleaseStatus,
+    pub target_os: String,
+    pub target_arch: String,
+    pub archive_name: String,
     /// SHA-256 контрольная сумма загружаемого ZIP-архива дистрибутива
-    pub archive_sha256: &'static str,
-    /// SHA-256 контрольная сумма распакованного бинарника (None, если ещё не верифицирован для целевой платформы)
-    pub binary_sha256: Option<&'static str>,
+    pub archive_sha256: String,
+    /// SHA-256 контрольная сумма распакованного бинарника.
+    pub binary_sha256: String,
 }
 
-/// Возвращает зафиксированные релизы сетевых движков.
+/// Lifecycle policy for a catalogued engine release.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineReleaseStatus {
+    Recommended,
+    Supported,
+    Deprecated,
+    Yanked,
+}
+
+#[derive(Debug, Deserialize)]
+struct EngineCatalog {
+    schema_version: u32,
+    declared_targets: Vec<EngineTarget>,
+    releases: Vec<PinnedEngineRelease>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct EngineTarget {
+    target_os: String,
+    target_arch: String,
+}
+
+fn parse_engine_catalog(input: &str) -> Result<EngineCatalog, String> {
+    let catalog: EngineCatalog = serde_json::from_str(input)
+        .map_err(|error| format!("engine catalog JSON is invalid: {error}"))?;
+    validate_engine_catalog(&catalog)?;
+    Ok(catalog)
+}
+
+// `engine_catalog.json` is the sole checked-in source of engine release metadata.
+fn engine_catalog() -> &'static EngineCatalog {
+    static CATALOG: OnceLock<EngineCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        parse_engine_catalog(include_str!("../engine_catalog.json"))
+            .expect("checked-in engine catalog must satisfy fail-closed invariants")
+    })
+}
+
+/// Returns catalogued releases from the checked-in, offline manifest.
 pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
-    &[
-        PinnedEngineRelease {
-            engine_name: "xray-core",
-            version: "v26.3.27",
-            revision: "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
-            target_os: "macos",
-            target_arch: "arm64",
-            archive_name: "Xray-macos-arm64-v8a.zip",
-            archive_sha256: "2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf",
-            binary_sha256: Some("5d9dd24c0aba4b6cfcc6a33a5d67f854816ee17f392bf932ec8176da46f7e404"),
-        },
-        PinnedEngineRelease {
-            engine_name: "xray-core",
-            version: "v26.3.27",
-            revision: "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
-            target_os: "macos",
-            target_arch: "x86_64",
-            archive_name: "Xray-macos-64.zip",
-            archive_sha256: "f5b0471d3459eff1b82e48af0aeac186abcc3298210070afbbbd8437a4e8b203",
-            binary_sha256: Some("afd0eaebb77994a18f29b00c5f50a4f7fbb77da06e24352d43035f3cad3c3786"),
-        },
-        PinnedEngineRelease {
-            engine_name: "xray-core",
-            version: "v26.3.27",
-            revision: "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
-            target_os: "linux",
-            target_arch: "arm64",
-            archive_name: "Xray-linux-arm64-v8a.zip",
-            archive_sha256: "4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c",
-            binary_sha256: Some("c2d20a7045250497083afea0d79db0672f6c89a25aaaf37c92de034d6b764b04"),
-        },
-        PinnedEngineRelease {
-            engine_name: "xray-core",
-            version: "v26.3.27",
-            revision: "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
-            target_os: "linux",
-            target_arch: "x86_64",
-            archive_name: "Xray-linux-64.zip",
-            archive_sha256: "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae",
-            binary_sha256: Some("8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed"),
-        },
-        PinnedEngineRelease {
-            engine_name: "xray-core",
-            version: "v26.3.27",
-            revision: "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
-            target_os: "windows",
-            target_arch: "x86_64",
-            archive_name: "Xray-windows-64.zip",
-            archive_sha256: "d004c39288ce9ada487c6f398c7c545f7d749e44bdfdd59dbc9f865afba4e1ad",
-            binary_sha256: Some("15c2d007954ac53ba69b80ec91242786b3c0b71d52649165b4ca1d5cc96ef8f1"),
-        },
-        PinnedEngineRelease {
-            engine_name: "sing-box",
-            version: "v1.13.18",
-            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
-            target_os: "macos",
-            target_arch: "arm64",
-            archive_name: "sing-box-1.13.18-darwin-arm64.tar.gz",
-            archive_sha256: "9fbc05946b584423457a2778035e0cee2d9b239a4af5ae1932d9b79991149107",
-            binary_sha256: Some("020ecf20d3faa9ec3e917762085f0581aafbd3dd87a69573ae7345fc66fabc7f"),
-        },
-        PinnedEngineRelease {
-            engine_name: "sing-box",
-            version: "v1.13.18",
-            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
-            target_os: "macos",
-            target_arch: "x86_64",
-            archive_name: "sing-box-1.13.18-darwin-amd64.tar.gz",
-            archive_sha256: "500f0decfc21f7cdb2aaa4fe193b7857a41b07c38ee3a0b15bd53e3c7af3671c",
-            binary_sha256: Some("6e9749a4b40821bf07d301f099e75d871ea435861c9f5f0ac5687dc18e81b759"),
-        },
-        PinnedEngineRelease {
-            engine_name: "sing-box",
-            version: "v1.13.18",
-            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
-            target_os: "linux",
-            target_arch: "arm64",
-            archive_name: "sing-box-1.13.18-linux-arm64.tar.gz",
-            archive_sha256: "a894f6152cade4a2c9d062762d54dea0c1aee673ab4759e0829e19cace932719",
-            binary_sha256: Some("1a202edaba57b6202dd0e2ece1f77a584511f40769a3a177edffde3c2b5537cb"),
-        },
-        PinnedEngineRelease {
-            engine_name: "sing-box",
-            version: "v1.13.18",
-            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
-            target_os: "linux",
-            target_arch: "x86_64",
-            archive_name: "sing-box-1.13.18-linux-amd64.tar.gz",
-            archive_sha256: "d34d987ed6ae39ca3760269264fb502b867e5477db45518c829b07776245c495",
-            binary_sha256: Some("8cb29c5b743fbda33502a2b6d49cf66ce13f5d1a41fcd0afc53fff17184ccf8e"),
-        },
-        PinnedEngineRelease {
-            engine_name: "sing-box",
-            version: "v1.13.18",
-            revision: "45ca32dcb966f07f97fc888fe8586e359dbe8405",
-            target_os: "windows",
-            target_arch: "x86_64",
-            archive_name: "sing-box-1.13.18-windows-amd64.zip",
-            archive_sha256: "65045155ffdc506334f01a4353889657ddfc024f72b394081a9abaef34dfbef3",
-            binary_sha256: Some("140c46d667d16b1491f6b830812e846c25aa2b18e68bd695023c69c393ad7081"),
-        },
-    ]
+    &engine_catalog().releases
+}
+
+/// Returns the only default release version allowed for an engine family.
+pub fn recommended_engine_version(engine_name: &str) -> Option<&'static str> {
+    let versions = engine_catalog()
+        .releases
+        .iter()
+        .filter(|release| {
+            release.engine_name.eq_ignore_ascii_case(engine_name)
+                && release.status == EngineReleaseStatus::Recommended
+        })
+        .map(|release| release.version.as_str())
+        .collect::<BTreeSet<_>>();
+    (versions.len() == 1).then(|| *versions.first().expect("checked length"))
+}
+
+fn is_lower_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value.bytes().all(|byte| {
+            byte.is_ascii_digit() || (byte.is_ascii_lowercase() && byte.is_ascii_hexdigit())
+        })
+}
+
+fn validate_engine_catalog(catalog: &EngineCatalog) -> Result<(), String> {
+    if catalog.schema_version != 1 {
+        return Err(format!(
+            "unsupported catalog schema version {}",
+            catalog.schema_version
+        ));
+    }
+    if catalog.declared_targets.is_empty() || catalog.releases.is_empty() {
+        return Err("catalog must declare targets and releases".to_string());
+    }
+
+    let targets = catalog
+        .declared_targets
+        .iter()
+        .map(|target| {
+            (
+                normalize_os(&target.target_os).to_string(),
+                normalize_arch(&target.target_arch).to_string(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    if targets.len() != catalog.declared_targets.len() {
+        return Err("declared targets must be unique".to_string());
+    }
+
+    let mut keys = HashSet::new();
+    let mut engine_versions = BTreeSet::new();
+    for release in &catalog.releases {
+        if !is_lower_sha256(&release.archive_sha256) || !is_lower_sha256(&release.binary_sha256) {
+            return Err(format!(
+                "{} {} has a malformed checksum",
+                release.engine_name, release.version
+            ));
+        }
+        let key = (
+            release.engine_name.to_ascii_lowercase(),
+            release.version.to_ascii_lowercase(),
+            normalize_os(&release.target_os).to_string(),
+            normalize_arch(&release.target_arch).to_string(),
+        );
+        if !keys.insert(key.clone()) {
+            return Err(format!(
+                "duplicate engine catalog key: {} {} {}/{}",
+                key.0, key.1, key.2, key.3
+            ));
+        }
+        if !targets.contains(&(key.2.clone(), key.3.clone())) {
+            return Err(format!("undeclared target in catalog: {}/{}", key.2, key.3));
+        }
+        engine_versions.insert((key.0, key.1));
+    }
+
+    for (engine_name, version) in &engine_versions {
+        let entries = catalog.releases.iter().filter(|release| {
+            release.engine_name.eq_ignore_ascii_case(engine_name)
+                && release.version.eq_ignore_ascii_case(version)
+        });
+        let statuses = entries
+            .clone()
+            .map(|release| release.status)
+            .collect::<HashSet<_>>();
+        if statuses.len() != 1 {
+            return Err(format!(
+                "{engine_name} {version} must use one lifecycle status"
+            ));
+        }
+        let coverage = entries
+            .map(|release| {
+                (
+                    normalize_os(&release.target_os).to_string(),
+                    normalize_arch(&release.target_arch).to_string(),
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        if coverage != targets {
+            return Err(format!(
+                "{engine_name} {version} does not cover every declared target"
+            ));
+        }
+    }
+
+    let engines = catalog
+        .releases
+        .iter()
+        .map(|release| release.engine_name.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    for engine_name in engines {
+        let recommended = catalog
+            .releases
+            .iter()
+            .filter(|release| {
+                release.engine_name.eq_ignore_ascii_case(&engine_name)
+                    && release.status == EngineReleaseStatus::Recommended
+            })
+            .map(|release| release.version.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+        if recommended.len() != 1 {
+            return Err(format!(
+                "{engine_name} must have exactly one recommended version"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn normalize_os(os: &str) -> &str {
@@ -248,10 +316,10 @@ pub fn find_pinned_archive_checksum(engine_name: &str, version: &str) -> Option<
         .find(|r| {
             r.engine_name.eq_ignore_ascii_case(engine_name)
                 && r.version.eq_ignore_ascii_case(version)
-                && normalize_os(r.target_os).eq_ignore_ascii_case(current_os)
-                && normalize_arch(r.target_arch).eq_ignore_ascii_case(current_arch)
+                && normalize_os(&r.target_os).eq_ignore_ascii_case(current_os)
+                && normalize_arch(&r.target_arch).eq_ignore_ascii_case(current_arch)
         })
-        .map(|r| r.archive_sha256)
+        .map(|r| r.archive_sha256.as_str())
 }
 
 /// Находит ожидаемый SHA-256 распакованного бинарника для текущей платформы из зафиксированных релизов
@@ -270,17 +338,34 @@ fn find_pinned_binary_checksum_for_target(
     target_os: &str,
     target_arch: &str,
 ) -> Option<&'static str> {
+    find_pinned_binary_checksum_in_releases(
+        get_pinned_engine_releases(),
+        engine_name,
+        version,
+        target_os,
+        target_arch,
+    )
+}
+
+fn find_pinned_binary_checksum_in_releases<'a>(
+    releases: &'a [PinnedEngineRelease],
+    engine_name: &str,
+    version: &str,
+    target_os: &str,
+    target_arch: &str,
+) -> Option<&'a str> {
     let target_os = normalize_os(target_os);
     let target_arch = normalize_arch(target_arch);
-    get_pinned_engine_releases()
+    releases
         .iter()
         .find(|r| {
             r.engine_name.eq_ignore_ascii_case(engine_name)
                 && r.version.eq_ignore_ascii_case(version)
-                && normalize_os(r.target_os).eq_ignore_ascii_case(target_os)
-                && normalize_arch(r.target_arch).eq_ignore_ascii_case(target_arch)
+                && r.status != EngineReleaseStatus::Yanked
+                && normalize_os(&r.target_os).eq_ignore_ascii_case(target_os)
+                && normalize_arch(&r.target_arch).eq_ignore_ascii_case(target_arch)
         })
-        .and_then(|r| r.binary_sha256)
+        .map(|r| r.binary_sha256.as_str())
 }
 
 /// Находит ожидаемый SHA-256 ZIP-архива для текущей платформы из зафиксированных релизов (обратная совместимость)
@@ -321,7 +406,9 @@ fn resolve_expected_binary_checksum_for_target<'a>(
     let target_os = normalize_os(target_os).to_string();
     let target_arch = normalize_arch(target_arch).to_string();
     let engine_name = strategy.engine_name().to_string();
-    let version = strategy.pinned_version().to_string();
+    let version = recommended_engine_version(&engine_name)
+        .ok_or(EngineError::MissingExpectedChecksum)?
+        .to_string();
 
     let value =
         find_pinned_binary_checksum_for_target(&engine_name, &version, &target_os, &target_arch)
@@ -836,6 +923,93 @@ mod tests {
     }
 
     #[test]
+    fn test_engine_catalog_rejects_duplicate_keys_and_malformed_hashes() {
+        let source = include_str!("../engine_catalog.json");
+        let mut duplicate: serde_json::Value = serde_json::from_str(source).unwrap();
+        let row = duplicate["releases"][0].clone();
+        duplicate["releases"].as_array_mut().unwrap().push(row);
+        let duplicate = serde_json::to_string(&duplicate).unwrap();
+        assert!(parse_engine_catalog(&duplicate).is_err());
+
+        let malformed = source.replacen(
+            "2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf",
+            "UPPERCASE",
+            1,
+        );
+        assert!(parse_engine_catalog(&malformed).is_err());
+    }
+
+    #[test]
+    fn test_engine_catalog_accepts_nondefault_lifecycle_versions() {
+        let mut catalog = parse_engine_catalog(include_str!("../engine_catalog.json")).unwrap();
+        let mut deprecated = catalog.releases.clone();
+        for release in &mut deprecated {
+            if release.engine_name == "sing-box" {
+                release.version = "v1.12.0".to_string();
+                release.status = EngineReleaseStatus::Deprecated;
+            }
+        }
+        catalog.releases.extend(
+            deprecated
+                .into_iter()
+                .filter(|release| release.engine_name == "sing-box"),
+        );
+        assert!(validate_engine_catalog(&catalog).is_ok());
+    }
+
+    #[test]
+    fn test_engine_catalog_rejects_invalid_lifecycle_and_multiple_defaults() {
+        let source = include_str!("../engine_catalog.json");
+        let invalid_status = source.replacen("\"recommended\"", "\"unknown\"", 1);
+        assert!(parse_engine_catalog(&invalid_status).is_err());
+
+        let mut catalog = parse_engine_catalog(source).unwrap();
+        let mut second_default = catalog.releases.clone();
+        for release in &mut second_default {
+            if release.engine_name == "sing-box" {
+                release.version = "v1.12.0".to_string();
+            }
+        }
+        catalog.releases.extend(
+            second_default
+                .into_iter()
+                .filter(|release| release.engine_name == "sing-box"),
+        );
+        assert_eq!(
+            validate_engine_catalog(&catalog),
+            Err("sing-box must have exactly one recommended version".to_string())
+        );
+    }
+
+    #[test]
+    fn test_yanked_release_is_excluded_from_checksum_lookup() {
+        let mut catalog = parse_engine_catalog(include_str!("../engine_catalog.json")).unwrap();
+        let mut yanked = catalog.releases.clone();
+        for release in &mut yanked {
+            if release.engine_name == "sing-box" {
+                release.version = "v1.12.0".to_string();
+                release.status = EngineReleaseStatus::Yanked;
+            }
+        }
+        catalog.releases.extend(
+            yanked
+                .into_iter()
+                .filter(|release| release.engine_name == "sing-box"),
+        );
+        assert!(validate_engine_catalog(&catalog).is_ok());
+        assert_eq!(
+            find_pinned_binary_checksum_in_releases(
+                &catalog.releases,
+                "sing-box",
+                "v1.12.0",
+                "linux",
+                "x86_64",
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn test_declared_engine_support_matrix_has_binary_checksums() {
         let declared_targets = [
             ("macos", "arm64"),
@@ -846,18 +1020,20 @@ mod tests {
         ];
 
         for strategy in [EngineConfigStrategy::Xray, EngineConfigStrategy::SingBox] {
+            let version = recommended_engine_version(strategy.engine_name())
+                .expect("every supported engine has one recommended catalog version");
             for (target_os, target_arch) in declared_targets {
                 let release = get_pinned_engine_releases().iter().find(|release| {
                     release.engine_name == strategy.engine_name()
-                        && release.version == strategy.pinned_version()
+                        && release.version == version
                         && release.target_os == target_os
                         && release.target_arch == target_arch
                 });
                 assert!(
-                    release.and_then(|release| release.binary_sha256).is_some(),
+                    release.is_some_and(|release| !release.binary_sha256.is_empty()),
                     "{} {} must have a binary SHA-256 for {target_os}/{target_arch}",
                     strategy.engine_name(),
-                    strategy.pinned_version()
+                    version
                 );
             }
         }

@@ -778,12 +778,15 @@ fn test_pinned_engine_releases_and_checksum_lookup() {
     );
     assert_eq!(
         sing_box_macos_arm64.binary_sha256,
-        Some("020ecf20d3faa9ec3e917762085f0581aafbd3dd87a69573ae7345fc66fabc7f")
+        "020ecf20d3faa9ec3e917762085f0581aafbd3dd87a69573ae7345fc66fabc7f"
     );
 
     let sing_box_checksum = find_pinned_checksum("sing-box", "v1.13.18");
     if std::env::consts::OS == "macos" && std::env::consts::ARCH == "aarch64" {
-        assert_eq!(sing_box_checksum, Some(sing_box_macos_arm64.archive_sha256));
+        assert_eq!(
+            sing_box_checksum,
+            Some(sing_box_macos_arm64.archive_sha256.as_str())
+        );
     }
 }
 

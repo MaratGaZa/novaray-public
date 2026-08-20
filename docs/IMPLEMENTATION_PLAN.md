@@ -413,7 +413,11 @@ machine; package identity, signatures и rollback traceable до source revision
 18. [x] Завершить pinned binary checksum matrix — issue #3: Xray-core и sing-box для macOS arm64/x86_64,
     Linux arm64/x86_64 и Windows x86_64; добавить archive/binary evidence, explicit unsupported-target
     contract в `pinned-releases`/документации и test, запрещающий binary checksum gaps для declared matrix.
-19. Только после этого начать macOS system tunnel vertical slice на privileged helper.
+19. [x] Versioned engine catalog и offline updater — issue #9: отделить конфигурационный диалект от
+    artifact release, ввести lifecycle `recommended`/`supported`/`deprecated`/`yanked`, JSON catalog,
+    offline инварианты и maintainer-only candidate generator. CLI version selection отложен до
+    compatibility contract и real-engine evidence.
+20. Только после этого начать macOS system tunnel vertical slice на privileged helper.
 
 ## 7. Зависимости
 

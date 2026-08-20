@@ -23,3 +23,13 @@ shasum -a 256 <extracted-binary>
 
 Upstream release pages: [Xray-core v26.3.27](https://github.com/XTLS/Xray-core/releases/tag/v26.3.27)
 and [sing-box v1.13.18](https://github.com/SagerNet/sing-box/releases/tag/v1.13.18).
+
+## Versioned catalog maintenance
+
+`engine_catalog.json` is the checked-in runtime source of truth. It records lifecycle status and
+both hashes per declared target; runtime uses only each engine's `recommended` version. Maintainers
+use `scripts/update_engine_catalog.py` with an explicit asset manifest containing URLs, expected
+archive SHA-256 values, and internal binary paths. The tool writes a separate candidate catalog and
+evidence document after checking each downloaded archive and hashing its extracted binary. Reviewers
+must independently review that candidate; the tool never performs a runtime update or overwrites the
+checked-in catalog.

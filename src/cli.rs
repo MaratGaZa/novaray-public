@@ -386,11 +386,8 @@ fn print_pinned_releases() {
         );
         println!("    Archive:     {}", release.archive_name);
         println!("    Archive SHA: {}", release.archive_sha256);
-        if let Some(bin_sha) = release.binary_sha256 {
-            println!("    Binary SHA:  {}", bin_sha);
-        } else {
-            println!("    Binary SHA:  <not pinned>");
-        }
+        println!("    Binary SHA:  {}", release.binary_sha256);
+        println!("    Lifecycle:   {:?}", release.status);
         println!();
     }
     println!("Automatic binary pins: macOS arm64/x86_64, Linux arm64/x86_64, Windows x86_64.");

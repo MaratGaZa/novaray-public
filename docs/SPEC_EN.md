@@ -133,8 +133,10 @@ of being ignored.
   x86_64, Linux arm64, Linux x86_64, and Windows x86_64. Other OS/arch combinations are outside
   the current support matrix, are explicitly marked unsupported by help/`pinned-releases`, and
   cannot start without an explicit trusted `--expected-sha256`.
-- Each `EngineConfigStrategy` automatically supports only one version from the pinned catalog; the
-  CLI/API does not accept a user-selectable version and does not treat `engine version` output as a
+- Runtime selects the one `recommended` version for each engine from a versioned pinned catalog. The
+  catalog records `recommended`/`supported`/`deprecated`/`yanked` lifecycle status, full declared
+  OS/arch coverage, and both lowercase SHA-256 values; changing the default requires a separate,
+  reviewable changelog change. The CLI/API does not yet accept a user-selectable version and does not treat `engine version` output as a
   trusted security oracle. On a pinned binary checksum mismatch, diagnostics name the engine,
   pinned version, and target OS/arch, and distinguish “different/unsupported version or modified
   artifact” from a missing platform pin. Startup remains fail-closed; `--expected-sha256` is an

@@ -124,8 +124,10 @@ WebSocket отклоняются как несовместимые комбин�
   macOS x86_64, Linux arm64, Linux x86_64 и Windows x86_64. Иные OS/arch не входят в текущий
   support matrix, явно помечаются в help/`pinned-releases` как неподдерживаемые и не запускаются
   без явного trusted `--expected-sha256`.
-- Для каждой `EngineConfigStrategy` автоматически поддерживается только одна версия из pinned catalog;
-  CLI/API не принимает выбираемую пользователем версию и не считает вывод `engine version` trusted
+- Runtime выбирает единственную `recommended` версию для каждого движка из versioned pinned catalog.
+  Catalog хранит `recommended`/`supported`/`deprecated`/`yanked` lifecycle status, полное покрытие
+  declared OS/arch и оба lowercase SHA-256; смена default требует отдельного reviewable changelog
+  change. CLI/API пока не принимает выбираемую пользователем версию и не считает вывод `engine version` trusted
   security oracle. При несовпадении pinned binary checksum диагностика называет движок, pinned
   версию и целевые OS/arch и различает «другая/неподдерживаемая версия либо изменённый артефакт»
   от отсутствия pin для платформы. Запуск остаётся fail-closed; `--expected-sha256` — явный
