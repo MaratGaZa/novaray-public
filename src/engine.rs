@@ -7,7 +7,7 @@
 //! - Оркестрацию жизненного цикла `ProxyService`: связывание `AppConfig`, engine config strategy и `ProcessSupervisor`.
 
 use crate::config::{AppConfig, UserSettings};
-use crate::config_generator::EngineConfigStrategy;
+use crate::config_generator::{EngineConfigDialect, EngineConfigStrategy};
 use crate::core::{ProcessSupervisor, ReadinessProbe, SupervisorOptions, SupervisorState};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -53,6 +53,13 @@ pub enum EngineError {
 
     #[error("Ожидаемая SHA-256 контрольная сумма бинарника движка не задана; запуск без проверки запрещён")]
     MissingExpectedChecksum,
+
+    #[error("Конфигурационный диалект {dialect:?} несовместим с {engine_name} {version}; запуск запрещён")]
+    IncompatibleEngineRelease {
+        engine_name: String,
+        version: String,
+        dialect: EngineConfigDialect,
+    },
 
     #[error("Pre-flight проверка конфигурации движком не пройдена: {0}")]
     ConfigPreflightFailed(String),
@@ -176,6 +183,26 @@ pub fn recommended_engine_version(engine_name: &str) -> Option<&'static str> {
         .map(|release| release.version.as_str())
         .collect::<BTreeSet<_>>();
     (versions.len() == 1).then(|| *versions.first().expect("checked length"))
+}
+
+fn is_release_compatible(strategy: EngineConfigStrategy, version: &str) -> bool {
+    match strategy.config_dialect() {
+        EngineConfigDialect::XrayV26 => version.starts_with("v26."),
+        EngineConfigDialect::SingBoxV1_13 => version.starts_with("v1.13."),
+    }
+}
+
+fn validate_release_compatibility(
+    strategy: EngineConfigStrategy,
+    version: &str,
+) -> Result<(), EngineError> {
+    is_release_compatible(strategy, version)
+        .then_some(())
+        .ok_or_else(|| EngineError::IncompatibleEngineRelease {
+            engine_name: strategy.engine_name().to_string(),
+            version: version.to_string(),
+            dialect: strategy.config_dialect(),
+        })
 }
 
 fn is_lower_sha256(value: &str) -> bool {
@@ -409,6 +436,7 @@ fn resolve_expected_binary_checksum_for_target<'a>(
     let version = recommended_engine_version(&engine_name)
         .ok_or(EngineError::MissingExpectedChecksum)?
         .to_string();
+    validate_release_compatibility(strategy, &version)?;
 
     let value =
         find_pinned_binary_checksum_for_target(&engine_name, &version, &target_os, &target_arch)
@@ -955,6 +983,16 @@ mod tests {
                 .filter(|release| release.engine_name == "sing-box"),
         );
         assert!(validate_engine_catalog(&catalog).is_ok());
+    }
+
+    #[test]
+    fn test_config_dialect_rejects_incompatible_engine_release_before_start() {
+        assert!(validate_release_compatibility(EngineConfigStrategy::Xray, "v26.3.27").is_ok());
+        assert!(validate_release_compatibility(EngineConfigStrategy::SingBox, "v1.13.18").is_ok());
+        assert!(matches!(
+            validate_release_compatibility(EngineConfigStrategy::SingBox, "v1.12.0"),
+            Err(EngineError::IncompatibleEngineRelease { .. })
+        ));
     }
 
     #[test]
