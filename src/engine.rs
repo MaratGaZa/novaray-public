@@ -143,8 +143,6 @@ struct EngineTarget {
     target_arch: String,
 }
 
-// Kept out of the build only to make the migration from the pre-#9 Rust literal auditable.
-// `engine_catalog.json` below is the sole runtime source of truth.
 fn parse_engine_catalog(input: &str) -> Result<EngineCatalog, String> {
     let catalog: EngineCatalog = serde_json::from_str(input)
         .map_err(|error| format!("engine catalog JSON is invalid: {error}"))?;
@@ -152,6 +150,7 @@ fn parse_engine_catalog(input: &str) -> Result<EngineCatalog, String> {
     Ok(catalog)
 }
 
+// `engine_catalog.json` is the sole checked-in source of engine release metadata.
 fn engine_catalog() -> &'static EngineCatalog {
     static CATALOG: OnceLock<EngineCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
@@ -339,9 +338,25 @@ fn find_pinned_binary_checksum_for_target(
     target_os: &str,
     target_arch: &str,
 ) -> Option<&'static str> {
+    find_pinned_binary_checksum_in_releases(
+        get_pinned_engine_releases(),
+        engine_name,
+        version,
+        target_os,
+        target_arch,
+    )
+}
+
+fn find_pinned_binary_checksum_in_releases<'a>(
+    releases: &'a [PinnedEngineRelease],
+    engine_name: &str,
+    version: &str,
+    target_os: &str,
+    target_arch: &str,
+) -> Option<&'a str> {
     let target_os = normalize_os(target_os);
     let target_arch = normalize_arch(target_arch);
-    get_pinned_engine_releases()
+    releases
         .iter()
         .find(|r| {
             r.engine_name.eq_ignore_ascii_case(engine_name)
@@ -948,9 +963,50 @@ mod tests {
         let invalid_status = source.replacen("\"recommended\"", "\"unknown\"", 1);
         assert!(parse_engine_catalog(&invalid_status).is_err());
 
-        // Re-label one row as a second default version; incomplete coverage must also fail closed.
-        let second_default = source.replacen("v1.13.18", "v1.12.0", 1);
-        assert!(parse_engine_catalog(&second_default).is_err());
+        let mut catalog = parse_engine_catalog(source).unwrap();
+        let mut second_default = catalog.releases.clone();
+        for release in &mut second_default {
+            if release.engine_name == "sing-box" {
+                release.version = "v1.12.0".to_string();
+            }
+        }
+        catalog.releases.extend(
+            second_default
+                .into_iter()
+                .filter(|release| release.engine_name == "sing-box"),
+        );
+        assert_eq!(
+            validate_engine_catalog(&catalog),
+            Err("sing-box must have exactly one recommended version".to_string())
+        );
+    }
+
+    #[test]
+    fn test_yanked_release_is_excluded_from_checksum_lookup() {
+        let mut catalog = parse_engine_catalog(include_str!("../engine_catalog.json")).unwrap();
+        let mut yanked = catalog.releases.clone();
+        for release in &mut yanked {
+            if release.engine_name == "sing-box" {
+                release.version = "v1.12.0".to_string();
+                release.status = EngineReleaseStatus::Yanked;
+            }
+        }
+        catalog.releases.extend(
+            yanked
+                .into_iter()
+                .filter(|release| release.engine_name == "sing-box"),
+        );
+        assert!(validate_engine_catalog(&catalog).is_ok());
+        assert_eq!(
+            find_pinned_binary_checksum_in_releases(
+                &catalog.releases,
+                "sing-box",
+                "v1.12.0",
+                "linux",
+                "x86_64",
+            ),
+            None
+        );
     }
 
     #[test]
