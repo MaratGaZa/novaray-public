@@ -131,9 +131,13 @@ WebSocket отклоняются как несовместимые комбин�
   security oracle. При несовпадении pinned binary checksum диагностика называет движок, pinned
   версию и целевые OS/arch и различает «другая/неподдерживаемая версия либо изменённый артефакт»
   от отсутствия pin для платформы. Запуск остаётся fail-closed; `--expected-sha256` — явный
-  trusted override и не доказывает версию бинарника.
-- Typed configuration dialect проверяется против выбранного release до старта процесса: доказанные
-  пары — Xray `v26.*`/`XrayV26` и sing-box `v1.13.*`/`SingBoxV1_13`.
+  trusted override для ожидаемых байтов бинарника, но не выбирает версию движка, не доказывает
+  версию бинарника и не отключает compatibility check.
+- Typed configuration dialect хранится в catalog как свойство exact пары `engine/version` и
+  проверяется против выбранного recommended release до выбора checksum source и старта процесса:
+  текущие доказанные пары — Xray `v26.3.27`/`XrayV26` и sing-box `v1.13.18`/`SingBoxV1_13`.
+  Catalog validation отклоняет неизвестную строку dialect и рассинхрон dialect между target-записями
+  одной версии.
 - CLI-команда `start` принимает `--engine-config xray|sing-box` для выбора формата генерируемой
   конфигурации и pre-flight команды. По умолчанию выбирается `xray`; `--engine-bin` указывает
   путь к исполняемому файлу выбранного движка и сам по себе не меняет формат конфигурации.

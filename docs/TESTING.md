@@ -83,7 +83,8 @@ cargo test --all-targets
 - declared engine support matrix: every catalog OS/arch entry has a binary SHA-256 and its recorded
   archive/binary evidence is reproducible from the pinned upstream release asset;
 - versioned engine catalog: unique engine/version/target keys, lowercase hash format, complete target
-  coverage per version, one lifecycle status per version, and exactly one recommended version per engine;
+  coverage per version, one lifecycle status per version, one configuration dialect per version,
+  exact strategy/release compatibility, and exactly one recommended version per engine;
 - network-boundary request ↔ allowlisted operation.
 
 ### L4 — Component integration

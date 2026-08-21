@@ -6,16 +6,25 @@
 ## Decision
 
 `EngineConfigStrategy` owns a typed configuration dialect, while the catalog owns artifact versions.
-Startup validates their compatibility before checksum resolution or process spawn. The current proven
-pairs are Xray `v26.*` with `XrayV26`, and sing-box `v1.13.*` with `SingBoxV1_13`.
+Each catalog release records the exact configuration dialect proven for that engine/version pair.
+Startup resolves the engine's single `recommended` catalog version, validates the strategy dialect
+against that catalog release, and only then chooses the checksum source or spawns a process.
+
+`--expected-sha256` overrides the expected binary bytes only. It does not select an engine version
+and does not bypass the configuration-dialect compatibility check. This keeps unsupported OS/arch
+targets usable with a trusted checksum while still binding them to the current recommended catalog
+version.
 
 ## Consequences
 
-An incompatible release fails closed with a typed error. Future selection may expose only proven
-`recommended`/`supported` pairs, warn for `deprecated`, and reject `yanked`. Runtime update remains
-out of scope. Real preflight evidence is required when adding a pair.
+An incompatible release fails closed with a typed error. Catalog validation rejects unknown dialect
+strings and rejects engine/version rows that disagree on dialect across targets. Future selection may
+expose only proven `recommended`/`supported` pairs, warn for `deprecated`, and reject `yanked`.
+Runtime update remains out of scope. Real preflight evidence is required when adding a pair.
 
 ## Evidence and revisit
 
-On 2026-08-21 the pinned macOS arm64 Xray `v26.3.27` and sing-box `v1.13.18` passed generated-config
-preflight. Revisit this ADR before adding a new dialect or `--engine-version`.
+On 2026-08-21 the pinned macOS arm64 Xray `v26.3.27`/`XrayV26` and sing-box
+`v1.13.18`/`SingBoxV1_13` pairs passed generated-config preflight. Revisit this ADR before adding a
+new dialect or `--engine-version`, especially to separate catalog-version overrides from truly
+uncatalogued/unsafe binary overrides.

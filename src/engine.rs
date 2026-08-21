@@ -118,6 +118,7 @@ pub struct PinnedEngineRelease {
     pub version: String,
     pub revision: String,
     pub status: EngineReleaseStatus,
+    pub config_dialect: EngineConfigDialect,
     pub target_os: String,
     pub target_arch: String,
     pub archive_name: String,
@@ -173,8 +174,14 @@ pub fn get_pinned_engine_releases() -> &'static [PinnedEngineRelease] {
 
 /// Returns the only default release version allowed for an engine family.
 pub fn recommended_engine_version(engine_name: &str) -> Option<&'static str> {
-    let versions = engine_catalog()
-        .releases
+    recommended_engine_version_in_releases(get_pinned_engine_releases(), engine_name)
+}
+
+fn recommended_engine_version_in_releases<'a>(
+    releases: &'a [PinnedEngineRelease],
+    engine_name: &str,
+) -> Option<&'a str> {
+    let versions = releases
         .iter()
         .filter(|release| {
             release.engine_name.eq_ignore_ascii_case(engine_name)
@@ -185,21 +192,40 @@ pub fn recommended_engine_version(engine_name: &str) -> Option<&'static str> {
     (versions.len() == 1).then(|| *versions.first().expect("checked length"))
 }
 
-fn is_release_compatible(strategy: EngineConfigStrategy, version: &str) -> bool {
-    match strategy.config_dialect() {
-        EngineConfigDialect::XrayV26 => version.starts_with("v26."),
-        EngineConfigDialect::SingBoxV1_13 => version.starts_with("v1.13."),
-    }
+fn catalog_release_dialect_in_releases(
+    releases: &[PinnedEngineRelease],
+    engine_name: &str,
+    version: &str,
+) -> Option<EngineConfigDialect> {
+    releases
+        .iter()
+        .find(|release| {
+            release.engine_name.eq_ignore_ascii_case(engine_name)
+                && release.version.eq_ignore_ascii_case(version)
+                && release.status != EngineReleaseStatus::Yanked
+        })
+        .map(|release| release.config_dialect)
 }
 
+#[cfg(test)]
 fn validate_release_compatibility(
     strategy: EngineConfigStrategy,
     version: &str,
 ) -> Result<(), EngineError> {
-    is_release_compatible(strategy, version)
+    validate_release_compatibility_in_releases(strategy, version, get_pinned_engine_releases())
+}
+
+fn validate_release_compatibility_in_releases(
+    strategy: EngineConfigStrategy,
+    version: &str,
+    releases: &[PinnedEngineRelease],
+) -> Result<(), EngineError> {
+    let engine_name = strategy.engine_name();
+    catalog_release_dialect_in_releases(releases, engine_name, version)
+        .is_some_and(|dialect| dialect == strategy.config_dialect())
         .then_some(())
         .ok_or_else(|| EngineError::IncompatibleEngineRelease {
-            engine_name: strategy.engine_name().to_string(),
+            engine_name: engine_name.to_string(),
             version: version.to_string(),
             dialect: strategy.config_dialect(),
         })
@@ -276,6 +302,15 @@ fn validate_engine_catalog(catalog: &EngineCatalog) -> Result<(), String> {
         if statuses.len() != 1 {
             return Err(format!(
                 "{engine_name} {version} must use one lifecycle status"
+            ));
+        }
+        let dialects = entries
+            .clone()
+            .map(|release| release.config_dialect)
+            .collect::<HashSet<_>>();
+        if dialects.len() != 1 {
+            return Err(format!(
+                "{engine_name} {version} must use one configuration dialect"
             ));
         }
         let coverage = entries
@@ -423,6 +458,30 @@ fn resolve_expected_binary_checksum_for_target<'a>(
     target_os: &str,
     target_arch: &str,
 ) -> Result<ExpectedBinaryChecksum<'a>, EngineError> {
+    resolve_expected_binary_checksum_in_releases(
+        get_pinned_engine_releases(),
+        strategy,
+        explicit_sha256,
+        target_os,
+        target_arch,
+    )
+}
+
+fn resolve_expected_binary_checksum_in_releases<'a>(
+    releases: &'a [PinnedEngineRelease],
+    strategy: EngineConfigStrategy,
+    explicit_sha256: Option<&'a str>,
+    target_os: &str,
+    target_arch: &str,
+) -> Result<ExpectedBinaryChecksum<'a>, EngineError> {
+    let target_os = normalize_os(target_os).to_string();
+    let target_arch = normalize_arch(target_arch).to_string();
+    let engine_name = strategy.engine_name().to_string();
+    let version = recommended_engine_version_in_releases(releases, &engine_name)
+        .ok_or(EngineError::MissingExpectedChecksum)?
+        .to_string();
+    validate_release_compatibility_in_releases(strategy, &version, releases)?;
+
     if let Some(explicit) = explicit_sha256 {
         return Ok(ExpectedBinaryChecksum {
             value: Cow::Borrowed(explicit),
@@ -430,24 +489,21 @@ fn resolve_expected_binary_checksum_for_target<'a>(
         });
     }
 
-    let target_os = normalize_os(target_os).to_string();
-    let target_arch = normalize_arch(target_arch).to_string();
-    let engine_name = strategy.engine_name().to_string();
-    let version = recommended_engine_version(&engine_name)
-        .ok_or(EngineError::MissingExpectedChecksum)?
-        .to_string();
-    validate_release_compatibility(strategy, &version)?;
-
-    let value =
-        find_pinned_binary_checksum_for_target(&engine_name, &version, &target_os, &target_arch)
-            .ok_or_else(|| {
-                EngineError::MissingPinnedBinaryChecksum(Box::new(MissingPinnedBinaryChecksum {
-                    engine_name: engine_name.clone(),
-                    version: version.clone(),
-                    target_os: target_os.clone(),
-                    target_arch: target_arch.clone(),
-                }))
-            })?;
+    let value = find_pinned_binary_checksum_in_releases(
+        releases,
+        &engine_name,
+        &version,
+        &target_os,
+        &target_arch,
+    )
+    .ok_or_else(|| {
+        EngineError::MissingPinnedBinaryChecksum(Box::new(MissingPinnedBinaryChecksum {
+            engine_name: engine_name.clone(),
+            version: version.clone(),
+            target_os: target_os.clone(),
+            target_arch: target_arch.clone(),
+        }))
+    })?;
 
     Ok(ExpectedBinaryChecksum {
         value: Cow::Borrowed(value),
@@ -986,13 +1042,33 @@ mod tests {
     }
 
     #[test]
-    fn test_config_dialect_rejects_incompatible_engine_release_before_start() {
+    fn test_config_dialect_rejects_incompatible_catalog_release_before_start() {
         assert!(validate_release_compatibility(EngineConfigStrategy::Xray, "v26.3.27").is_ok());
         assert!(validate_release_compatibility(EngineConfigStrategy::SingBox, "v1.13.18").is_ok());
-        assert!(matches!(
-            validate_release_compatibility(EngineConfigStrategy::SingBox, "v1.12.0"),
-            Err(EngineError::IncompatibleEngineRelease { .. })
-        ));
+        assert_eq!(
+            validate_release_compatibility(EngineConfigStrategy::SingBox, "v1.12.0")
+                .unwrap_err()
+                .to_string(),
+            "Конфигурационный диалект SingBoxV1_13 несовместим с sing-box v1.12.0; запуск запрещён"
+        );
+
+        let mut catalog = parse_engine_catalog(include_str!("../engine_catalog.json")).unwrap();
+        for release in &mut catalog.releases {
+            if release.engine_name == "sing-box" && release.version == "v1.13.18" {
+                release.config_dialect = EngineConfigDialect::XrayV26;
+            }
+        }
+        assert!(validate_engine_catalog(&catalog).is_ok());
+        assert_eq!(
+            validate_release_compatibility_in_releases(
+                EngineConfigStrategy::SingBox,
+                "v1.13.18",
+                &catalog.releases,
+            )
+            .unwrap_err()
+            .to_string(),
+            "Конфигурационный диалект SingBoxV1_13 несовместим с sing-box v1.13.18; запуск запрещён"
+        );
     }
 
     #[test]
@@ -1000,6 +1076,12 @@ mod tests {
         let source = include_str!("../engine_catalog.json");
         let invalid_status = source.replacen("\"recommended\"", "\"unknown\"", 1);
         assert!(parse_engine_catalog(&invalid_status).is_err());
+        assert_eq!(
+            serde_json::from_value::<EngineConfigDialect>(serde_json::json!("unknown"))
+                .unwrap_err()
+                .to_string(),
+            "unknown variant `unknown`, expected `xray_v26` or `sing_box_v1_13`"
+        );
 
         let mut catalog = parse_engine_catalog(source).unwrap();
         let mut second_default = catalog.releases.clone();
@@ -1016,6 +1098,27 @@ mod tests {
         assert_eq!(
             validate_engine_catalog(&catalog),
             Err("sing-box must have exactly one recommended version".to_string())
+        );
+    }
+
+    #[test]
+    fn test_engine_catalog_rejects_multiple_config_dialects_for_one_version() {
+        let mut catalog = parse_engine_catalog(include_str!("../engine_catalog.json")).unwrap();
+        let release = catalog
+            .releases
+            .iter_mut()
+            .find(|release| {
+                release.engine_name == "sing-box"
+                    && release.version == "v1.13.18"
+                    && release.target_os == "linux"
+                    && release.target_arch == "x86_64"
+            })
+            .unwrap();
+        release.config_dialect = EngineConfigDialect::XrayV26;
+
+        assert_eq!(
+            validate_engine_catalog(&catalog),
+            Err("sing-box v1.13.18 must use one configuration dialect".to_string())
         );
     }
 
@@ -1091,6 +1194,40 @@ mod tests {
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         );
         assert_eq!(explicit.source, ExpectedBinaryChecksumSource::Explicit);
+
+        let explicit_unsupported_target = resolve_expected_binary_checksum_for_target(
+            EngineConfigStrategy::SingBox,
+            Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+            "windows",
+            "arm64",
+        )
+        .unwrap();
+        assert_eq!(
+            explicit_unsupported_target.value,
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        );
+        assert_eq!(
+            explicit_unsupported_target.source,
+            ExpectedBinaryChecksumSource::Explicit
+        );
+
+        let mut catalog = parse_engine_catalog(include_str!("../engine_catalog.json")).unwrap();
+        for release in &mut catalog.releases {
+            if release.engine_name == "sing-box" && release.version == "v1.13.18" {
+                release.config_dialect = EngineConfigDialect::XrayV26;
+            }
+        }
+        let explicit_incompatible = resolve_expected_binary_checksum_in_releases(
+            &catalog.releases,
+            EngineConfigStrategy::SingBox,
+            Some("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+            "windows",
+            "arm64",
+        );
+        assert_eq!(
+            explicit_incompatible.unwrap_err().to_string(),
+            "Конфигурационный диалект SingBoxV1_13 несовместим с sing-box v1.13.18; запуск запрещён"
+        );
 
         let pinned = resolve_expected_binary_checksum_for_target(
             EngineConfigStrategy::Xray,
