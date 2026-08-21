@@ -141,6 +141,8 @@ of being ignored.
   pinned version, and target OS/arch, and distinguish “different/unsupported version or modified
   artifact” from a missing platform pin. Startup remains fail-closed; `--expected-sha256` is an
   explicit trusted override and does not prove the binary version.
+- A typed configuration dialect is validated against the selected release before process start:
+  current proven pairs are Xray `v26.*`/`XrayV26` and sing-box `v1.13.*`/`SingBoxV1_13`.
 - The `start` CLI command accepts `--engine-config xray|sing-box` to select the generated
   configuration format and pre-flight command. It defaults to `xray`; `--engine-bin` supplies
   the executable path for the selected engine and does not itself change the configuration format.
