@@ -201,6 +201,8 @@ Android VpnService → Android UI → release
 - [x] Ввести versioned engine catalog и maintainer-only offline updater (issue #9): отделить
   configuration dialect от release identity, проверять lifecycle и checksum/matrix invariants без
   сети и не открывать user-selectable version до compatibility contract.
+- [x] Выразить compatibility contract release/dialect (issue #11): Xray `v26.*` и sing-box `v1.13.*`
+  проходят typed fail-closed gate до start; будущий selector остаётся отдельной фазой.
 - [x] Определить безопасный путь временной/runtime конфигурации и permissions.
 - [x] Удалять runtime secrets после остановки.
 

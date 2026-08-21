@@ -418,6 +418,9 @@ machine; package identity, signatures и rollback traceable до source revision
     offline инварианты и maintainer-only candidate generator. CLI version selection отложен до
     compatibility contract и real-engine evidence.
 20. Только после этого начать macOS system tunnel vertical slice на privileged helper.
+21. [x] Contract совместимости engine release/configuration dialect — issue #11: typed dialect,
+    exact catalog-level dialect per engine/version, fail-closed incompatibility before checksum source
+    selection/process start и real macOS arm64 preflight для текущих пар.
 
 ## 7. Зависимости
 

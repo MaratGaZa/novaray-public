@@ -2,6 +2,7 @@
 use crate::config::{ServerProfile, UserSettings};
 use crate::sing_box_generator::SingBoxConfigGenerator;
 use crate::xray_generator::XrayConfigGenerator;
+use serde::Deserialize;
 use serde_json::Value;
 use std::ffi::OsString;
 use std::path::Path;
@@ -16,7 +17,21 @@ pub enum EngineConfigStrategy {
     SingBox,
 }
 
+/// Versioned configuration dialect emitted by a generator strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineConfigDialect {
+    XrayV26,
+    SingBoxV1_13,
+}
+
 impl EngineConfigStrategy {
+    pub fn config_dialect(self) -> EngineConfigDialect {
+        match self {
+            Self::Xray => EngineConfigDialect::XrayV26,
+            Self::SingBox => EngineConfigDialect::SingBoxV1_13,
+        }
+    }
     pub fn engine_name(self) -> &'static str {
         match self {
             Self::Xray => "xray-core",

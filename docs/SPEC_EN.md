@@ -140,7 +140,13 @@ of being ignored.
   trusted security oracle. On a pinned binary checksum mismatch, diagnostics name the engine,
   pinned version, and target OS/arch, and distinguish “different/unsupported version or modified
   artifact” from a missing platform pin. Startup remains fail-closed; `--expected-sha256` is an
-  explicit trusted override and does not prove the binary version.
+  explicit trusted override for expected binary bytes, but it does not select an engine version,
+  does not prove the binary version, and does not disable the compatibility check.
+- A typed configuration dialect is stored in the catalog as an exact `engine/version` property and
+  validated against the selected recommended release before choosing the checksum source or starting
+  a process: the current proven pairs are Xray `v26.3.27`/`XrayV26` and sing-box
+  `v1.13.18`/`SingBoxV1_13`. Catalog validation rejects unknown dialect strings and target rows for
+  the same version that disagree on dialect.
 - The `start` CLI command accepts `--engine-config xray|sing-box` to select the generated
   configuration format and pre-flight command. It defaults to `xray`; `--engine-bin` supplies
   the executable path for the selected engine and does not itself change the configuration format.
