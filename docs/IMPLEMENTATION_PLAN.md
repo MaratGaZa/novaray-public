@@ -469,6 +469,11 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     allowlisted commands/events, bounded validation). Scope intentionally excludes launchd/root,
     IPC transport, install/uninstall, `utun`, routes, DNS, firewall, system proxy and remote
     daemon `disconnect` wiring.
+24. [x] ConnectionState и serialized command executor — issue #18: добавить UI-independent core
+    lifecycle skeleton (`ConnectionState`, connect/status/disconnect/recover intents, observed helper
+    state mapping), сериализующий только allowlisted `PlatformHelperCommand` после validation через
+    platform contract. Scope intentionally excludes helper runtime, IPC transport, launchd/root,
+    engine readiness binding, `utun`, routes, DNS, firewall, system proxy and real daemon disconnect.
 
 ## 7. Зависимости
 

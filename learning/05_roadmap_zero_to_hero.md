@@ -260,6 +260,9 @@ Android VpnService → Android UI → release
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.
+- [x] Реализовать `ConnectionState` и serialized helper command executor в Rust core без
+  transport/runtime side effects: connect/status/disconnect/recover intents, observed-state mapping,
+  transition validation и запрет concurrent connect/disconnect на уровне core skeleton.
 
 ### 3.2. Tunnel lifecycle
 
@@ -277,7 +280,9 @@ Android VpnService → Android UI → release
 - [ ] Описать `NetworkSnapshot` и `AppliedNetworkState`.
 - [ ] Сделать connect последовательностью применимых/отменяемых операций.
 - [ ] Добавить compensation для каждого шага.
-- [ ] Сериализовать concurrent connect/disconnect.
+- [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает
+  недопустимые state transitions; runtime/helper-level serialization ждёт IPC transport и real
+  network transaction.
 - [ ] Сделать повторные команды идемпотентными.
 - [ ] Создать recovery journal для восстановления после crash.
 

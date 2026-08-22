@@ -80,6 +80,9 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 - [~] Engine JSON generation: the Xray generator and the swappable sing-box strategy generate local SOCKS/HTTP inbounds and VLESS outbounds with standard TLS, Reality, and TCP/WebSocket/gRPC metadata; Xray has controlled loopback traffic evidence, sing-box Reality/TCP passes `sing-box check -c` on pinned `v1.13.18`, but routing/DNS policy is not implemented yet.
 - [~] Domain, IP, and app matcher with typed `SplitTunnelMode`; traffic data-plane enforcement requires network extension.
 - [~] Process spawn/kill without readiness, log draining, restart, or graceful shutdown.
+- [x] Connection lifecycle skeleton: `ConnectionState` and a serialized helper command executor
+  validate connect/status/disconnect/recover transitions without an IPC transport, helper runtime,
+  or network mutation.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -239,6 +242,8 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   allowlisted commands/events, strict schema validation, redacted debug output, and bounded
   validation. It does not install a helper, open an IPC transport, run as `root`, or mutate `utun`,
   routes, DNS, firewall, or system proxy state.
+- The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
+  state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 
 ## 5. Target architecture
 
