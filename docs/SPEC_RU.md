@@ -115,7 +115,16 @@ WebSocket отклоняются как несовместимые комбин�
 Имена известных критичных query-параметров регистрозависимы; варианты вроде `Type`, `Security` и
 `HeaderType`, `Host`, `Path`, `ServiceName`, `Authority` и `Mode` отклоняются явно, а не игнорируются.
 
-После стабильного первого релиза могут добавляться WireGuard, Shadowsocks 2022, Trojan и Hysteria 2. Каждый протокол требует отдельной схемы, capability matrix и integration tests.
+Текущий MVP не должен архитектурно закрывать добавление других поддерживаемых движком протоколов.
+UI, helper/IPC contract и policy model не должны предполагать, что единственный возможный outbound
+protocol — VLESS: протокол выбирается типизированным profile field и транслируется в engine-specific
+generator. После стабильных desktop-релизов могут добавляться отдельными vertical slices: Trojan +
+TLS, Shadowsocks AEAD/2022, Hysteria 2, TUIC, WireGuard, VMess и debug/enterprise outbounds
+(`socks`, `http`, `ssh`) там, где они поддержаны выбранным движком и не ломают safety model.
+Каждый новый протокол требует отдельной схемы, URI/config importer, semantic validation,
+capability matrix, generated-config preflight, real network integration tests, redaction review и
+документации ограничений. WireGuard считается отдельной моделью VPN-профиля с ключами, addresses и
+allowed IPs, а не простой разновидностью VLESS-proxy profile.
 
 ### FR-003. Network engine lifecycle
 

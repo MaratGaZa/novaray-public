@@ -705,7 +705,15 @@ PoC доказывает typed IPC, минимальные privilege и восс
 - [ ] Публиковать для Android только versioned shared Rust crates/schemas/fixtures с compatibility tests.
 - [ ] Intel/universal macOS и Windows ARM64 builds при подтверждённом спросе.
 - [ ] Linux network backend и packaging.
-- [ ] WireGuard, Shadowsocks 2022, Trojan, Hysteria 2/TUIC отдельными vertical slices.
+- [ ] Сохранить protocol-extensible core/UI/helper boundary: новые протоколы добавляются через
+  typed profile/schema/importer/generator/capability slices, без переписывания VLESS path.
+- [ ] Trojan + TLS отдельным vertical slice: schema/importer/validation/generator/preflight/real traffic.
+- [ ] Shadowsocks AEAD/2022 отдельным vertical slice.
+- [ ] Hysteria 2 отдельным UDP/QUIC-heavy vertical slice с leak/MTU/DNS evidence.
+- [ ] TUIC отдельным UDP/QUIC-heavy vertical slice.
+- [ ] WireGuard отдельной VPN-profile family: keys, addresses, peers, allowed IPs, DNS/routing и recovery.
+- [ ] VMess только как legacy compatibility slice с documented warning.
+- [ ] Debug/enterprise outbounds (`socks`, `http`, `ssh`) только с explicit user intent и redaction review.
 - [ ] Optional telemetry только с privacy spec и explicit opt-in.
 - [ ] Advanced rules, subscriptions и managed configuration.
 

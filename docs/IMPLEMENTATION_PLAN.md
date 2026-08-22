@@ -324,6 +324,40 @@ Acceptance: весь Windows flow доступен без CLI; UI не треб�
 Acceptance: все восемь Windows criteria из `SPEC_RU.md` подтверждены на clean Windows 11 x64
 machine; package identity, signatures и rollback traceable до source revisions.
 
+### M14 — Post-release protocol and platform extensibility
+
+Цель: после macOS и Windows release path сохранить возможность добавлять новые protocol families без
+переписывания core, UI, helper IPC и policy model. Linux network backend остаётся отдельным future
+decision; если он становится целевой платформой, protocol expansion выполняется после Linux topology/
+packaging baseline или строго как local-proxy-only capability.
+
+Порядок:
+
+1. Зафиксировать protocol extension contract: typed `ProtocolType`, protocol-specific profile data,
+   schema versioning, importer boundary, capability reporting и engine-generator mapping.
+2. Убрать product/UI assumptions вида «профиль всегда VLESS»: UI показывает protocol-specific fields
+   через capability metadata, а helper/IPC принимает typed profile/config payload без raw shell.
+3. Добавить Trojan + TLS vertical slice: schema/importer, validation, sing-box generator,
+   generated-config preflight, real local-proxy traffic test и docs.
+4. Добавить Shadowsocks AEAD/2022 vertical slice с отдельной моделью method/password/plugin policy,
+   preflight и real traffic evidence.
+5. Добавить Hysteria 2 vertical slice с UDP/QUIC capability, congestion/obfs settings, MTU/DNS/leak
+   risks и отдельными network tests.
+6. Добавить TUIC vertical slice с QUIC/UDP behavior, authentication fields, preflight и real traffic
+   evidence.
+7. Добавить WireGuard как отдельную VPN-profile family: keys, addresses, peers, allowed IPs,
+   DNS/routing semantics, migration rules и recovery/leak tests.
+8. Добавить VMess только как compatibility/legacy slice, с явным warning в UI/docs при выборе
+   устаревших или слабых режимов.
+9. Добавить debug/enterprise outbounds (`socks`, `http`, `ssh`) только с explicit user intent,
+   redaction review и запретом случайно принять их за full VPN tunnel.
+10. Для каждого нового protocol обновить RU/EN SPEC, schemas, examples, `pinned-releases`/engine
+    compatibility evidence, generated-config tests, real-engine preflight и documentation of limits.
+
+Acceptance: два новых протокола проходят end-to-end local-proxy traffic evidence, один UDP/QUIC-heavy
+protocol имеет отдельные leak/MTU/DNS observations, WireGuard имеет утверждённую model/spec до кода,
+а UI/helper boundaries остаются protocol-agnostic и не требуют переписывания существующего VLESS path.
+
 ## 6. Первые 12 исполнимых задач
 
 Это рекомендуемая ближайшая очередь для первого macOS release. Windows product work не подменяет её:
