@@ -9,7 +9,10 @@
 use crate::config::{AppConfig, UserSettings};
 use crate::config_generator::EngineConfigStrategy;
 use crate::core::SupervisorState;
-use crate::engine::{get_pinned_engine_releases, EngineError, ProxyService, ProxyServiceOptions};
+use crate::engine::{
+    get_pinned_engine_releases, resolve_engine_release_selection, EngineError, ProxyService,
+    ProxyServiceOptions,
+};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::info;
@@ -59,6 +62,7 @@ pub struct StartOptions {
     pub settings_path: PathBuf,
     pub engine_binary: PathBuf,
     pub config_strategy: EngineConfigStrategy,
+    pub engine_version: Option<String>,
     pub expected_sha256: Option<String>,
     pub enable_preflight: bool,
     pub preflight_timeout_secs: u64,
@@ -72,6 +76,7 @@ impl Default for StartOptions {
             settings_path: PathBuf::from("settings.example.json"),
             engine_binary: default_engine_binary(),
             config_strategy: EngineConfigStrategy::Xray,
+            engine_version: None,
             expected_sha256: None,
             enable_preflight: true,
             preflight_timeout_secs: 5,
@@ -177,6 +182,24 @@ where
                             ));
                         }
                         opts.config_strategy = parse_engine_config_strategy(&args[i])?;
+                    }
+                    "--engine-version" => {
+                        i += 1;
+                        if i >= args.len() {
+                            return Err((
+                                "Флаг --engine-version требует значения версии".to_string(),
+                                ExitCode::UsageError,
+                            ));
+                        }
+                        let version = args[i].trim();
+                        if version.is_empty() {
+                            return Err((
+                                "Флаг --engine-version требует непустого значения версии"
+                                    .to_string(),
+                                ExitCode::UsageError,
+                            ));
+                        }
+                        opts.engine_version = Some(version.to_string());
                     }
                     "--expected-sha256" => {
                         i += 1;
@@ -344,6 +367,9 @@ fn print_help() {
         "                                   --engine-bin задаёт путь, но не меняет формат конфигурации"
     );
     println!(
+        "        --engine-version <VER>    Версия выбранного движка из pinned catalog (по умолчанию: recommended)"
+    );
+    println!(
         "        --expected-sha256 <HASH>  SHA-256 override; по умолчанию используется pinned checksum"
     );
     println!(
@@ -370,7 +396,7 @@ fn print_status() {
     println!("  Inbounds:           SOCKS5 (RFC 1928), HTTP Forward Proxy");
     println!("  Engine Routing:     Global Proxy (M2 local proxy; per-app engine routing planned for sing-box Task 14)");
     println!("  Core Matcher:       Domain, IP CIDR, App Process Name matching rules");
-    println!("  Supported Engines:  Xray-core (default, pinned v26.3.27), sing-box (select with --engine-config sing-box)");
+    println!("  Supported Engines:  Xray-core (default, selectable pinned versions), sing-box (select with --engine-config sing-box)");
     println!("  Pinned Targets:     macOS arm64/x86_64, Linux arm64/x86_64, Windows x86_64; другие targets требуют --expected-sha256");
     println!("  Topology:           Direct Local-Proxy (M2) / Privileged Helper utun (M3 target)");
 }
@@ -380,6 +406,7 @@ fn print_pinned_releases() {
     for release in get_pinned_engine_releases() {
         println!("  - Engine:      {}", release.engine_name);
         println!("    Version:     {}", release.version);
+        println!("    Dialect:     {:?}", release.config_dialect);
         println!(
             "    OS/Arch:     {}/{}",
             release.target_os, release.target_arch
@@ -516,6 +543,18 @@ async fn execute_start(opts: &StartOptions) -> ExitCode {
 
     let service_opts = proxy_service_options(opts);
 
+    match resolve_engine_release_selection(opts.config_strategy, opts.engine_version.as_deref()) {
+        Ok(selection) => {
+            if let Some(warning) = selection.warning {
+                eprintln!("Предупреждение: {}", warning);
+            }
+        }
+        Err(e) => {
+            eprintln!("Ошибка запуска прокси-сервиса: {}", e);
+            return map_engine_error_to_exit_code(&e);
+        }
+    }
+
     let mut service = ProxyService::new();
 
     // Регистрируем обработчики сигналов до старта сервиса для предотвращения race condition
@@ -642,6 +681,7 @@ async fn execute_start(opts: &StartOptions) -> ExitCode {
 fn proxy_service_options(opts: &StartOptions) -> ProxyServiceOptions {
     ProxyServiceOptions {
         config_strategy: opts.config_strategy,
+        engine_version: opts.engine_version.clone(),
         expected_sha256: opts.expected_sha256.clone(),
         enable_preflight_check: opts.enable_preflight,
         preflight_timeout: Duration::from_secs(opts.preflight_timeout_secs),
@@ -736,6 +776,8 @@ fn map_engine_error_to_exit_code(err: &EngineError) -> ExitCode {
         EngineError::MissingPinnedBinaryChecksum(_) => ExitCode::EngineError,
         EngineError::MissingExpectedChecksum => ExitCode::EngineError,
         EngineError::IncompatibleEngineRelease { .. } => ExitCode::EngineError,
+        EngineError::UnknownEngineVersion { .. } => ExitCode::EngineError,
+        EngineError::YankedEngineVersion { .. } => ExitCode::EngineError,
         EngineError::PortInUse(_) => ExitCode::EngineError,
         EngineError::ConfigPreflightFailed(_) => ExitCode::EngineError,
         EngineError::AlreadyRunning(_) => ExitCode::EngineError,
@@ -794,6 +836,8 @@ mod tests {
             "/usr/local/bin/xray",
             "--engine-config",
             "sing-box",
+            "--engine-version",
+            "v1.13.18",
             "--expected-sha256",
             "abc12345",
             "--no-preflight",
@@ -809,6 +853,7 @@ mod tests {
                 assert_eq!(opts.settings_path, PathBuf::from("my_set.json"));
                 assert_eq!(opts.engine_binary, PathBuf::from("/usr/local/bin/xray"));
                 assert_eq!(opts.config_strategy, EngineConfigStrategy::SingBox);
+                assert_eq!(opts.engine_version.as_deref(), Some("v1.13.18"));
                 assert_eq!(opts.expected_sha256.as_deref(), Some("abc12345"));
                 assert!(!opts.enable_preflight);
                 assert_eq!(opts.preflight_timeout_secs, 10);
@@ -825,10 +870,12 @@ mod tests {
         };
 
         assert_eq!(opts.config_strategy, EngineConfigStrategy::Xray);
+        assert_eq!(opts.engine_version, None);
         assert_eq!(
             proxy_service_options(&opts).config_strategy,
             EngineConfigStrategy::Xray
         );
+        assert_eq!(proxy_service_options(&opts).engine_version, None);
     }
 
     #[test]
@@ -836,6 +883,20 @@ mod tests {
         let error = parse_args(["start", "--engine-config", "unknown-engine"]).unwrap_err();
         assert_eq!(error.1, ExitCode::UsageError);
         assert!(error.0.contains("--engine-config"));
+    }
+
+    #[test]
+    fn test_cli_parse_invalid_engine_version_returns_usage_error() {
+        let missing = parse_args(["start", "--engine-version"]).unwrap_err();
+        assert_eq!(missing.1, ExitCode::UsageError);
+        assert_eq!(missing.0, "Флаг --engine-version требует значения версии");
+
+        let empty = parse_args(["start", "--engine-version", "   "]).unwrap_err();
+        assert_eq!(empty.1, ExitCode::UsageError);
+        assert_eq!(
+            empty.0,
+            "Флаг --engine-version требует непустого значения версии"
+        );
     }
 
     #[test]

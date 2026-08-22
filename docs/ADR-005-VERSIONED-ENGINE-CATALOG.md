@@ -19,10 +19,10 @@ version, upstream revision, target, archive/binary SHA-256 and lifecycle status.
 requires unique `(engine, version, os, arch)` keys, full declared-target coverage per version,
 lowercase SHA-256 values and exactly one `recommended` version per engine.
 
-Lifecycle values are `recommended`, `supported`, `deprecated`, and `yanked`. Runtime uses only the
-single recommended version. A future selector may offer only versions whose generator compatibility
-has separately been proven; it must reject `yanked` versions. Changing the recommended version is a
-separate reviewed change with a changelog entry.
+Lifecycle values are `recommended`, `supported`, `deprecated`, and `yanked`. Runtime uses the single
+recommended version by default. ADR-007 allows selecting catalogued versions whose generator
+compatibility has separately been proven; it warns for `deprecated` and rejects `yanked` versions.
+Changing the recommended version is a separate reviewed change with a changelog entry.
 
 `scripts/update_engine_catalog.py` is a maintainer-operated network tool. It downloads explicit
 assets, verifies the supplied archive SHA-256, hashes the extracted binary, and emits a candidate
@@ -34,7 +34,7 @@ catalog plus evidence. It never runs at application runtime or in ordinary CI.
   artifact identity stays coupled to configuration strategy.
 - Runtime latest-release lookup: rejected because remote metadata cannot replace reviewed binary
   extraction, reproducibility, or fail-closed trust.
-- Add `--engine-version` now: deferred until version-to-generator compatibility is modeled and tested.
+- Add `--engine-version` before compatibility is modeled: rejected until ADR-006 is in place.
 
 ## Consequences and validation
 
@@ -46,5 +46,4 @@ boundary.
 
 ## Revisit conditions
 
-Revisit before exposing version selection, adding runtime download/update behavior, or changing the
-declared target matrix.
+Revisit before adding runtime download/update behavior or changing the declared target matrix.

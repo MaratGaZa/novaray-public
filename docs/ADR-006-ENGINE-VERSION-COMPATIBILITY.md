@@ -18,13 +18,12 @@ version.
 ## Consequences
 
 An incompatible release fails closed with a typed error. Catalog validation rejects unknown dialect
-strings and rejects engine/version rows that disagree on dialect across targets. Future selection may
-expose only proven `recommended`/`supported` pairs, warn for `deprecated`, and reject `yanked`.
-Runtime update remains out of scope. Real preflight evidence is required when adding a pair.
+strings and rejects engine/version rows that disagree on dialect across targets. ADR-007 exposes
+only proven `recommended`/`supported` pairs, warns for `deprecated`, and rejects `yanked`. Runtime
+update remains out of scope. Real preflight evidence is required when adding a pair.
 
 ## Evidence and revisit
 
 On 2026-08-21 the pinned macOS arm64 Xray `v26.3.27`/`XrayV26` and sing-box
 `v1.13.18`/`SingBoxV1_13` pairs passed generated-config preflight. Revisit this ADR before adding a
-new dialect or `--engine-version`, especially to separate catalog-version overrides from truly
-uncatalogued/unsafe binary overrides.
+new dialect or truly uncatalogued/unsafe binary overrides.

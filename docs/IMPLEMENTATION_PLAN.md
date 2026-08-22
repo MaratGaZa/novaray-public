@@ -421,6 +421,10 @@ machine; package identity, signatures и rollback traceable до source revision
 21. [x] Contract совместимости engine release/configuration dialect — issue #11: typed dialect,
     exact catalog-level dialect per engine/version, fail-closed incompatibility before checksum source
     selection/process start и real macOS arm64 preflight для текущих пар.
+22. [x] CLI selector engine version — issue #13: добавить `--engine-version <VERSION>` поверх
+    versioned catalog и ADR-007; selected version должна резолвиться до binary/checksum/preflight,
+    `recommended`/`supported` разрешаются, `deprecated` печатает warning, `yanked`/unknown/
+    incompatible версии fail-closed, а `--expected-sha256` остаётся override байтов, не версии.
 
 ## 7. Зависимости
 

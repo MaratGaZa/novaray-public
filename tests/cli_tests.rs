@@ -334,6 +334,7 @@ fn test_cli_help_and_version_flags() {
     assert!(stdout.contains("start"));
     assert!(stdout.contains("validate"));
     assert!(stdout.contains("--engine-config <NAME>"));
+    assert!(stdout.contains("--engine-version <VER>"));
     assert!(stdout.contains("--engine-bin задаёт путь, но не меняет формат конфигурации"));
 
     // -h
@@ -754,6 +755,8 @@ fn test_cli_start_with_sing_box_strategy_stops_cleanly() {
             mock_bin.to_str().unwrap(),
             "--engine-config",
             "sing-box",
+            "--engine-version",
+            "v1.13.18",
             "--expected-sha256",
             &mock_sha256,
             "--timeout-secs",
@@ -819,6 +822,46 @@ fn test_cli_start_with_nonexistent_binary_returns_engine_error_exit_4() {
     assert_eq!(output.status.code(), Some(ExitCode::EngineError.as_i32()));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("не найден"));
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_cli_start_unknown_engine_version_fails_before_binary_lookup() {
+    let bin = get_novaray_core_bin();
+    let temp_dir = create_temp_dir();
+    let (socks_port, http_port) = allocate_test_ports();
+    let (config_path, settings_path) = create_valid_test_configs(&temp_dir, socks_port, http_port);
+
+    let output = Command::new(&bin)
+        .args([
+            "start",
+            "-c",
+            config_path.to_str().unwrap(),
+            "-s",
+            settings_path.to_str().unwrap(),
+            "-e",
+            "/tmp/nonexistent_xray_binary_12345",
+            "--engine-version",
+            "v99.0.0",
+            "--timeout-secs",
+            "2",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(ExitCode::EngineError.as_i32()));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Версия движка xray-core v99.0.0 не найдена в pinned catalog"),
+        "stderr={}",
+        stderr
+    );
+    assert!(
+        !stderr.contains("не найден: \"/tmp/nonexistent_xray_binary_12345\""),
+        "engine version error must happen before binary lookup: {}",
+        stderr
+    );
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }

@@ -177,7 +177,8 @@ delete unknown user/network state. Residue is assessed with a semantic pre/post 
 - Secrets use Keychain on macOS and an approved Windows credential mechanism after its threat model.
 - Bundled engine/rules are revision-pinned and checksum/signature verified.
 - Engine artifact identity is a checked-in versioned catalog; configuration dialect is independent
-  from release selection, and runtime uses only the reviewed `recommended` release.
+  from release selection, and runtime uses only catalogued compatible `recommended`/`supported`
+  releases, or `deprecated` releases with a pre-start warning.
 - Logs and diagnostics redact credentials and sensitive identifiers.
 - Signing credentials are absent from baseline pull-request CI.
 

@@ -201,8 +201,8 @@ Android VpnService → Android UI → release
 - [x] Ввести versioned engine catalog и maintainer-only offline updater (issue #9): отделить
   configuration dialect от release identity, проверять lifecycle и checksum/matrix invariants без
   сети и не открывать user-selectable version до compatibility contract.
-- [x] Выразить compatibility contract release/dialect (issue #11): Xray `v26.*` и sing-box `v1.13.*`
-  проходят typed fail-closed gate до start; будущий selector остаётся отдельной фазой.
+- [x] Выразить compatibility contract release/dialect (issue #11): Xray `v26.3.27`/`XrayV26` и
+  sing-box `v1.13.18`/`SingBoxV1_13` проходят typed fail-closed gate до start.
 - [x] Определить безопасный путь временной/runtime конфигурации и permissions.
 - [x] Удалять runtime secrets после остановки.
 
@@ -236,6 +236,9 @@ Android VpnService → Android UI → release
 - [x] Добавить `--engine-config xray|sing-box`: по умолчанию Xray, явный выбор формата
   конфигурации и pre-flight команды, usage error для неизвестного значения и тесты mapping
   CLI → `ProxyServiceOptions` (issue #4).
+- [x] Добавить `--engine-version <VERSION>` для выбора catalogued версии выбранного движка:
+  recommended/supported разрешены, deprecated предупреждает до старта, yanked/unknown/
+  incompatible версии отклоняются до binary/checksum/preflight (issue #13).
 - [ ] Реализовать удалённое управление `disconnect`/`stop` через persistent daemon/helper IPC (Milestone 3 / ADR-003).
 - [ ] Опционально включать системный прокси (`networksetup`) как временный режим до появления TUN.
 

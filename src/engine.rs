@@ -61,6 +61,18 @@ pub enum EngineError {
         dialect: EngineConfigDialect,
     },
 
+    #[error("Версия движка {engine_name} {version} не найдена в pinned catalog; запуск запрещён")]
+    UnknownEngineVersion {
+        engine_name: String,
+        version: String,
+    },
+
+    #[error("Версия движка {engine_name} {version} помечена как yanked в pinned catalog; запуск запрещён")]
+    YankedEngineVersion {
+        engine_name: String,
+        version: String,
+    },
+
     #[error("Pre-flight проверка конфигурации движком не пройдена: {0}")]
     ConfigPreflightFailed(String),
 
@@ -136,6 +148,38 @@ pub enum EngineReleaseStatus {
     Supported,
     Deprecated,
     Yanked,
+}
+
+/// Non-fatal release policy diagnostics surfaced before process start.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EngineReleaseWarning {
+    Deprecated {
+        engine_name: String,
+        version: String,
+    },
+}
+
+impl std::fmt::Display for EngineReleaseWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Deprecated {
+                engine_name,
+                version,
+            } => write!(
+                f,
+                "Версия движка {engine_name} {version} помечена как deprecated; продолжение разрешено, но рекомендуется перейти на recommended/supported версию"
+            ),
+        }
+    }
+}
+
+/// Resolved engine release selected for runtime verification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineReleaseSelection {
+    pub engine_name: String,
+    pub version: String,
+    pub status: EngineReleaseStatus,
+    pub warning: Option<EngineReleaseWarning>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -229,6 +273,70 @@ fn validate_release_compatibility_in_releases(
             version: version.to_string(),
             dialect: strategy.config_dialect(),
         })
+}
+
+/// Resolves the catalog release used by runtime verification.
+pub fn resolve_engine_release_selection(
+    strategy: EngineConfigStrategy,
+    requested_version: Option<&str>,
+) -> Result<EngineReleaseSelection, EngineError> {
+    resolve_engine_release_selection_in_releases(
+        get_pinned_engine_releases(),
+        strategy,
+        requested_version,
+    )
+}
+
+fn resolve_engine_release_selection_in_releases(
+    releases: &[PinnedEngineRelease],
+    strategy: EngineConfigStrategy,
+    requested_version: Option<&str>,
+) -> Result<EngineReleaseSelection, EngineError> {
+    let engine_name = strategy.engine_name().to_string();
+    let version = match requested_version
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+    {
+        Some(version) => version.to_string(),
+        None => recommended_engine_version_in_releases(releases, &engine_name)
+            .ok_or(EngineError::MissingExpectedChecksum)?
+            .to_string(),
+    };
+
+    let release = releases
+        .iter()
+        .find(|release| {
+            release.engine_name.eq_ignore_ascii_case(&engine_name)
+                && release.version.eq_ignore_ascii_case(&version)
+        })
+        .ok_or_else(|| EngineError::UnknownEngineVersion {
+            engine_name: engine_name.clone(),
+            version: version.clone(),
+        })?;
+
+    let version = release.version.clone();
+    if release.status == EngineReleaseStatus::Yanked {
+        return Err(EngineError::YankedEngineVersion {
+            engine_name,
+            version,
+        });
+    }
+
+    validate_release_compatibility_in_releases(strategy, &version, releases)?;
+
+    let warning = (release.status == EngineReleaseStatus::Deprecated).then(|| {
+        EngineReleaseWarning::Deprecated {
+            engine_name: engine_name.clone(),
+            version: version.clone(),
+        }
+    });
+
+    Ok(EngineReleaseSelection {
+        engine_name,
+        version,
+        status: release.status,
+        warning,
+    })
 }
 
 fn is_lower_sha256(value: &str) -> bool {
@@ -454,6 +562,7 @@ struct ExpectedBinaryChecksum<'a> {
 
 fn resolve_expected_binary_checksum_for_target<'a>(
     strategy: EngineConfigStrategy,
+    requested_version: Option<&str>,
     explicit_sha256: Option<&'a str>,
     target_os: &str,
     target_arch: &str,
@@ -461,6 +570,7 @@ fn resolve_expected_binary_checksum_for_target<'a>(
     resolve_expected_binary_checksum_in_releases(
         get_pinned_engine_releases(),
         strategy,
+        requested_version,
         explicit_sha256,
         target_os,
         target_arch,
@@ -470,17 +580,17 @@ fn resolve_expected_binary_checksum_for_target<'a>(
 fn resolve_expected_binary_checksum_in_releases<'a>(
     releases: &'a [PinnedEngineRelease],
     strategy: EngineConfigStrategy,
+    requested_version: Option<&str>,
     explicit_sha256: Option<&'a str>,
     target_os: &str,
     target_arch: &str,
 ) -> Result<ExpectedBinaryChecksum<'a>, EngineError> {
     let target_os = normalize_os(target_os).to_string();
     let target_arch = normalize_arch(target_arch).to_string();
-    let engine_name = strategy.engine_name().to_string();
-    let version = recommended_engine_version_in_releases(releases, &engine_name)
-        .ok_or(EngineError::MissingExpectedChecksum)?
-        .to_string();
-    validate_release_compatibility_in_releases(strategy, &version, releases)?;
+    let selection =
+        resolve_engine_release_selection_in_releases(releases, strategy, requested_version)?;
+    let engine_name = selection.engine_name;
+    let version = selection.version;
 
     if let Some(explicit) = explicit_sha256 {
         return Ok(ExpectedBinaryChecksum {
@@ -519,11 +629,13 @@ fn resolve_expected_binary_checksum_in_releases<'a>(
 fn verify_selected_engine_artifact(
     path: &Path,
     strategy: EngineConfigStrategy,
+    requested_version: Option<&str>,
     explicit_sha256: Option<&str>,
 ) -> Result<EngineArtifact, EngineError> {
     verify_selected_engine_artifact_for_target(
         path,
         strategy,
+        requested_version,
         explicit_sha256,
         std::env::consts::OS,
         std::env::consts::ARCH,
@@ -533,15 +645,18 @@ fn verify_selected_engine_artifact(
 fn verify_selected_engine_artifact_for_target(
     path: &Path,
     strategy: EngineConfigStrategy,
+    requested_version: Option<&str>,
     explicit_sha256: Option<&str>,
     target_os: &str,
     target_arch: &str,
 ) -> Result<EngineArtifact, EngineError> {
+    let _selection = resolve_engine_release_selection(strategy, requested_version)?;
     // Проверяем сам бинарник до поиска platform pin: неверный путь не должен маскироваться
     // отсутствием checksum для выбранных OS/arch.
     validate_engine_binary_path(path)?;
     let expected = resolve_expected_binary_checksum_for_target(
         strategy,
+        requested_version,
         explicit_sha256,
         target_os,
         target_arch,
@@ -754,6 +869,8 @@ pub fn cleanup_runtime_config(path: &Path) -> Result<(), EngineError> {
 pub struct ProxyServiceOptions {
     /// Стратегия генерации конфигурации внешнего движка.
     pub config_strategy: EngineConfigStrategy,
+    /// Optional user-selected catalog version for the chosen engine.
+    pub engine_version: Option<String>,
     /// Ожидаемая контрольная сумма SHA-256. Если `None`, используется pinned binary checksum
     /// для выбранной стратегии и текущей платформы; отсутствие такого pin запрещает запуск fail-closed.
     pub expected_sha256: Option<String>,
@@ -775,6 +892,7 @@ impl Default for ProxyServiceOptions {
     fn default() -> Self {
         Self {
             config_strategy: EngineConfigStrategy::Xray,
+            engine_version: None,
             expected_sha256: None,
             enable_preflight_check: true,
             preflight_timeout: Duration::from_secs(5),
@@ -863,6 +981,7 @@ impl ProxyService {
         let _artifact = verify_selected_engine_artifact(
             engine_binary,
             options.config_strategy,
+            options.engine_version.as_deref(),
             options.expected_sha256.as_deref(),
         )?;
 
@@ -982,6 +1101,29 @@ impl Drop for ProxyService {
 mod tests {
     use super::*;
 
+    fn catalog_with_xray_version(
+        version: &str,
+        status: EngineReleaseStatus,
+        config_dialect: EngineConfigDialect,
+    ) -> EngineCatalog {
+        let mut catalog = parse_engine_catalog(include_str!("../engine_catalog.json")).unwrap();
+        let mut extra = catalog.releases.clone();
+        for release in &mut extra {
+            if release.engine_name == "xray-core" {
+                release.version = version.to_string();
+                release.status = status;
+                release.config_dialect = config_dialect;
+            }
+        }
+        catalog.releases.extend(
+            extra
+                .into_iter()
+                .filter(|release| release.engine_name == "xray-core"),
+        );
+        validate_engine_catalog(&catalog).unwrap();
+        catalog
+    }
+
     #[test]
     fn test_pinned_releases_catalog_and_lookup() {
         let releases = get_pinned_engine_releases();
@@ -1042,6 +1184,69 @@ mod tests {
     }
 
     #[test]
+    fn test_engine_version_selection_lifecycle_and_warnings() {
+        let default = resolve_engine_release_selection(EngineConfigStrategy::Xray, None).unwrap();
+        assert_eq!(default.version, "v26.3.27");
+        assert_eq!(default.status, EngineReleaseStatus::Recommended);
+        assert_eq!(default.warning, None);
+
+        let catalog = catalog_with_xray_version(
+            "v26.3.28",
+            EngineReleaseStatus::Supported,
+            EngineConfigDialect::XrayV26,
+        );
+        let supported = resolve_engine_release_selection_in_releases(
+            &catalog.releases,
+            EngineConfigStrategy::Xray,
+            Some("V26.3.28"),
+        )
+        .unwrap();
+        assert_eq!(supported.version, "v26.3.28");
+        assert_eq!(supported.status, EngineReleaseStatus::Supported);
+        assert_eq!(supported.warning, None);
+
+        let catalog = catalog_with_xray_version(
+            "v26.3.29",
+            EngineReleaseStatus::Deprecated,
+            EngineConfigDialect::XrayV26,
+        );
+        let deprecated = resolve_engine_release_selection_in_releases(
+            &catalog.releases,
+            EngineConfigStrategy::Xray,
+            Some("v26.3.29"),
+        )
+        .unwrap();
+        let warning = deprecated.warning.unwrap();
+        assert_eq!(
+            warning.to_string(),
+            "Версия движка xray-core v26.3.29 помечена как deprecated; продолжение разрешено, но рекомендуется перейти на recommended/supported версию"
+        );
+
+        let catalog = catalog_with_xray_version(
+            "v26.3.30",
+            EngineReleaseStatus::Yanked,
+            EngineConfigDialect::XrayV26,
+        );
+        assert_eq!(
+            resolve_engine_release_selection_in_releases(
+                &catalog.releases,
+                EngineConfigStrategy::Xray,
+                Some("v26.3.30"),
+            )
+            .unwrap_err()
+            .to_string(),
+            "Версия движка xray-core v26.3.30 помечена как yanked в pinned catalog; запуск запрещён"
+        );
+
+        assert_eq!(
+            resolve_engine_release_selection(EngineConfigStrategy::Xray, Some("v99.0.0"))
+                .unwrap_err()
+                .to_string(),
+            "Версия движка xray-core v99.0.0 не найдена в pinned catalog; запуск запрещён"
+        );
+    }
+
+    #[test]
     fn test_config_dialect_rejects_incompatible_catalog_release_before_start() {
         assert!(validate_release_compatibility(EngineConfigStrategy::Xray, "v26.3.27").is_ok());
         assert!(validate_release_compatibility(EngineConfigStrategy::SingBox, "v1.13.18").is_ok());
@@ -1068,6 +1273,22 @@ mod tests {
             .unwrap_err()
             .to_string(),
             "Конфигурационный диалект SingBoxV1_13 несовместим с sing-box v1.13.18; запуск запрещён"
+        );
+
+        let catalog = catalog_with_xray_version(
+            "v26.3.31",
+            EngineReleaseStatus::Supported,
+            EngineConfigDialect::SingBoxV1_13,
+        );
+        assert_eq!(
+            resolve_engine_release_selection_in_releases(
+                &catalog.releases,
+                EngineConfigStrategy::Xray,
+                Some("v26.3.31"),
+            )
+            .unwrap_err()
+            .to_string(),
+            "Конфигурационный диалект XrayV26 несовместим с xray-core v26.3.31; запуск запрещён"
         );
     }
 
@@ -1182,8 +1403,50 @@ mod tests {
 
     #[test]
     fn test_resolve_expected_binary_checksum_distinguishes_explicit_pinned_and_missing_pin() {
+        let catalog = catalog_with_xray_version(
+            "v26.3.28",
+            EngineReleaseStatus::Supported,
+            EngineConfigDialect::XrayV26,
+        );
+        let selected_pinned = resolve_expected_binary_checksum_in_releases(
+            &catalog.releases,
+            EngineConfigStrategy::Xray,
+            Some("v26.3.28"),
+            None,
+            "linux",
+            "x86_64",
+        )
+        .unwrap();
+        assert!(matches!(
+            selected_pinned.source,
+            ExpectedBinaryChecksumSource::Pinned {
+                ref engine_name,
+                ref version,
+                ref target_os,
+                ref target_arch,
+            } if engine_name == "xray-core"
+                && version == "v26.3.28"
+                && target_os == "linux"
+                && target_arch == "x86_64"
+        ));
+
+        let selected_explicit_unsupported_target = resolve_expected_binary_checksum_in_releases(
+            &catalog.releases,
+            EngineConfigStrategy::Xray,
+            Some("v26.3.28"),
+            Some("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
+            "windows",
+            "arm64",
+        )
+        .unwrap();
+        assert_eq!(
+            selected_explicit_unsupported_target.source,
+            ExpectedBinaryChecksumSource::Explicit
+        );
+
         let explicit = resolve_expected_binary_checksum_for_target(
             EngineConfigStrategy::Xray,
+            None,
             Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             "linux",
             "x86_64",
@@ -1197,6 +1460,7 @@ mod tests {
 
         let explicit_unsupported_target = resolve_expected_binary_checksum_for_target(
             EngineConfigStrategy::SingBox,
+            None,
             Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
             "windows",
             "arm64",
@@ -1220,6 +1484,7 @@ mod tests {
         let explicit_incompatible = resolve_expected_binary_checksum_in_releases(
             &catalog.releases,
             EngineConfigStrategy::SingBox,
+            None,
             Some("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
             "windows",
             "arm64",
@@ -1231,6 +1496,7 @@ mod tests {
 
         let pinned = resolve_expected_binary_checksum_for_target(
             EngineConfigStrategy::Xray,
+            None,
             None,
             "linux",
             "x86_64",
@@ -1255,6 +1521,7 @@ mod tests {
 
         let missing = resolve_expected_binary_checksum_for_target(
             EngineConfigStrategy::SingBox,
+            None,
             None,
             "windows",
             "arm64",
@@ -1288,6 +1555,7 @@ mod tests {
             &test_bin,
             EngineConfigStrategy::Xray,
             None,
+            None,
             "linux",
             "x86_64",
         );
@@ -1303,6 +1571,7 @@ mod tests {
         let explicit = verify_selected_engine_artifact_for_target(
             &test_bin,
             EngineConfigStrategy::Xray,
+            None,
             Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             "linux",
             "x86_64",
@@ -1322,6 +1591,7 @@ mod tests {
         let result = verify_selected_engine_artifact_for_target(
             &missing_path,
             EngineConfigStrategy::SingBox,
+            None,
             None,
             "windows",
             "arm64",
