@@ -124,23 +124,31 @@ WebSocket отклоняются как несовместимые комбин�
   macOS x86_64, Linux arm64, Linux x86_64 и Windows x86_64. Иные OS/arch не входят в текущий
   support matrix, явно помечаются в help/`pinned-releases` как неподдерживаемые и не запускаются
   без явного trusted `--expected-sha256`.
-- Runtime выбирает единственную `recommended` версию для каждого движка из versioned pinned catalog.
+- Runtime выбирает версию движка из versioned pinned catalog: по умолчанию единственную
+  `recommended`, либо явно заданную пользователем через `--engine-version <VERSION>` для выбранного
+  `--engine-config`.
   Catalog хранит `recommended`/`supported`/`deprecated`/`yanked` lifecycle status, полное покрытие
   declared OS/arch и оба lowercase SHA-256; смена default требует отдельного reviewable changelog
-  change. CLI/API пока не принимает выбираемую пользователем версию и не считает вывод `engine version` trusted
+  change. CLI/API не считает вывод `engine version` trusted
   security oracle. При несовпадении pinned binary checksum диагностика называет движок, pinned
   версию и целевые OS/arch и различает «другая/неподдерживаемая версия либо изменённый артефакт»
   от отсутствия pin для платформы. Запуск остаётся fail-closed; `--expected-sha256` — явный
   trusted override для ожидаемых байтов бинарника, но не выбирает версию движка, не доказывает
   версию бинарника и не отключает compatibility check.
+- `--engine-version` принимает только catalogued версии выбранного движка. `recommended` и
+  `supported` разрешены, `deprecated` разрешена только с предупреждением до старта, а `yanked`,
+  неизвестная, uncatalogued или несовместимая с dialect версия отклоняется до проверки checksum и
+  запуска процесса.
 - Typed configuration dialect хранится в catalog как свойство exact пары `engine/version` и
-  проверяется против выбранного recommended release до выбора checksum source и старта процесса:
+  проверяется против выбранного release до выбора checksum source и старта процесса:
   текущие доказанные пары — Xray `v26.3.27`/`XrayV26` и sing-box `v1.13.18`/`SingBoxV1_13`.
   Catalog validation отклоняет неизвестную строку dialect и рассинхрон dialect между target-записями
   одной версии.
 - CLI-команда `start` принимает `--engine-config xray|sing-box` для выбора формата генерируемой
   конфигурации и pre-flight команды. По умолчанию выбирается `xray`; `--engine-bin` указывает
   путь к исполняемому файлу выбранного движка и сам по себе не меняет формат конфигурации.
+  `--engine-version <VERSION>` выбирает catalogued версию для выбранного движка и сам по себе не
+  меняет формат конфигурации.
   Неизвестное значение стратегии отклоняется как usage error до чтения конфигурации или запуска
   процесса.
 - Start подтверждается readiness probe, а не только успешным `spawn`.

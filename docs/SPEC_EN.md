@@ -133,23 +133,31 @@ of being ignored.
   x86_64, Linux arm64, Linux x86_64, and Windows x86_64. Other OS/arch combinations are outside
   the current support matrix, are explicitly marked unsupported by help/`pinned-releases`, and
   cannot start without an explicit trusted `--expected-sha256`.
-- Runtime selects the one `recommended` version for each engine from a versioned pinned catalog. The
+- Runtime selects an engine version from the versioned pinned catalog: by default the one
+  `recommended` version, or an explicit user-provided `--engine-version <VERSION>` for the selected
+  `--engine-config`. The
   catalog records `recommended`/`supported`/`deprecated`/`yanked` lifecycle status, full declared
   OS/arch coverage, and both lowercase SHA-256 values; changing the default requires a separate,
-  reviewable changelog change. The CLI/API does not yet accept a user-selectable version and does not treat `engine version` output as a
+  reviewable changelog change. The CLI/API does not treat `engine version` output as a
   trusted security oracle. On a pinned binary checksum mismatch, diagnostics name the engine,
   pinned version, and target OS/arch, and distinguish “different/unsupported version or modified
   artifact” from a missing platform pin. Startup remains fail-closed; `--expected-sha256` is an
   explicit trusted override for expected binary bytes, but it does not select an engine version,
   does not prove the binary version, and does not disable the compatibility check.
+- `--engine-version` accepts only catalogued versions for the selected engine. `recommended` and
+  `supported` releases are allowed, `deprecated` releases are allowed only with a warning before
+  process start, and `yanked`, unknown, uncatalogued, or dialect-incompatible versions are rejected
+  before checksum verification or process spawn.
 - A typed configuration dialect is stored in the catalog as an exact `engine/version` property and
-  validated against the selected recommended release before choosing the checksum source or starting
+  validated against the selected release before choosing the checksum source or starting
   a process: the current proven pairs are Xray `v26.3.27`/`XrayV26` and sing-box
   `v1.13.18`/`SingBoxV1_13`. Catalog validation rejects unknown dialect strings and target rows for
   the same version that disagree on dialect.
 - The `start` CLI command accepts `--engine-config xray|sing-box` to select the generated
   configuration format and pre-flight command. It defaults to `xray`; `--engine-bin` supplies
   the executable path for the selected engine and does not itself change the configuration format.
+  `--engine-version <VERSION>` selects a catalogued version for the selected engine and does not
+  itself change the configuration format.
   An unknown strategy value is rejected as a usage error before configuration is read or a process
   is started.
 - Treat a readiness probe, not process spawn, as successful start.
