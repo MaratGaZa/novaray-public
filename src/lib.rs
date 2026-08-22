@@ -2,6 +2,7 @@
 pub mod cli;
 pub mod config;
 pub mod config_generator;
+pub mod connection;
 pub mod core;
 pub mod engine;
 pub mod matcher;

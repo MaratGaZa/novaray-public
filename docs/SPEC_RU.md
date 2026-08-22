@@ -65,6 +65,8 @@ Direct Developer ID distribution сохраняется как целевая м
 - [~] Генерация engine JSON: Xray-генератор и сменяемая стратегия sing-box генерируют локальные SOCKS/HTTP inbounds и VLESS outbounds со стандартным TLS, Reality и TCP/WebSocket/gRPC metadata; Xray имеет controlled loopback traffic evidence, sing-box Reality/TCP проходит `sing-box check -c` на pinned `v1.13.18`, но routing/DNS/policy ещё не реализованы.
 - [~] Matcher доменов, IP и приложений с типизированным `SplitTunnelMode`; применение к трафику на уровне data-plane требует Network Extension.
 - [~] Process supervisor: spawn/kill без лог-стримов, health-check, restart и graceful shutdown.
+- [x] Connection lifecycle skeleton: `ConnectionState` и serialized helper command executor валидируют
+  connect/status/disconnect/recover transitions без IPC transport, helper runtime или network mutation.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -263,6 +265,8 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   allowlisted commands/events, strict schema validation, redacted debug output и bounded validation.
   Он не устанавливает helper, не открывает IPC transport, не запускается под `root` и не мутирует
   `utun`, routes, DNS, firewall или system proxy.
+- Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
+  state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 
 ## 5. Целевая архитектура
 
