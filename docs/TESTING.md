@@ -81,6 +81,10 @@ cargo test --all-targets
 - CLI engine-version selection: default recommended version, explicit catalogued version, missing
   value usage errors, unknown/yanked/incompatible version engine errors, deprecated warning, and
   mapping to `ProxyServiceOptions` before any engine process starts;
+- platform helper contract skeleton: compatible handshake, protocol-version rejection, unknown
+  command/capability/field rejection, missing required capability, bounded serialized command
+  validation, bounded correlation IDs/capability lists, redacted debug output, and allowlisted
+  command modeling with no network side effects;
 - engine checksum diagnostics: explicit SHA-256 override, pinned-version mismatch with engine/version/
   OS/arch context, and missing platform pin before a binary is accepted;
 - declared engine support matrix: every catalog OS/arch entry has a binary SHA-256 and its recorded

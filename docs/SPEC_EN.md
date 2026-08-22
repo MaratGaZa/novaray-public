@@ -227,6 +227,10 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
 - FFI/IPC commands and events are typed, versioned, and handshake before any network mutation.
 - Unknown versions or commands fail safely; the UI displays observed rather than assumed state.
 - Platform handles, raw shell commands, and privilege decisions stay outside the shared public contract.
+- The platform helper contract skeleton contains only typed handshake, capability reporting,
+  allowlisted commands/events, strict schema validation, redacted debug output, and bounded
+  validation. It does not install a helper, open an IPC transport, run as `root`, or mutate `utun`,
+  routes, DNS, firewall, or system proxy state.
 
 ## 5. Target architecture
 

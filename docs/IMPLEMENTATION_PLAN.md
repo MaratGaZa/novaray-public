@@ -425,6 +425,11 @@ machine; package identity, signatures и rollback traceable до source revision
     versioned catalog и ADR-007; selected version должна резолвиться до binary/checksum/preflight,
     `recommended`/`supported` разрешаются, `deprecated` печатает warning, `yanked`/unknown/
     incompatible версии fail-closed, а `--expected-sha256` остаётся override байтов, не версии.
+23. [x] Platform helper IPC contract skeleton — issue #15: добавить platform-neutral typed contract
+    для будущего privileged helper/service boundary (`HelperHello`, `CoreHello`, capabilities,
+    allowlisted commands/events, bounded validation). Scope intentionally excludes launchd/root,
+    IPC transport, install/uninstall, `utun`, routes, DNS, firewall, system proxy and remote
+    daemon `disconnect` wiring.
 
 ## 7. Зависимости
 

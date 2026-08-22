@@ -250,6 +250,10 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
 - FFI/IPC commands и events типизированы, версионированы и выполняют handshake до любой network mutation.
 - Неизвестная версия/команда отклоняется безопасно; UI показывает наблюдаемое, а не предполагаемое состояние.
 - Platform-specific handles, raw shell commands и privilege decisions не входят в общий публичный contract.
+- Platform helper contract skeleton содержит только типизированные handshake, capability report,
+  allowlisted commands/events, strict schema validation, redacted debug output и bounded validation.
+  Он не устанавливает helper, не открывает IPC transport, не запускается под `root` и не мутирует
+  `utun`, routes, DNS, firewall или system proxy.
 
 ## 5. Целевая архитектура
 

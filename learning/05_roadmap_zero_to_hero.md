@@ -239,6 +239,9 @@ Android VpnService → Android UI → release
 - [x] Добавить `--engine-version <VERSION>` для выбора catalogued версии выбранного движка:
   recommended/supported разрешены, deprecated предупреждает до старта, yanked/unknown/
   incompatible версии отклоняются до binary/checksum/preflight (issue #13).
+- [x] Добавить platform helper IPC contract skeleton: typed handshake, capability report,
+  allowlisted commands/events и bounded validation без launchd/root/IPC transport/network mutation
+  (issue #15).
 - [ ] Реализовать удалённое управление `disconnect`/`stop` через persistent daemon/helper IPC (Milestone 3 / ADR-003).
 - [ ] Опционально включать системный прокси (`networksetup`) как временный режим до появления TUN.
 
@@ -254,9 +257,9 @@ Android VpnService → Android UI → release
 
 - [ ] Создать отдельный привилегированный компонент (`launchd`-демон) согласно ADR-003.
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
-- [ ] Реализовать typed IPC/FFI contract с Rust core.
-- [ ] Добавить protocol/version handshake между компонентами.
-- [ ] Ограничить команды allowlist и валидировать все аргументы.
+- [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
+- [x] Добавить protocol/version handshake между компонентами.
+- [x] Ограничить команды allowlist и валидировать все аргументы.
 
 ### 3.2. Tunnel lifecycle
 
