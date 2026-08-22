@@ -189,14 +189,18 @@ Acceptance: все сценарии recovery matrix заканчиваются �
 Порядок:
 
 1. Зафиксировать FFI ABI и version handshake.
-2. Создать SwiftUI app shell и menu bar.
-3. Подключить observed connection events.
-4. Добавить profile list/editor/import preview.
-5. Добавить domain/IP policy editor и preview.
-6. Добавить settings и Keychain.
-7. Добавить diagnostics/recovery screen.
-8. Добавить localization и accessibility.
-9. Измерить launch/idle CPU/memory.
+2. До production profile editor зафиксировать protocol profile extensibility contract: `ProtocolType`
+   остаётся typed discriminator, protocol-specific fields описываются metadata/schema, а UI/helper/IPC
+   не предполагают, что профиль всегда VLESS.
+3. Создать SwiftUI app shell и menu bar.
+4. Подключить observed connection events.
+5. Добавить profile list/editor/import preview поверх protocol metadata; первый UI показывает VLESS,
+   но форма не должна требовать переписывания для Trojan/Shadowsocks/Hysteria2/TUIC/WireGuard/VMess.
+6. Добавить domain/IP policy editor и preview.
+7. Добавить settings и Keychain.
+8. Добавить diagnostics/recovery screen.
+9. Добавить localization и accessibility.
+10. Измерить launch/idle CPU/memory.
 
 Acceptance: все функции MVP доступны без CLI; UI automation и accessibility checklist проходят; UI не показывает ложный `Connected`.
 
@@ -333,9 +337,10 @@ packaging baseline или строго как local-proxy-only capability.
 
 Порядок:
 
-1. Зафиксировать protocol extension contract: typed `ProtocolType`, protocol-specific profile data,
-   schema versioning, importer boundary, capability reporting и engine-generator mapping.
-2. Убрать product/UI assumptions вида «профиль всегда VLESS»: UI показывает protocol-specific fields
+1. Проверить, что pre-UI protocol profile extensibility contract из M6 сохранён: typed `ProtocolType`,
+   protocol-specific profile data, schema versioning, importer boundary, capability reporting и
+   engine-generator mapping не требуют переписывания VLESS path.
+2. Убрать оставшиеся product/UI assumptions вида «профиль всегда VLESS»: UI показывает protocol-specific fields
    через capability metadata, а helper/IPC принимает typed profile/config payload без raw shell.
 3. Добавить Trojan + TLS vertical slice: schema/importer, validation, sing-box generator,
    generated-config preflight, real local-proxy traffic test и docs.

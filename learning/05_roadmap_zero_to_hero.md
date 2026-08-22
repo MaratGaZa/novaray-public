@@ -437,7 +437,12 @@ Android VpnService → Android UI → release
 ### 7.4. Profile management
 
 - [ ] List/add/edit/delete/activate profile.
+- [ ] До production profile editor зафиксировать protocol profile extensibility contract:
+  `ProtocolType` как typed discriminator, protocol-specific fields через schema/metadata, UI/helper/IPC
+  без assumptions «профиль всегда VLESS».
 - [ ] VLESS URI paste/QR import с preview.
+- [ ] Рендерить VLESS editor как первый protocol-specific view поверх общего profile model, чтобы
+  Trojan/Shadowsocks/Hysteria2/TUIC/WireGuard/VMess добавлялись без переписывания VLESS path.
 - [ ] Inline validation без отображения secrets.
 - [ ] Keychain integration.
 - [ ] Import/export с redaction controls.
@@ -705,7 +710,7 @@ PoC доказывает typed IPC, минимальные privilege и восс
 - [ ] Публиковать для Android только versioned shared Rust crates/schemas/fixtures с compatibility tests.
 - [ ] Intel/universal macOS и Windows ARM64 builds при подтверждённом спросе.
 - [ ] Linux network backend и packaging.
-- [ ] Сохранить protocol-extensible core/UI/helper boundary: новые протоколы добавляются через
+- [ ] Проверить, что pre-UI protocol-extensible core/UI/helper boundary сохранён: новые протоколы добавляются через
   typed profile/schema/importer/generator/capability slices, без переписывания VLESS path.
 - [ ] Trojan + TLS отдельным vertical slice: schema/importer/validation/generator/preflight/real traffic.
 - [ ] Shadowsocks AEAD/2022 отдельным vertical slice.
