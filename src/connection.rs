@@ -96,6 +96,9 @@ pub enum ConnectionError {
     #[error("Correlation id mismatch: expected {expected}, actual {actual}")]
     CorrelationMismatch { expected: String, actual: String },
 
+    #[error("Helper event requires correlation id for state {state:?}")]
+    MissingCorrelationId { state: ConnectionState },
+
     #[error(transparent)]
     PlatformContract(#[from] PlatformContractError),
 }
@@ -166,11 +169,12 @@ fn next_state_for_intent(
             _ => Err(invalid_transition(state, intent.kind())),
         },
         ConnectionIntent::Disconnect { correlation_id } => match state {
-            ConnectionState::Connecting { .. } | ConnectionState::Connected { .. } => {
-                Ok(ConnectionState::Disconnecting {
-                    correlation_id: correlation_id.clone(),
-                })
-            }
+            ConnectionState::Connecting { .. }
+            | ConnectionState::Connected { .. }
+            | ConnectionState::Disconnecting { .. }
+            | ConnectionState::Recovering { .. } => Ok(ConnectionState::Disconnecting {
+                correlation_id: correlation_id.clone(),
+            }),
             _ => Err(invalid_transition(state, intent.kind())),
         },
         ConnectionIntent::Recover { correlation_id } => match state {
@@ -190,11 +194,28 @@ fn next_state_for_observed(
     correlation_id: Option<&str>,
 ) -> Result<ConnectionState, ConnectionError> {
     match (state, observed) {
-        (_, PlatformObservedState::Failed) => Ok(ConnectionState::Failed {
-            message: "platform helper reported failed state".to_string(),
-        }),
         (ConnectionState::Disconnected, PlatformObservedState::Idle) => {
             Ok(ConnectionState::Disconnected)
+        }
+        (
+            ConnectionState::Connecting {
+                correlation_id: expected,
+            }
+            | ConnectionState::Connected {
+                correlation_id: expected,
+            }
+            | ConnectionState::Disconnecting {
+                correlation_id: expected,
+            }
+            | ConnectionState::Recovering {
+                correlation_id: expected,
+            },
+            PlatformObservedState::Failed,
+        ) => {
+            ensure_correlation(state, expected, correlation_id)?;
+            Ok(ConnectionState::Failed {
+                message: "platform helper reported failed state".to_string(),
+            })
         }
         (
             ConnectionState::Connecting {
@@ -202,7 +223,7 @@ fn next_state_for_observed(
             },
             PlatformObservedState::Preparing,
         ) => {
-            ensure_correlation(expected, correlation_id)?;
+            ensure_correlation(state, expected, correlation_id)?;
             Ok(state.clone())
         }
         (
@@ -211,7 +232,7 @@ fn next_state_for_observed(
             },
             PlatformObservedState::Connected,
         ) => {
-            ensure_correlation(expected, correlation_id)?;
+            ensure_correlation(state, expected, correlation_id)?;
             Ok(ConnectionState::Connected {
                 correlation_id: expected.to_string(),
             })
@@ -222,7 +243,7 @@ fn next_state_for_observed(
             },
             PlatformObservedState::Connected,
         ) => {
-            ensure_correlation(expected, correlation_id)?;
+            ensure_correlation(state, expected, correlation_id)?;
             Ok(state.clone())
         }
         (
@@ -231,7 +252,7 @@ fn next_state_for_observed(
             },
             PlatformObservedState::Disconnecting,
         ) => {
-            ensure_correlation(expected, correlation_id)?;
+            ensure_correlation(state, expected, correlation_id)?;
             Ok(state.clone())
         }
         (
@@ -240,7 +261,7 @@ fn next_state_for_observed(
             },
             PlatformObservedState::Idle,
         ) => {
-            ensure_correlation(expected, correlation_id)?;
+            ensure_correlation(state, expected, correlation_id)?;
             Ok(ConnectionState::Disconnected)
         }
         (
@@ -249,7 +270,7 @@ fn next_state_for_observed(
             },
             PlatformObservedState::Recovering,
         ) => {
-            ensure_correlation(expected, correlation_id)?;
+            ensure_correlation(state, expected, correlation_id)?;
             Ok(state.clone())
         }
         (
@@ -258,7 +279,7 @@ fn next_state_for_observed(
             },
             PlatformObservedState::Idle,
         ) => {
-            ensure_correlation(expected, correlation_id)?;
+            ensure_correlation(state, expected, correlation_id)?;
             Ok(ConnectionState::Disconnected)
         }
         _ => Err(ConnectionError::InvalidObservedState {
@@ -268,8 +289,14 @@ fn next_state_for_observed(
     }
 }
 
-fn ensure_correlation(expected: &str, actual: Option<&str>) -> Result<(), ConnectionError> {
-    let actual = actual.unwrap_or(expected);
+fn ensure_correlation(
+    state: &ConnectionState,
+    expected: &str,
+    actual: Option<&str>,
+) -> Result<(), ConnectionError> {
+    let actual = actual.ok_or_else(|| ConnectionError::MissingCorrelationId {
+        state: state.clone(),
+    })?;
     if actual == expected {
         Ok(())
     } else {
@@ -377,6 +404,42 @@ mod tests {
                 correlation_id: "disconnect-1".to_string()
             }
         );
+    }
+
+    #[test]
+    fn disconnect_can_abort_disconnect_or_recover_in_progress() {
+        for initial_state in [
+            ConnectionState::Disconnecting {
+                correlation_id: "disconnect-1".to_string(),
+            },
+            ConnectionState::Recovering {
+                correlation_id: "recover-1".to_string(),
+            },
+        ] {
+            let mut executor = ConnectionCommandExecutor::with_state(
+                helper(vec![PlatformCapability::Tun]),
+                initial_state,
+            );
+
+            let result = executor
+                .execute(ConnectionIntent::Disconnect {
+                    correlation_id: "abort-1".to_string(),
+                })
+                .unwrap();
+
+            assert_eq!(
+                result.next_state,
+                ConnectionState::Disconnecting {
+                    correlation_id: "abort-1".to_string()
+                }
+            );
+            assert_eq!(
+                result.command,
+                PlatformHelperCommand::Disconnect {
+                    correlation_id: "abort-1".to_string()
+                }
+            );
+        }
     }
 
     #[test]
@@ -517,6 +580,74 @@ mod tests {
             executor.state(),
             &ConnectionState::Connecting {
                 correlation_id: "connect-1".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn observed_state_missing_correlation_id_fails_closed() {
+        let mut executor = ConnectionCommandExecutor::with_state(
+            helper(vec![PlatformCapability::Tun]),
+            ConnectionState::Connecting {
+                correlation_id: "connect-1".to_string(),
+            },
+        );
+
+        let error = executor
+            .observe_helper_state(PlatformObservedState::Connected, None)
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "Helper event requires correlation id for state Connecting { correlation_id: \"connect-1\" }"
+        );
+        assert_eq!(
+            executor.state(),
+            &ConnectionState::Connecting {
+                correlation_id: "connect-1".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn failed_observation_requires_active_matching_correlation_id() {
+        let mut disconnected =
+            ConnectionCommandExecutor::new(helper(vec![PlatformCapability::Tun]));
+        let disconnected_error = disconnected
+            .observe_helper_state(PlatformObservedState::Failed, None)
+            .unwrap_err();
+        assert_eq!(
+            disconnected_error.to_string(),
+            "Наблюдаемое состояние Failed недопустимо для текущего состояния Disconnected"
+        );
+        assert_eq!(disconnected.state(), &ConnectionState::Disconnected);
+
+        let mut connected = ConnectionCommandExecutor::with_state(
+            helper(vec![PlatformCapability::Tun]),
+            ConnectionState::Connected {
+                correlation_id: "connect-1".to_string(),
+            },
+        );
+        let stale_error = connected
+            .observe_helper_state(PlatformObservedState::Failed, Some("stale"))
+            .unwrap_err();
+        assert_eq!(
+            stale_error.to_string(),
+            "Correlation id mismatch: expected connect-1, actual stale"
+        );
+        assert_eq!(
+            connected.state(),
+            &ConnectionState::Connected {
+                correlation_id: "connect-1".to_string()
+            }
+        );
+
+        assert_eq!(
+            connected
+                .observe_helper_state(PlatformObservedState::Failed, Some("connect-1"))
+                .unwrap(),
+            ConnectionState::Failed {
+                message: "platform helper reported failed state".to_string()
             }
         );
     }
