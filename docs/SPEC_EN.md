@@ -103,8 +103,16 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 ### FR-002 — Protocol support
 
 The first required vertical slice is VLESS + Reality + XTLS Vision over TCP. The selected engine
-must validate generated configuration before start. WireGuard, Shadowsocks 2022, Trojan, and
-Hysteria 2 are later capabilities with separate schemas and integration suites.
+must validate generated configuration before start. The current MVP must not architecturally block
+additional protocols supported by the selected engine. UI, helper/IPC contracts, and the policy
+model must not assume that VLESS is the only possible outbound protocol: protocol selection is a
+typed profile field translated by engine-specific generators. After stable desktop releases, later
+vertical slices may add Trojan + TLS, Shadowsocks AEAD/2022, Hysteria 2, TUIC, WireGuard, VMess, and
+debug/enterprise outbounds (`socks`, `http`, `ssh`) where supported by the chosen engine and where
+they do not weaken the safety model. Each new protocol requires its own schema, URI/config importer,
+semantic validation, capability matrix, generated-config preflight, real-network integration tests,
+redaction review, and limitation documentation. WireGuard is treated as a separate VPN-profile model
+with keys, addresses, and allowed IPs, not as a simple variant of a VLESS proxy profile.
 
 A VLESS URI without `type`, with `type=tcp`, or with the compatible `type=raw` alias selects the
 supported TCP/RAW transport. For TCP, an absent `headerType` and `headerType=none` are accepted;

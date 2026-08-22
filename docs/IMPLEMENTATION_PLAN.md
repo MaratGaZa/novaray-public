@@ -189,14 +189,18 @@ Acceptance: все сценарии recovery matrix заканчиваются �
 Порядок:
 
 1. Зафиксировать FFI ABI и version handshake.
-2. Создать SwiftUI app shell и menu bar.
-3. Подключить observed connection events.
-4. Добавить profile list/editor/import preview.
-5. Добавить domain/IP policy editor и preview.
-6. Добавить settings и Keychain.
-7. Добавить diagnostics/recovery screen.
-8. Добавить localization и accessibility.
-9. Измерить launch/idle CPU/memory.
+2. До production profile editor зафиксировать protocol profile extensibility contract: `ProtocolType`
+   остаётся typed discriminator, protocol-specific fields описываются metadata/schema, а UI/helper/IPC
+   не предполагают, что профиль всегда VLESS.
+3. Создать SwiftUI app shell и menu bar.
+4. Подключить observed connection events.
+5. Добавить profile list/editor/import preview поверх protocol metadata; первый UI показывает VLESS,
+   но форма не должна требовать переписывания для Trojan/Shadowsocks/Hysteria2/TUIC/WireGuard/VMess.
+6. Добавить domain/IP policy editor и preview.
+7. Добавить settings и Keychain.
+8. Добавить diagnostics/recovery screen.
+9. Добавить localization и accessibility.
+10. Измерить launch/idle CPU/memory.
 
 Acceptance: все функции MVP доступны без CLI; UI automation и accessibility checklist проходят; UI не показывает ложный `Connected`.
 
@@ -323,6 +327,41 @@ Acceptance: весь Windows flow доступен без CLI; UI не треб�
 
 Acceptance: все восемь Windows criteria из `SPEC_RU.md` подтверждены на clean Windows 11 x64
 machine; package identity, signatures и rollback traceable до source revisions.
+
+### M14 — Post-release protocol and platform extensibility
+
+Цель: после macOS и Windows release path сохранить возможность добавлять новые protocol families без
+переписывания core, UI, helper IPC и policy model. Linux network backend остаётся отдельным future
+decision; если он становится целевой платформой, protocol expansion выполняется после Linux topology/
+packaging baseline или строго как local-proxy-only capability.
+
+Порядок:
+
+1. Проверить, что pre-UI protocol profile extensibility contract из M6 сохранён: typed `ProtocolType`,
+   protocol-specific profile data, schema versioning, importer boundary, capability reporting и
+   engine-generator mapping не требуют переписывания VLESS path.
+2. Убрать оставшиеся product/UI assumptions вида «профиль всегда VLESS»: UI показывает protocol-specific fields
+   через capability metadata, а helper/IPC принимает typed profile/config payload без raw shell.
+3. Добавить Trojan + TLS vertical slice: schema/importer, validation, sing-box generator,
+   generated-config preflight, real local-proxy traffic test и docs.
+4. Добавить Shadowsocks AEAD/2022 vertical slice с отдельной моделью method/password/plugin policy,
+   preflight и real traffic evidence.
+5. Добавить Hysteria 2 vertical slice с UDP/QUIC capability, congestion/obfs settings, MTU/DNS/leak
+   risks и отдельными network tests.
+6. Добавить TUIC vertical slice с QUIC/UDP behavior, authentication fields, preflight и real traffic
+   evidence.
+7. Добавить WireGuard как отдельную VPN-profile family: keys, addresses, peers, allowed IPs,
+   DNS/routing semantics, migration rules и recovery/leak tests.
+8. Добавить VMess только как compatibility/legacy slice, с явным warning в UI/docs при выборе
+   устаревших или слабых режимов.
+9. Добавить debug/enterprise outbounds (`socks`, `http`, `ssh`) только с explicit user intent,
+   redaction review и запретом случайно принять их за full VPN tunnel.
+10. Для каждого нового protocol обновить RU/EN SPEC, schemas, examples, `pinned-releases`/engine
+    compatibility evidence, generated-config tests, real-engine preflight и documentation of limits.
+
+Acceptance: два новых протокола проходят end-to-end local-proxy traffic evidence, один UDP/QUIC-heavy
+protocol имеет отдельные leak/MTU/DNS observations, WireGuard имеет утверждённую model/spec до кода,
+а UI/helper boundaries остаются protocol-agnostic и не требуют переписывания существующего VLESS path.
 
 ## 6. Первые 12 исполнимых задач
 
