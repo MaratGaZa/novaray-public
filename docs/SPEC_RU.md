@@ -67,6 +67,9 @@ Direct Developer ID distribution сохраняется как целевая м
 - [~] Process supervisor: spawn/kill без лог-стримов, health-check, restart и graceful shutdown.
 - [x] Connection lifecycle skeleton: `ConnectionState` и serialized helper command executor валидируют
   connect/status/disconnect/recover transitions без IPC transport, helper runtime или network mutation.
+- [x] Network transaction contract skeleton: `NetworkSnapshot` и `AppliedNetworkState` описывают
+  route/DNS/firewall snapshot, typed операции, phase validation и rollback metadata без `utun`,
+  `route`, `scutil`, `pfctl`, DNS/firewall mutation или helper runtime.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -175,6 +178,9 @@ allowed IPs, а не простой разновидностью VLESS-proxy pro
 - Приложение управляет MTU, DNS и маршрутизацией через выбранный поддерживаемый API текущей платформы.
 - Прямые системные команды допускаются только через ограниченный и проверяемый privileged boundary.
 - Повторный connect/disconnect должен быть идемпотентным.
+- До любой системной мутации core/helper contract фиксирует `NetworkSnapshot` исходного состояния и
+  `AppliedNetworkState` с типизированными операциями, фазой транзакции и rollback metadata; этот
+  contract не является доказательством работающего tunnel до реальных L5/L7 проверок.
 
 ### FR-005. Split tunneling
 
@@ -229,6 +235,8 @@ Per-app routing является одной из двух главных фун�
 - Rollback выполняется при штатном stop, signal, crash-recovery следующего запуска и ошибке посередине connect transaction.
 - Есть отдельная команда/экран безопасного восстановления.
 - Нельзя оставлять постоянное широкое правило `pf` или сломанный DNS после удаления приложения.
+- Частично применённая network transaction не считается успешной без явного `AppliedNetworkState`;
+  missing rollback metadata и inconsistent transaction phases должны отклоняться fail-closed.
 
 ### FR-009. UI
 
@@ -267,6 +275,9 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   `utun`, routes, DNS, firewall или system proxy.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
+- Network transaction contract skeleton содержит только типизированные snapshots, applied-state,
+  route/DNS/firewall operation descriptors и rollback metadata. Он не выполняет shell-команды, не
+  открывает privileged transport и не меняет состояние операционной системы.
 
 ## 5. Целевая архитектура
 
