@@ -75,11 +75,13 @@ Direct Developer ID distribution сохраняется как целевая м
 - [x] Recovery journal persistence contract: core записывает и читает typed JSON journal для
   `NetworkSnapshot` + `AppliedNetworkState` через private каталог, temp-write/fsync/rename,
   карантинит corrupt/unknown fields/invalid state fail-closed, удаляет осиротевшие temp-кандидаты и
-  очищает valid journal только по явной успешной recovery-команде; это ещё не выполняет rollback
-  против ОС.
+  очищает valid journal только по явной успешной recovery-команде; deterministic test покрывает
+  восстановление rollback work после crash сразу после full-tunnel route step; это ещё не выполняет
+  rollback против ОС.
 - [x] Connect transaction planner: core строит ordered `AppliedNetworkState` в фазе `Planned` для
-  full-tunnel connect intent с endpoint route, tunnel address/MTU, DNS и firewall policy operations,
-  включая rollback metadata и redacted diagnostics, без helper runtime или OS mutation.
+  full-tunnel connect intent с endpoint route, tunnel address/MTU, default-route/full-tunnel route,
+  DNS и firewall policy operations, включая rollback metadata и redacted diagnostics, без helper
+  runtime или OS mutation.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.

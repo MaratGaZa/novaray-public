@@ -498,6 +498,12 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     policy descriptors plus rollback metadata. Scope intentionally excludes helper runtime, IPC
     transport, launchd/root, `utun`, route/DNS/firewall execution, idempotent repeated commands,
     system proxy and packet-flow evidence.
+29. [x] Crash-after-full-tunnel-route recovery evidence — issue #28: добавить deterministic Rust core
+    test, который сохраняет recovery journal после applied prefix `001..004_route_full_tunnel`,
+    загружает его как pending work on next startup и проверяет rollback steps в обратном порядке
+    applied prefix, включая восстановление существующего default route, interface-bound удаление
+    добавленного tunnel default route и разделение IPv4/IPv6 route families. Scope intentionally
+    excludes helper runtime, real route mutation and OS rollback execution.
 
 ## 7. Зависимости
 

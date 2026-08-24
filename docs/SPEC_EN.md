@@ -91,12 +91,13 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 - [x] Recovery journal persistence contract: core writes and reads a typed JSON journal for
   `NetworkSnapshot` + `AppliedNetworkState` through a private directory and temp-write/fsync/rename,
   quarantines corrupt/unknown fields/invalid state fail-closed, removes orphaned temp candidates, and
-  clears a valid journal only after an explicit successful recovery command; it still does not
-  execute OS rollback.
+  clears a valid journal only after an explicit successful recovery command; a deterministic test
+  covers rollback-work recovery after a crash immediately after the full-tunnel route step; it still
+  does not execute OS rollback.
 - [x] Connect transaction planner: core builds an ordered `AppliedNetworkState` in `Planned` phase
-  for a full-tunnel connect intent with endpoint route, tunnel address/MTU, DNS, and firewall policy
-  operations, including rollback metadata and redacted diagnostics, without helper runtime or OS
-  mutation.
+  for a full-tunnel connect intent with endpoint route, tunnel address/MTU, default-route/full-tunnel
+  route, DNS, and firewall policy operations, including rollback metadata and redacted diagnostics,
+  without helper runtime or OS mutation.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.

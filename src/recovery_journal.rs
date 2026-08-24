@@ -430,7 +430,7 @@ fn sync_parent_dir(dir: &Path) -> Result<(), NetworkRecoveryJournalError> {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     use super::*;
     use crate::network_state::{
@@ -438,6 +438,7 @@ mod tests {
         NetworkInterfaceSnapshot, NetworkOperationKind, NetworkOperationStatus,
         NetworkRollbackPlan, RouteSnapshot,
     };
+    use crate::network_transaction::{ConnectNetworkIntent, ConnectNetworkTransactionPlanner};
     use crate::platform_contract::PlatformKind;
 
     struct TempDirGuard(PathBuf);
@@ -534,6 +535,98 @@ mod tests {
 
     fn journal() -> NetworkRecoveryJournal {
         NetworkRecoveryJournal::new(snapshot(), applied_state())
+    }
+
+    fn connect_snapshot() -> NetworkSnapshot {
+        NetworkSnapshot {
+            snapshot_id: "connect-snap-1".to_string(),
+            platform: PlatformKind::MacOs,
+            owner: owner(),
+            interfaces: vec![NetworkInterfaceSnapshot {
+                name: "utun4".to_string(),
+                addresses: vec![IpNetwork::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 24)],
+                mtu: Some(1500),
+            }],
+            routes: vec![
+                RouteSnapshot {
+                    destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)), 32),
+                    gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+                    interface: Some("en0".to_string()),
+                },
+                RouteSnapshot {
+                    destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+                    gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+                    interface: Some("en0".to_string()),
+                },
+            ],
+            dns: DnsSnapshot {
+                servers: vec![IpAddr::V4(Ipv4Addr::new(10, 13, 37, 53))],
+                search_domains: vec!["corp.internal".to_string()],
+                match_domains: vec!["corp.example".to_string()],
+            },
+            firewall: FirewallSnapshot {
+                policy_id: Some("pf-baseline".to_string()),
+                kill_switch_enabled: false,
+            },
+        }
+    }
+
+    fn connect_intent() -> ConnectNetworkIntent {
+        ConnectNetworkIntent {
+            transaction_id: "txn-route-crash".to_string(),
+            owner: owner(),
+            endpoint: IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)),
+            endpoint_gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+            endpoint_interface: Some("en0".to_string()),
+            tunnel_interface: "utun4".to_string(),
+            tunnel_address: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(172, 19, 0, 2)), 30),
+            tunnel_mtu: 1280,
+            dns: DnsSnapshot {
+                servers: vec![IpAddr::V4(Ipv4Addr::new(198, 51, 100, 53))],
+                search_domains: vec!["vpn.internal".to_string()],
+                match_domains: vec!["vpn.example".to_string()],
+            },
+            firewall_policy_id: "novaray-full-tunnel".to_string(),
+            kill_switch_enabled: true,
+        }
+    }
+
+    fn crash_after_full_tunnel_route_journal(
+        snapshot: NetworkSnapshot,
+        intent: ConnectNetworkIntent,
+    ) -> NetworkRecoveryJournal {
+        let mut state =
+            ConnectNetworkTransactionPlanner::plan(&snapshot, intent).expect("valid connect plan");
+        state.phase = NetworkTransactionPhase::RollingBack;
+        for operation in &mut state.operations {
+            operation.status = match operation.apply_order {
+                Some(1..=4) => NetworkOperationStatus::Applied,
+                Some(5..) => NetworkOperationStatus::Planned,
+                _ => unreachable!("planner always assigns apply_order"),
+            };
+        }
+
+        NetworkRecoveryJournal::new(snapshot, state)
+    }
+
+    fn assert_route_crash_recovery_order(journal: &NetworkRecoveryJournal) {
+        let steps = journal
+            .applied_state
+            .rollback_steps_reverse_order()
+            .expect("recoverable route-crash rollback work");
+
+        assert_eq!(
+            steps
+                .iter()
+                .map(|step| (step.apply_order, step.operation_key.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (4, "004_route_full_tunnel"),
+                (3, "003_set_tunnel_mtu"),
+                (2, "002_set_tunnel_address"),
+                (1, "001_preserve_endpoint_route"),
+            ]
+        );
     }
 
     #[test]
@@ -693,5 +786,124 @@ mod tests {
 
         assert!(debug.contains("transaction_id: \"txn-1\""));
         assert!(debug.contains("operations_len: 1"));
+    }
+
+    #[test]
+    fn crash_after_full_tunnel_route_recovers_existing_default_route_before_endpoint_route() {
+        let temp_dir = TempDirGuard::new("route_crash_existing_default");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let journal = crash_after_full_tunnel_route_journal(connect_snapshot(), connect_intent());
+
+        store
+            .write_pending(&journal)
+            .expect("write route-crash journal");
+        let loaded = store.load_pending().expect("load route-crash journal");
+
+        assert_eq!(loaded.len(), 1);
+        assert_route_crash_recovery_order(&loaded[0]);
+
+        let steps = loaded[0]
+            .applied_state
+            .rollback_steps_reverse_order()
+            .expect("rollback steps");
+        assert!(matches!(
+            steps[0].inverse,
+            NetworkOperationKind::AddRoute {
+                destination: IpNetwork {
+                    address: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                    prefix: 0,
+                },
+                gateway: Some(IpAddr::V4(_)),
+                interface: Some(ref interface),
+            } if interface == "en0"
+        ));
+        assert!(matches!(
+            steps.last().map(|step| &step.inverse),
+            Some(NetworkOperationKind::PreserveEndpointRoute { .. })
+        ));
+
+        let debug = format!("{:?} {:?}", loaded[0], steps);
+        for leaked in [
+            "192.168.7.1",
+            "10.13.37.53",
+            "198.51.100.53",
+            "corp.internal",
+            "vpn.internal",
+        ] {
+            assert!(!debug.contains(leaked), "debug leaked {leaked}");
+        }
+    }
+
+    #[test]
+    fn crash_after_full_tunnel_route_removes_added_route_when_no_default_existed() {
+        let temp_dir = TempDirGuard::new("route_crash_missing_default");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let mut snapshot = connect_snapshot();
+        snapshot
+            .routes
+            .retain(|route| route.destination.prefix != 0);
+        let journal = crash_after_full_tunnel_route_journal(snapshot, connect_intent());
+
+        store
+            .write_pending(&journal)
+            .expect("write route-crash journal");
+        let loaded = store.load_pending().expect("load route-crash journal");
+
+        assert_eq!(loaded.len(), 1);
+        assert_route_crash_recovery_order(&loaded[0]);
+
+        let steps = loaded[0]
+            .applied_state
+            .rollback_steps_reverse_order()
+            .expect("rollback steps");
+        assert!(matches!(
+            steps[0].inverse,
+            NetworkOperationKind::RemoveRoute {
+                destination: IpNetwork {
+                    address: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                    prefix: 0,
+                },
+                gateway: None,
+                interface: Some(ref interface),
+            } if interface == "utun4"
+        ));
+    }
+
+    #[test]
+    fn crash_after_full_tunnel_route_does_not_mix_ipv4_and_ipv6_defaults() {
+        let temp_dir = TempDirGuard::new("route_crash_ipv6");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let mut snapshot = connect_snapshot();
+        snapshot.interfaces[0].name = "utun6".to_string();
+        let mut intent = connect_intent();
+        intent.transaction_id = "txn-route-crash-ipv6".to_string();
+        intent.tunnel_interface = "utun6".to_string();
+        intent.tunnel_address =
+            IpNetwork::new(IpAddr::V6(Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 2)), 64);
+        let journal = crash_after_full_tunnel_route_journal(snapshot, intent);
+
+        store
+            .write_pending(&journal)
+            .expect("write IPv6 route-crash journal");
+        let loaded = store.load_pending().expect("load IPv6 route-crash journal");
+
+        assert_eq!(loaded.len(), 1);
+        assert_route_crash_recovery_order(&loaded[0]);
+
+        let steps = loaded[0]
+            .applied_state
+            .rollback_steps_reverse_order()
+            .expect("rollback steps");
+        assert!(matches!(
+            steps[0].inverse,
+            NetworkOperationKind::RemoveRoute {
+                destination: IpNetwork {
+                    address: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+                    prefix: 0,
+                },
+                gateway: None,
+                interface: Some(ref interface),
+            } if interface == "utun6"
+        ));
     }
 }
