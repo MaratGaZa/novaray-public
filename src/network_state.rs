@@ -4,6 +4,7 @@
 //! not open sockets, run as root, create `utun`, or mutate routes/DNS/firewall/system proxy state.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,7 @@ pub const MAX_NETWORK_COLLECTION_ITEMS: usize = 256;
 pub const MAX_DNS_SERVERS: usize = 16;
 pub const MAX_DOMAIN_ITEMS: usize = 64;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkSnapshot {
     pub snapshot_id: String,
@@ -26,6 +27,21 @@ pub struct NetworkSnapshot {
     pub routes: Vec<RouteSnapshot>,
     pub dns: DnsSnapshot,
     pub firewall: FirewallSnapshot,
+}
+
+impl fmt::Debug for NetworkSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NetworkSnapshot")
+            .field("snapshot_id", &self.snapshot_id)
+            .field("platform", &self.platform)
+            .field("owner", &self.owner)
+            .field("interfaces_len", &self.interfaces.len())
+            .field("routes_len", &self.routes.len())
+            .field("dns", &self.dns)
+            .field("firewall", &self.firewall)
+            .finish()
+    }
 }
 
 impl NetworkSnapshot {
@@ -49,11 +65,11 @@ impl NetworkSnapshot {
         let mut route_keys = HashSet::new();
         for route in &self.routes {
             route.validate()?;
-            let key = route.key();
+            let key = route.dedupe_key();
             if !route_keys.insert(key.clone()) {
                 return Err(NetworkStateError::DuplicateKey {
                     field: "routes",
-                    key,
+                    key: route.redacted_key(),
                 });
             }
         }
@@ -64,7 +80,7 @@ impl NetworkSnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AppliedNetworkState {
     pub transaction_id: String,
@@ -74,6 +90,21 @@ pub struct AppliedNetworkState {
     pub phase: NetworkTransactionPhase,
     pub operations: Vec<AppliedNetworkOperation>,
     pub last_error: Option<String>,
+}
+
+impl fmt::Debug for AppliedNetworkState {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AppliedNetworkState")
+            .field("transaction_id", &self.transaction_id)
+            .field("snapshot_id", &self.snapshot_id)
+            .field("platform", &self.platform)
+            .field("owner", &self.owner)
+            .field("phase", &self.phase)
+            .field("operations_len", &self.operations.len())
+            .field("last_error_present", &self.last_error.is_some())
+            .finish()
+    }
 }
 
 impl AppliedNetworkState {
@@ -187,11 +218,21 @@ impl AppliedNetworkState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkStateOwner {
     pub component: String,
     pub correlation_id: String,
+}
+
+impl fmt::Debug for NetworkStateOwner {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NetworkStateOwner")
+            .field("component", &self.component)
+            .field("correlation_id", &self.correlation_id)
+            .finish()
+    }
 }
 
 impl NetworkStateOwner {
@@ -201,12 +242,23 @@ impl NetworkStateOwner {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkInterfaceSnapshot {
     pub name: String,
     pub addresses: Vec<IpNetwork>,
     pub mtu: Option<u32>,
+}
+
+impl fmt::Debug for NetworkInterfaceSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NetworkInterfaceSnapshot")
+            .field("name", &self.name)
+            .field("addresses_len", &self.addresses.len())
+            .field("mtu", &self.mtu)
+            .finish()
+    }
 }
 
 impl NetworkInterfaceSnapshot {
@@ -225,12 +277,23 @@ impl NetworkInterfaceSnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RouteSnapshot {
     pub destination: IpNetwork,
     pub gateway: Option<IpAddr>,
     pub interface: Option<String>,
+}
+
+impl fmt::Debug for RouteSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RouteSnapshot")
+            .field("destination", &self.destination)
+            .field("gateway_present", &self.gateway.is_some())
+            .field("interface", &self.interface)
+            .finish()
+    }
 }
 
 impl RouteSnapshot {
@@ -239,20 +302,40 @@ impl RouteSnapshot {
         validate_optional_id("route.interface", self.interface.as_deref())
     }
 
-    fn key(&self) -> String {
+    fn dedupe_key(&self) -> String {
         format!(
-            "{:?}|{:?}|{:?}",
-            self.destination, self.gateway, self.interface
+            "{}|{}|{:?}|{:?}",
+            self.destination.address, self.destination.prefix, self.gateway, self.interface
+        )
+    }
+
+    fn redacted_key(&self) -> String {
+        format!(
+            "{:?}|gateway_present={}|interface={:?}",
+            self.destination,
+            self.gateway.is_some(),
+            self.interface
         )
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DnsSnapshot {
     pub servers: Vec<IpAddr>,
     pub search_domains: Vec<String>,
     pub match_domains: Vec<String>,
+}
+
+impl fmt::Debug for DnsSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DnsSnapshot")
+            .field("servers_len", &self.servers.len())
+            .field("search_domains_len", &self.search_domains.len())
+            .field("match_domains_len", &self.match_domains.len())
+            .finish()
+    }
 }
 
 impl DnsSnapshot {
@@ -277,11 +360,21 @@ impl DnsSnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FirewallSnapshot {
     pub policy_id: Option<String>,
     pub kill_switch_enabled: bool,
+}
+
+impl fmt::Debug for FirewallSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FirewallSnapshot")
+            .field("policy_id_present", &self.policy_id.is_some())
+            .field("kill_switch_enabled", &self.kill_switch_enabled)
+            .finish()
+    }
 }
 
 impl FirewallSnapshot {
@@ -290,13 +383,25 @@ impl FirewallSnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AppliedNetworkOperation {
     pub key: String,
     pub kind: NetworkOperationKind,
     pub status: NetworkOperationStatus,
     pub rollback: NetworkRollbackPlan,
+}
+
+impl fmt::Debug for AppliedNetworkOperation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AppliedNetworkOperation")
+            .field("key", &self.key)
+            .field("kind", &self.kind)
+            .field("status", &self.status)
+            .field("rollback", &self.rollback)
+            .finish()
+    }
 }
 
 impl AppliedNetworkOperation {
@@ -326,7 +431,7 @@ pub enum NetworkOperationStatus {
     RolledBack,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
     content = "payload",
@@ -361,6 +466,61 @@ pub enum NetworkOperationKind {
         policy_id: String,
         kill_switch_enabled: bool,
     },
+}
+
+impl fmt::Debug for NetworkOperationKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PreserveEndpointRoute {
+                endpoint,
+                gateway,
+                interface,
+            } => formatter
+                .debug_struct("PreserveEndpointRoute")
+                .field("endpoint_family", &ip_family(*endpoint))
+                .field("gateway_present", &gateway.is_some())
+                .field("interface", interface)
+                .finish(),
+            Self::AddRoute {
+                destination,
+                gateway,
+                interface,
+            } => formatter
+                .debug_struct("AddRoute")
+                .field("destination", destination)
+                .field("gateway_present", &gateway.is_some())
+                .field("interface", interface)
+                .finish(),
+            Self::SetInterfaceAddress { interface, address } => formatter
+                .debug_struct("SetInterfaceAddress")
+                .field("interface", interface)
+                .field("address", address)
+                .finish(),
+            Self::SetMtu { interface, mtu } => formatter
+                .debug_struct("SetMtu")
+                .field("interface", interface)
+                .field("mtu", mtu)
+                .finish(),
+            Self::SetDns {
+                servers,
+                search_domains,
+                match_domains,
+            } => formatter
+                .debug_struct("SetDns")
+                .field("servers_len", &servers.len())
+                .field("search_domains_len", &search_domains.len())
+                .field("match_domains_len", &match_domains.len())
+                .finish(),
+            Self::ApplyFirewallPolicy {
+                policy_id,
+                kill_switch_enabled,
+            } => formatter
+                .debug_struct("ApplyFirewallPolicy")
+                .field("policy_id_len", &policy_id.len())
+                .field("kill_switch_enabled", kill_switch_enabled)
+                .finish(),
+        }
+    }
 }
 
 impl NetworkOperationKind {
@@ -408,11 +568,21 @@ impl NetworkOperationKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkRollbackPlan {
     pub required: bool,
     pub inverse: Option<NetworkOperationKind>,
+}
+
+impl fmt::Debug for NetworkRollbackPlan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NetworkRollbackPlan")
+            .field("required", &self.required)
+            .field("inverse_present", &self.inverse.is_some())
+            .finish()
+    }
 }
 
 impl NetworkRollbackPlan {
@@ -452,11 +622,21 @@ impl NetworkRollbackPlan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IpNetwork {
     pub address: IpAddr,
     pub prefix: u8,
+}
+
+impl fmt::Debug for IpNetwork {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("IpNetwork")
+            .field("family", &ip_family(self.address))
+            .field("prefix", &self.prefix)
+            .finish()
+    }
 }
 
 impl IpNetwork {
@@ -479,6 +659,13 @@ impl IpNetwork {
         }
 
         Ok(())
+    }
+}
+
+fn ip_family(address: IpAddr) -> &'static str {
+    match address {
+        IpAddr::V4(_) => "ipv4",
+        IpAddr::V6(_) => "ipv6",
     }
 }
 
@@ -703,10 +890,58 @@ mod tests {
             snapshot.validate(),
             Err(NetworkStateError::DuplicateKey {
                 field: "routes",
-                key: "IpNetwork { address: 0.0.0.0, prefix: 0 }|Some(192.0.2.1)|Some(\"en0\")"
-                    .to_string(),
+                key: "IpNetwork { family: \"ipv4\", prefix: 0 }|gateway_present=true|interface=Some(\"en0\")".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn debug_redacts_network_identity_values() {
+        let mut snapshot = snapshot();
+        snapshot.routes[0].gateway = Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1)));
+        snapshot.dns.servers = vec![IpAddr::V4(Ipv4Addr::new(10, 13, 37, 53))];
+        snapshot.dns.search_domains = vec!["corp.internal".to_string()];
+        snapshot.dns.match_domains = vec!["secret.example".to_string()];
+
+        let mut applied = applied_state();
+        applied.operations.push(AppliedNetworkOperation {
+            key: "dns".to_string(),
+            kind: NetworkOperationKind::SetDns {
+                servers: vec![IpAddr::V4(Ipv4Addr::new(10, 13, 37, 53))],
+                search_domains: vec!["corp.internal".to_string()],
+                match_domains: vec!["secret.example".to_string()],
+            },
+            status: NetworkOperationStatus::Applied,
+            rollback: NetworkRollbackPlan {
+                required: true,
+                inverse: Some(NetworkOperationKind::SetDns {
+                    servers: vec![IpAddr::V4(Ipv4Addr::new(192, 168, 7, 53))],
+                    search_domains: vec!["home.internal".to_string()],
+                    match_domains: vec![],
+                }),
+            },
+        });
+
+        let snapshot_debug = format!("{snapshot:?}");
+        let applied_debug = format!("{applied:?}");
+        let operation_debug = format!("{:?}", applied.operations[1]);
+
+        for debug_output in [&snapshot_debug, &applied_debug, &operation_debug] {
+            assert!(!debug_output.contains("192.168.7.1"));
+            assert!(!debug_output.contains("192.168.7.53"));
+            assert!(!debug_output.contains("10.13.37.53"));
+            assert!(!debug_output.contains("corp.internal"));
+            assert!(!debug_output.contains("secret.example"));
+            assert!(!debug_output.contains("home.internal"));
+        }
+
+        assert!(snapshot_debug.contains("correlation_id: \"req-1\""));
+        assert!(applied_debug.contains("correlation_id: \"req-1\""));
+
+        let serialized = serde_json::to_string(&snapshot).expect("snapshot serializes fully");
+        assert!(serialized.contains("192.168.7.1"));
+        assert!(serialized.contains("10.13.37.53"));
+        assert!(serialized.contains("corp.internal"));
     }
 
     #[test]
