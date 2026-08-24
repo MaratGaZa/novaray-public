@@ -280,7 +280,10 @@ Android VpnService → Android UI → release
 - [x] Описать `NetworkSnapshot` и `AppliedNetworkState` как pure Rust core contract без OS mutation:
   route/DNS/firewall snapshots, typed operation descriptors, transaction phases, rollback metadata,
   duplicate-key и bounded identifier validation.
-- [ ] Сделать connect последовательностью применимых/отменяемых операций.
+- [x] Сделать connect последовательностью применимых/отменяемых операций: pure core
+  `ConnectNetworkTransactionPlanner` строит ordered `AppliedNetworkState` в фазе `Planned` со
+  stable operation keys, explicit `apply_order`, endpoint route, tunnel address/MTU, DNS/firewall
+  descriptors и rollback metadata; реальное выполнение операций ждёт helper/runtime slice.
 - [~] Добавить compensation для каждого шага: pure core contract теперь требует rollback metadata и
   explicit `apply_order`, а `rollback_steps_reverse_order()` возвращает compensation plan в обратном
   порядке применения; реальное выполнение rollback ждёт helper/runtime slice.

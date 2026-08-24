@@ -511,7 +511,15 @@ pub enum NetworkOperationKind {
         gateway: Option<IpAddr>,
         interface: Option<String>,
     },
+    RemoveEndpointRoute {
+        endpoint: IpAddr,
+    },
     AddRoute {
+        destination: IpNetwork,
+        gateway: Option<IpAddr>,
+        interface: Option<String>,
+    },
+    RemoveRoute {
         destination: IpNetwork,
         gateway: Option<IpAddr>,
         interface: Option<String>,
@@ -520,9 +528,16 @@ pub enum NetworkOperationKind {
         interface: String,
         address: IpNetwork,
     },
+    RemoveInterfaceAddress {
+        interface: String,
+        address: IpNetwork,
+    },
     SetMtu {
         interface: String,
         mtu: u32,
+    },
+    ResetMtu {
+        interface: String,
     },
     SetDns {
         servers: Vec<IpAddr>,
@@ -531,6 +546,10 @@ pub enum NetworkOperationKind {
     },
     ApplyFirewallPolicy {
         policy_id: String,
+        kill_switch_enabled: bool,
+    },
+    RestoreFirewallSnapshot {
+        policy_id: Option<String>,
         kill_switch_enabled: bool,
     },
 }
@@ -548,6 +567,10 @@ impl fmt::Debug for NetworkOperationKind {
                 .field("gateway_present", &gateway.is_some())
                 .field("interface", interface)
                 .finish(),
+            Self::RemoveEndpointRoute { endpoint } => formatter
+                .debug_struct("RemoveEndpointRoute")
+                .field("endpoint_family", &ip_family(*endpoint))
+                .finish(),
             Self::AddRoute {
                 destination,
                 gateway,
@@ -558,8 +581,23 @@ impl fmt::Debug for NetworkOperationKind {
                 .field("gateway_present", &gateway.is_some())
                 .field("interface", interface)
                 .finish(),
+            Self::RemoveRoute {
+                destination,
+                gateway,
+                interface,
+            } => formatter
+                .debug_struct("RemoveRoute")
+                .field("destination", destination)
+                .field("gateway_present", &gateway.is_some())
+                .field("interface", interface)
+                .finish(),
             Self::SetInterfaceAddress { interface, address } => formatter
                 .debug_struct("SetInterfaceAddress")
+                .field("interface", interface)
+                .field("address", address)
+                .finish(),
+            Self::RemoveInterfaceAddress { interface, address } => formatter
+                .debug_struct("RemoveInterfaceAddress")
                 .field("interface", interface)
                 .field("address", address)
                 .finish(),
@@ -567,6 +605,10 @@ impl fmt::Debug for NetworkOperationKind {
                 .debug_struct("SetMtu")
                 .field("interface", interface)
                 .field("mtu", mtu)
+                .finish(),
+            Self::ResetMtu { interface } => formatter
+                .debug_struct("ResetMtu")
+                .field("interface", interface)
                 .finish(),
             Self::SetDns {
                 servers,
@@ -586,6 +628,14 @@ impl fmt::Debug for NetworkOperationKind {
                 .field("policy_id_len", &policy_id.len())
                 .field("kill_switch_enabled", kill_switch_enabled)
                 .finish(),
+            Self::RestoreFirewallSnapshot {
+                policy_id,
+                kill_switch_enabled,
+            } => formatter
+                .debug_struct("RestoreFirewallSnapshot")
+                .field("policy_id_present", &policy_id.is_some())
+                .field("kill_switch_enabled", kill_switch_enabled)
+                .finish(),
         }
     }
 }
@@ -598,7 +648,13 @@ impl NetworkOperationKind {
                 endpoint: _,
                 gateway: _,
             } => validate_optional_id("operation.interface", interface.as_deref()),
+            Self::RemoveEndpointRoute { endpoint: _ } => Ok(()),
             Self::AddRoute {
+                destination,
+                interface,
+                gateway: _,
+            }
+            | Self::RemoveRoute {
                 destination,
                 interface,
                 gateway: _,
@@ -610,6 +666,10 @@ impl NetworkOperationKind {
                 validate_id("operation.interface", interface)?;
                 address.validate()
             }
+            Self::RemoveInterfaceAddress { interface, address } => {
+                validate_id("operation.interface", interface)?;
+                address.validate()
+            }
             Self::SetMtu { interface, mtu } => {
                 validate_id("operation.interface", interface)?;
                 if *mtu == 0 {
@@ -617,6 +677,7 @@ impl NetworkOperationKind {
                 }
                 Ok(())
             }
+            Self::ResetMtu { interface } => validate_id("operation.interface", interface),
             Self::SetDns {
                 servers,
                 search_domains,
@@ -631,6 +692,10 @@ impl NetworkOperationKind {
                 policy_id,
                 kill_switch_enabled: _,
             } => validate_id("operation.policy_id", policy_id),
+            Self::RestoreFirewallSnapshot {
+                policy_id,
+                kill_switch_enabled: _,
+            } => validate_optional_id("operation.policy_id", policy_id.as_deref()),
         }
     }
 }

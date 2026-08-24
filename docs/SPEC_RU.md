@@ -77,6 +77,9 @@ Direct Developer ID distribution сохраняется как целевая м
   карантинит corrupt/unknown fields/invalid state fail-closed, удаляет осиротевшие temp-кандидаты и
   очищает valid journal только по явной успешной recovery-команде; это ещё не выполняет rollback
   против ОС.
+- [x] Connect transaction planner: core строит ordered `AppliedNetworkState` в фазе `Planned` для
+  full-tunnel connect intent с endpoint route, tunnel address/MTU, DNS и firewall policy operations,
+  включая rollback metadata и redacted diagnostics, без helper runtime или OS mutation.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -193,6 +196,9 @@ allowed IPs, а не простой разновидностью VLESS-proxy pro
 - Незавершённая network transaction должна иметь recovery journal с `NetworkSnapshot` и
   `AppliedNetworkState`; journal читается fail-closed при следующем запуске, corrupt/partial данные
   не считаются валидной recovery work, а clear допускается только после явной успешной recovery.
+- Connect должен сначала моделироваться как ordered transaction plan: stable operation keys,
+  explicit `apply_order`, typed network operations и rollback metadata формируются до передачи в
+  privileged boundary; сам planner не доказывает реальную мутацию сети.
 
 ### FR-005. Split tunneling
 
