@@ -6,6 +6,7 @@ pub mod connection;
 pub mod core;
 pub mod engine;
 pub mod matcher;
+pub mod network_executor;
 pub mod network_state;
 pub mod network_transaction;
 pub mod parser;
