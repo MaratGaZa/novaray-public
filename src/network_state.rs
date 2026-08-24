@@ -115,6 +115,7 @@ impl AppliedNetworkState {
         validate_collection_len("operations", self.operations.len())?;
 
         let mut operation_keys = HashSet::new();
+        let mut apply_orders = HashSet::new();
         for operation in &self.operations {
             operation.validate()?;
             if !operation_keys.insert(operation.key.as_str()) {
@@ -122,6 +123,11 @@ impl AppliedNetworkState {
                     field: "operations",
                     key: operation.key.clone(),
                 });
+            }
+            if let Some(apply_order) = operation.apply_order {
+                if !apply_orders.insert(apply_order) {
+                    return Err(NetworkStateError::DuplicateApplyOrder { apply_order });
+                }
             }
         }
 
@@ -215,6 +221,39 @@ impl AppliedNetworkState {
         }
 
         Ok(())
+    }
+
+    pub fn rollback_steps_reverse_order(&self) -> Result<Vec<RollbackStep>, NetworkStateError> {
+        self.validate()?;
+
+        let mut steps = Vec::new();
+        for operation in &self.operations {
+            if !matches!(
+                operation.status,
+                NetworkOperationStatus::Applied | NetworkOperationStatus::Failed
+            ) {
+                continue;
+            }
+
+            if operation.rollback.required {
+                steps.push(RollbackStep {
+                    apply_order: operation.apply_order.ok_or_else(|| {
+                        NetworkStateError::MissingApplyOrder {
+                            operation_key: operation.key.clone(),
+                        }
+                    })?,
+                    operation_key: operation.key.clone(),
+                    inverse: operation.rollback.inverse.clone().ok_or_else(|| {
+                        NetworkStateError::MissingRollback {
+                            operation_key: operation.key.clone(),
+                        }
+                    })?,
+                });
+            }
+        }
+
+        steps.sort_by(|left, right| right.apply_order.cmp(&left.apply_order));
+        Ok(steps)
     }
 }
 
@@ -387,6 +426,7 @@ impl FirewallSnapshot {
 #[serde(deny_unknown_fields)]
 pub struct AppliedNetworkOperation {
     pub key: String,
+    pub apply_order: Option<u32>,
     pub kind: NetworkOperationKind,
     pub status: NetworkOperationStatus,
     pub rollback: NetworkRollbackPlan,
@@ -397,6 +437,7 @@ impl fmt::Debug for AppliedNetworkOperation {
         formatter
             .debug_struct("AppliedNetworkOperation")
             .field("key", &self.key)
+            .field("apply_order", &self.apply_order)
             .field("kind", &self.kind)
             .field("status", &self.status)
             .field("rollback", &self.rollback)
@@ -408,7 +449,32 @@ impl AppliedNetworkOperation {
     fn validate(&self) -> Result<(), NetworkStateError> {
         validate_id("operation.key", &self.key)?;
         self.kind.validate()?;
+        if self.rollback.required || self.status != NetworkOperationStatus::Planned {
+            self.apply_order
+                .ok_or_else(|| NetworkStateError::MissingApplyOrder {
+                    operation_key: self.key.clone(),
+                })?;
+        }
         self.rollback.validate(&self.key, self.status)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RollbackStep {
+    pub apply_order: u32,
+    pub operation_key: String,
+    pub inverse: NetworkOperationKind,
+}
+
+impl fmt::Debug for RollbackStep {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RollbackStep")
+            .field("apply_order", &self.apply_order)
+            .field("operation_key", &self.operation_key)
+            .field("inverse", &self.inverse)
+            .finish()
     }
 }
 
@@ -694,6 +760,12 @@ pub enum NetworkStateError {
     #[error("duplicate {field} key: {key}")]
     DuplicateKey { field: &'static str, key: String },
 
+    #[error("duplicate operation apply_order: {apply_order}")]
+    DuplicateApplyOrder { apply_order: u32 },
+
+    #[error("operation {operation_key} requires apply_order for deterministic rollback")]
+    MissingApplyOrder { operation_key: String },
+
     #[error("invalid network prefix {prefix} for {address}; max is {max_prefix}")]
     InvalidPrefix {
         address: IpAddr,
@@ -843,9 +915,14 @@ mod tests {
         }
     }
 
-    fn set_mtu_operation(key: &str, status: NetworkOperationStatus) -> AppliedNetworkOperation {
+    fn set_mtu_operation(
+        key: &str,
+        apply_order: u32,
+        status: NetworkOperationStatus,
+    ) -> AppliedNetworkOperation {
         AppliedNetworkOperation {
             key: key.to_string(),
+            apply_order: Some(apply_order),
             kind: NetworkOperationKind::SetMtu {
                 interface: "utun9".to_string(),
                 mtu: 1280,
@@ -868,7 +945,7 @@ mod tests {
             platform: PlatformKind::MacOs,
             owner: owner(),
             phase: NetworkTransactionPhase::Applied,
-            operations: vec![set_mtu_operation("mtu", NetworkOperationStatus::Applied)],
+            operations: vec![set_mtu_operation("mtu", 1, NetworkOperationStatus::Applied)],
             last_error: None,
         }
     }
@@ -906,6 +983,7 @@ mod tests {
         let mut applied = applied_state();
         applied.operations.push(AppliedNetworkOperation {
             key: "dns".to_string(),
+            apply_order: Some(2),
             kind: NetworkOperationKind::SetDns {
                 servers: vec![IpAddr::V4(Ipv4Addr::new(10, 13, 37, 53))],
                 search_domains: vec!["corp.internal".to_string()],
@@ -949,7 +1027,7 @@ mod tests {
         let mut state = applied_state();
         state
             .operations
-            .push(set_mtu_operation("mtu", NetworkOperationStatus::Applied));
+            .push(set_mtu_operation("mtu", 2, NetworkOperationStatus::Applied));
 
         assert_eq!(
             state.validate(),
@@ -958,6 +1036,73 @@ mod tests {
                 key: "mtu".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn duplicate_apply_order_is_rejected() {
+        let mut state = applied_state();
+        state
+            .operations
+            .push(set_mtu_operation("dns", 1, NetworkOperationStatus::Applied));
+
+        assert_eq!(
+            state.validate(),
+            Err(NetworkStateError::DuplicateApplyOrder { apply_order: 1 })
+        );
+    }
+
+    #[test]
+    fn applied_operation_requires_apply_order_for_deterministic_rollback() {
+        let mut state = applied_state();
+        state.operations[0].apply_order = None;
+
+        assert_eq!(
+            state.validate(),
+            Err(NetworkStateError::MissingApplyOrder {
+                operation_key: "mtu".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn rollback_steps_are_returned_in_reverse_apply_order() {
+        let mut state = applied_state();
+        state.operations.push(AppliedNetworkOperation {
+            key: "dns".to_string(),
+            apply_order: Some(2),
+            kind: NetworkOperationKind::SetDns {
+                servers: vec![IpAddr::V4(Ipv4Addr::new(10, 13, 37, 53))],
+                search_domains: vec!["corp.internal".to_string()],
+                match_domains: vec![],
+            },
+            status: NetworkOperationStatus::Applied,
+            rollback: NetworkRollbackPlan {
+                required: true,
+                inverse: Some(NetworkOperationKind::SetDns {
+                    servers: vec![IpAddr::V4(Ipv4Addr::new(192, 168, 7, 53))],
+                    search_domains: vec!["home.internal".to_string()],
+                    match_domains: vec![],
+                }),
+            },
+        });
+
+        let steps = state
+            .rollback_steps_reverse_order()
+            .expect("valid rollback plan");
+
+        assert_eq!(
+            steps
+                .iter()
+                .map(|step| (step.apply_order, step.operation_key.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(2, "dns"), (1, "mtu")]
+        );
+
+        let debug = format!("{:?}", steps[0]);
+        assert!(!debug.contains("10.13.37.53"));
+        assert!(!debug.contains("192.168.7.53"));
+        assert!(!debug.contains("corp.internal"));
+        assert!(!debug.contains("home.internal"));
     }
 
     #[test]
@@ -1083,9 +1228,11 @@ mod tests {
     #[test]
     fn operation_status_counts_are_diagnostic_only() {
         let mut state = applied_state();
-        state
-            .operations
-            .push(set_mtu_operation("mtu2", NetworkOperationStatus::Applied));
+        state.operations.push(set_mtu_operation(
+            "mtu2",
+            2,
+            NetworkOperationStatus::Applied,
+        ));
 
         let counts = group_operations_by_status(&state);
         assert_eq!(counts.get(&NetworkOperationStatus::Applied), Some(&2));

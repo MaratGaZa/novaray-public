@@ -70,6 +70,8 @@ Direct Developer ID distribution сохраняется как целевая м
 - [x] Network transaction contract skeleton: `NetworkSnapshot` и `AppliedNetworkState` описывают
   route/DNS/firewall snapshot, typed операции, phase validation и rollback metadata без `utun`,
   `route`, `scutil`, `pfctl`, DNS/firewall mutation или helper runtime.
+- [x] Rollback ordering contract: applied network operations несут explicit `apply_order`, а core
+  возвращает rollback steps в строгом обратном порядке применения без journal persistence или OS mutation.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -181,6 +183,8 @@ allowed IPs, а не простой разновидностью VLESS-proxy pro
 - До любой системной мутации core/helper contract фиксирует `NetworkSnapshot` исходного состояния и
   `AppliedNetworkState` с типизированными операциями, фазой транзакции и rollback metadata; этот
   contract не является доказательством работающего tunnel до реальных L5/L7 проверок.
+- Компенсация network transaction должна выполняться в обратном порядке применения операций; порядок
+  фиксируется явным `apply_order`, а не позицией в массиве или результатом диагностической группировки.
 
 ### FR-005. Split tunneling
 
@@ -237,6 +241,8 @@ Per-app routing является одной из двух главных фун�
 - Нельзя оставлять постоянное широкое правило `pf` или сломанный DNS после удаления приложения.
 - Частично применённая network transaction не считается успешной без явного `AppliedNetworkState`;
   missing rollback metadata и inconsistent transaction phases должны отклоняться fail-closed.
+- Missing или duplicate rollback order для применённых операций отклоняется fail-closed до любой
+  попытки выполнить компенсацию.
 
 ### FR-009. UI
 

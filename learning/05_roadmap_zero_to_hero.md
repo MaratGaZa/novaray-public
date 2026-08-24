@@ -281,7 +281,9 @@ Android VpnService → Android UI → release
   route/DNS/firewall snapshots, typed operation descriptors, transaction phases, rollback metadata,
   duplicate-key и bounded identifier validation.
 - [ ] Сделать connect последовательностью применимых/отменяемых операций.
-- [ ] Добавить compensation для каждого шага.
+- [~] Добавить compensation для каждого шага: pure core contract теперь требует rollback metadata и
+  explicit `apply_order`, а `rollback_steps_reverse_order()` возвращает compensation plan в обратном
+  порядке применения; реальное выполнение rollback ждёт helper/runtime slice.
 - [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает
   недопустимые state transitions; runtime/helper-level serialization ждёт IPC transport и real
   network transaction.
