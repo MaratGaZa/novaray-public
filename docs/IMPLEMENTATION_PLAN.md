@@ -474,6 +474,12 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     state mapping), сериализующий только allowlisted `PlatformHelperCommand` после validation через
     platform contract. Scope intentionally excludes helper runtime, IPC transport, launchd/root,
     engine readiness binding, `utun`, routes, DNS, firewall, system proxy and real daemon disconnect.
+25. [x] NetworkSnapshot и AppliedNetworkState contract — issue #20: добавить pure Rust core модель
+    network transaction snapshot/applied-state для будущего privileged helper: route/DNS/firewall
+    snapshots, typed operation descriptors, transaction phases, rollback metadata, duplicate-key и
+    bounded identifier validation. Scope intentionally excludes helper runtime, IPC transport,
+    launchd/root, `utun`, `route`, `scutil`, `pfctl`, DNS/firewall mutation, system proxy, engine
+    readiness binding and packet-flow evidence.
 
 ## 7. Зависимости
 

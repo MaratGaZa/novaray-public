@@ -277,7 +277,9 @@ Android VpnService → Android UI → release
 ### 3.3. Транзакционное применение сети
 
 - [~] `RouteManager` API существует, но методы no-op.
-- [ ] Описать `NetworkSnapshot` и `AppliedNetworkState`.
+- [x] Описать `NetworkSnapshot` и `AppliedNetworkState` как pure Rust core contract без OS mutation:
+  route/DNS/firewall snapshots, typed operation descriptors, transaction phases, rollback metadata,
+  duplicate-key и bounded identifier validation.
 - [ ] Сделать connect последовательностью применимых/отменяемых операций.
 - [ ] Добавить compensation для каждого шага.
 - [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает

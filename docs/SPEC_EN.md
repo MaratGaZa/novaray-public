@@ -83,6 +83,9 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 - [x] Connection lifecycle skeleton: `ConnectionState` and a serialized helper command executor
   validate connect/status/disconnect/recover transitions without an IPC transport, helper runtime,
   or network mutation.
+- [x] Network transaction contract skeleton: `NetworkSnapshot` and `AppliedNetworkState` describe
+  route/DNS/firewall snapshots, typed operations, phase validation, and rollback metadata without
+  `utun`, `route`, `scutil`, `pfctl`, DNS/firewall mutation, or helper runtime.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -184,6 +187,9 @@ of being ignored.
 - Configure routes, MTU, and DNS through the selected supported API for the current platform.
 - Put direct system operations behind a narrow validated privileged boundary.
 - Make repeated connect/disconnect operations idempotent.
+- Before any system mutation, the core/helper contract records a `NetworkSnapshot` of the original
+  state and an `AppliedNetworkState` with typed operations, transaction phase, and rollback metadata;
+  this contract is not evidence of a working tunnel until real L5/L7 checks exist.
 
 ### FR-005 — Split tunneling
 
@@ -217,6 +223,8 @@ snapshot.
 - Snapshot platform network state before mutations.
 - Roll back after normal stop, signals, failed partial connection, and recovery on next launch.
 - Provide a user-visible safe recovery action.
+- A partially applied network transaction is not successful without an explicit `AppliedNetworkState`;
+  missing rollback metadata and inconsistent transaction phases fail closed.
 
 ### FR-009 — UI
 
@@ -244,6 +252,9 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   routes, DNS, firewall, or system proxy state.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
+- The network transaction contract skeleton contains only typed snapshots, applied-state,
+  route/DNS/firewall operation descriptors, and rollback metadata. It does not execute shell
+  commands, open a privileged transport, or mutate operating-system state.
 
 ## 5. Target architecture
 
