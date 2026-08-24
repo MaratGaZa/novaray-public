@@ -282,16 +282,18 @@ Android VpnService → Android UI → release
   duplicate-key и bounded identifier validation.
 - [x] Сделать connect последовательностью применимых/отменяемых операций: pure core
   `ConnectNetworkTransactionPlanner` строит ordered `AppliedNetworkState` в фазе `Planned` со
-  stable operation keys, explicit `apply_order`, endpoint route, tunnel address/MTU, DNS/firewall
-  descriptors и rollback metadata; реальное выполнение операций ждёт helper/runtime slice.
+  stable operation keys, explicit `apply_order`, endpoint route, tunnel address/MTU,
+  default-route/full-tunnel route, DNS/firewall descriptors и rollback metadata; реальное выполнение
+  операций ждёт helper/runtime slice.
 - [~] Добавить compensation для каждого шага: pure core contract теперь требует rollback metadata и
   explicit `apply_order`, а `rollback_steps_reverse_order()` возвращает compensation plan в обратном
   порядке применения; реальное выполнение rollback ждёт helper/runtime slice.
 - [~] Создать recovery journal для восстановления после crash: pure core persistence contract
   записывает и читает typed JSON journal для `NetworkSnapshot` + `AppliedNetworkState` через
   private каталог и temp-write/fsync/rename, карантинит corrupt/invalid state fail-closed, чистит
-  осиротевшие temp-кандидаты и очищает valid journal только после явной успешной recovery; реальное
-  выполнение rollback ждёт helper/runtime slice.
+  осиротевшие temp-кандидаты, очищает valid journal только после явной успешной recovery и имеет
+  deterministic evidence для crash сразу после `004_route_full_tunnel`; реальное выполнение rollback
+  ждёт helper/runtime slice.
 - [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает
   недопустимые state transitions; runtime/helper-level serialization ждёт IPC transport и real
   network transaction.
