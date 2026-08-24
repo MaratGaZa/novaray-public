@@ -284,11 +284,15 @@ Android VpnService → Android UI → release
 - [~] Добавить compensation для каждого шага: pure core contract теперь требует rollback metadata и
   explicit `apply_order`, а `rollback_steps_reverse_order()` возвращает compensation plan в обратном
   порядке применения; реальное выполнение rollback ждёт helper/runtime slice.
+- [~] Создать recovery journal для восстановления после crash: pure core persistence contract
+  записывает и читает typed JSON journal для `NetworkSnapshot` + `AppliedNetworkState` через
+  private каталог и temp-write/fsync/rename, карантинит corrupt/invalid state fail-closed, чистит
+  осиротевшие temp-кандидаты и очищает valid journal только после явной успешной recovery; реальное
+  выполнение rollback ждёт helper/runtime slice.
 - [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает
   недопустимые state transitions; runtime/helper-level serialization ждёт IPC transport и real
   network transaction.
 - [ ] Сделать повторные команды идемпотентными.
-- [ ] Создать recovery journal для восстановления после crash.
 
 ### 3.4. Проверки data plane
 
