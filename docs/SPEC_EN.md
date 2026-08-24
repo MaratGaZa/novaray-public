@@ -89,9 +89,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 - [x] Rollback ordering contract: applied network operations carry an explicit `apply_order`, and
   core returns rollback steps in strict reverse apply order without OS mutation.
 - [x] Recovery journal persistence contract: core writes and reads a typed JSON journal for
-  `NetworkSnapshot` + `AppliedNetworkState` via temp-write/fsync/rename, rejects corrupt/unknown
-  fields/invalid state fail-closed, and clears the journal only after an explicit successful
-  recovery command; it still does not execute OS rollback.
+  `NetworkSnapshot` + `AppliedNetworkState` through a private directory and temp-write/fsync/rename,
+  quarantines corrupt/unknown fields/invalid state fail-closed, removes orphaned temp candidates, and
+  clears a valid journal only after an explicit successful recovery command; it still does not
+  execute OS rollback.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -239,7 +240,8 @@ snapshot.
 - Missing or duplicate rollback order for applied operations fails closed before any compensation is
   attempted.
 - The recovery journal is typed versioned JSON; unknown fields, corrupt JSON, mismatched snapshot/
-  transaction metadata, or invalid rollback state fail closed.
+  transaction metadata, or invalid rollback state are quarantined fail-closed without blocking other
+  valid journals.
 
 ### FR-009 — UI
 

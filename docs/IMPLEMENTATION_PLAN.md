@@ -487,8 +487,9 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     `utun`, route/DNS/firewall mutation, system proxy and packet-flow evidence.
 27. [x] Recovery journal persistence contract — issue #24: добавить pure Rust core store для typed
     JSON recovery journal (`NetworkSnapshot` + `AppliedNetworkState`) с versioned schema,
-    temp-write/fsync/rename, fail-closed load для corrupt/unknown-field/invalid persisted state,
-    file-safe transaction ids, explicit clear-after-success и redacted diagnostics. Scope
+    private directory, temp-write/fsync/rename, per-file quarantine для corrupt/unknown-field/invalid
+    persisted state, orphan temp cleanup, file-safe transaction ids, explicit clear-after-success и
+    redacted diagnostics. Scope
     intentionally excludes helper runtime, IPC transport, launchd/root, `utun`, route/DNS/firewall
     mutation, rollback execution, system proxy and packet-flow evidence.
 

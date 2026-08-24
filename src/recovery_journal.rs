@@ -5,7 +5,7 @@
 //! system proxy state, or any platform network interface.
 
 use std::fmt;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -110,6 +110,19 @@ pub struct NetworkRecoveryJournalStore {
     dir: PathBuf,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NetworkRecoveryJournalLoadReport {
+    pub journals: Vec<NetworkRecoveryJournal>,
+    pub quarantined: Vec<QuarantinedRecoveryJournal>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuarantinedRecoveryJournal {
+    pub original_path: PathBuf,
+    pub quarantine_path: PathBuf,
+    pub reason: String,
+}
+
 impl NetworkRecoveryJournalStore {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
@@ -124,7 +137,7 @@ impl NetworkRecoveryJournalStore {
         journal: &NetworkRecoveryJournal,
     ) -> Result<PathBuf, NetworkRecoveryJournalError> {
         journal.validate()?;
-        fs::create_dir_all(&self.dir)?;
+        ensure_private_journal_dir(&self.dir)?;
 
         let target_path = self.journal_path_for(&journal.journal_id)?;
         let temp_path = self.temp_path_for(&journal.journal_id)?;
@@ -152,10 +165,20 @@ impl NetworkRecoveryJournalStore {
     }
 
     pub fn load_pending(&self) -> Result<Vec<NetworkRecoveryJournal>, NetworkRecoveryJournalError> {
+        Ok(self.load_pending_report()?.journals)
+    }
+
+    pub fn load_pending_report(
+        &self,
+    ) -> Result<NetworkRecoveryJournalLoadReport, NetworkRecoveryJournalError> {
         if !self.dir.exists() {
-            return Ok(Vec::new());
+            return Ok(NetworkRecoveryJournalLoadReport {
+                journals: Vec::new(),
+                quarantined: Vec::new(),
+            });
         }
 
+        let removed_temp_files = cleanup_temp_candidates(&self.dir)?;
         let mut paths = Vec::new();
         for entry in fs::read_dir(&self.dir)? {
             let entry = entry?;
@@ -167,25 +190,22 @@ impl NetworkRecoveryJournalStore {
         paths.sort();
 
         let mut journals = Vec::new();
+        let mut quarantined = Vec::new();
         for path in paths {
-            let payload = fs::read(&path)?;
-            let journal: NetworkRecoveryJournal =
-                serde_json::from_slice(&payload).map_err(|source| {
-                    NetworkRecoveryJournalError::InvalidJournalFile {
-                        path: path.clone(),
-                        reason: source.to_string(),
-                    }
-                })?;
-            journal.validate().map_err(|source| {
-                NetworkRecoveryJournalError::InvalidPersistedState {
-                    path: path.clone(),
-                    source: Box::new(source),
-                }
-            })?;
-            journals.push(journal);
+            match load_one_journal(&path) {
+                Ok(journal) => journals.push(journal),
+                Err(reason) => quarantined.push(quarantine_journal_file(&path, reason)?),
+            }
         }
 
-        Ok(journals)
+        if removed_temp_files || !quarantined.is_empty() {
+            sync_parent_dir(&self.dir)?;
+        }
+
+        Ok(NetworkRecoveryJournalLoadReport {
+            journals,
+            quarantined,
+        })
     }
 
     pub fn clear_pending(&self, transaction_id: &str) -> Result<bool, NetworkRecoveryJournalError> {
@@ -260,6 +280,9 @@ pub enum NetworkRecoveryJournalError {
         source: Box<NetworkRecoveryJournalError>,
     },
 
+    #[error("no available quarantine path for invalid recovery journal {path:?}")]
+    NoQuarantinePath { path: PathBuf },
+
     #[error(transparent)]
     NetworkState(#[from] NetworkStateError),
 
@@ -293,6 +316,67 @@ fn validate_journal_file_component(
     Ok(())
 }
 
+fn ensure_private_journal_dir(dir: &Path) -> Result<(), NetworkRecoveryJournalError> {
+    fs::create_dir_all(dir)?;
+    set_private_dir_permissions(dir)?;
+    Ok(())
+}
+
+fn load_one_journal(path: &Path) -> Result<NetworkRecoveryJournal, String> {
+    let payload = fs::read(path).map_err(|source| source.to_string())?;
+    let journal: NetworkRecoveryJournal =
+        serde_json::from_slice(&payload).map_err(|source| source.to_string())?;
+    journal.validate().map_err(|source| source.to_string())?;
+    Ok(journal)
+}
+
+fn cleanup_temp_candidates(dir: &Path) -> Result<bool, NetworkRecoveryJournalError> {
+    let mut removed = false;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|name| name.starts_with('.') && name.ends_with(".tmp"))
+        {
+            match fs::remove_file(&path) {
+                Ok(()) => removed = true,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    Ok(removed)
+}
+
+fn quarantine_journal_file(
+    path: &Path,
+    reason: String,
+) -> Result<QuarantinedRecoveryJournal, NetworkRecoveryJournalError> {
+    let quarantine_path = next_quarantine_path(path)?;
+    fs::rename(path, &quarantine_path)?;
+    Ok(QuarantinedRecoveryJournal {
+        original_path: path.to_path_buf(),
+        quarantine_path,
+        reason,
+    })
+}
+
+fn next_quarantine_path(path: &Path) -> Result<PathBuf, NetworkRecoveryJournalError> {
+    for suffix in 1..=1000 {
+        let candidate = path.with_extension(format!("json.invalid.{suffix}"));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    Err(NetworkRecoveryJournalError::NoQuarantinePath {
+        path: path.to_path_buf(),
+    })
+}
+
 fn replace_file(source: &Path, target: &Path) -> Result<(), NetworkRecoveryJournalError> {
     #[cfg(windows)]
     {
@@ -305,17 +389,34 @@ fn replace_file(source: &Path, target: &Path) -> Result<(), NetworkRecoveryJourn
     Ok(())
 }
 
+#[cfg(unix)]
 fn set_owner_only_permissions(options: &mut OpenOptions) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
+    use std::os::unix::fs::OpenOptionsExt;
+    options.mode(0o600);
+}
+
+#[cfg(not(unix))]
+fn set_owner_only_permissions(_options: &mut OpenOptions) {}
+
+#[cfg(unix)]
+fn set_private_dir_permissions(dir: &Path) -> Result<(), NetworkRecoveryJournalError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(dir)?.permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(dir, permissions)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_private_dir_permissions(_dir: &Path) -> Result<(), NetworkRecoveryJournalError> {
+    Ok(())
 }
 
 fn sync_parent_dir(dir: &Path) -> Result<(), NetworkRecoveryJournalError> {
     #[cfg(unix)]
     {
+        use std::fs::File;
         File::open(dir)?.sync_all()?;
     }
 
@@ -456,32 +557,63 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_or_unknown_field_journal_is_rejected_fail_closed() {
-        let temp_dir = TempDirGuard::new("corrupt");
-        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
-        let path = temp_dir.as_ref().join("txn-1.json");
-        fs::write(
-            &path,
-            r#"{"schema_version":1,"journal_id":"txn-1","unexpected":true}"#,
-        )
-        .expect("write corrupt journal");
+    #[cfg(unix)]
+    fn journal_directory_is_owner_only_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
 
-        let err = store.load_pending().expect_err("unknown field is invalid");
-        assert!(matches!(
-            err,
-            NetworkRecoveryJournalError::InvalidJournalFile { .. }
-        ));
-        assert!(!format!("{err:?}").contains("10.13.37.53"));
+        let temp_dir = TempDirGuard::new("permissions");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        store.write_pending(&journal()).expect("write journal");
+
+        let mode = fs::metadata(temp_dir.as_ref())
+            .expect("journal dir metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+
+        assert_eq!(mode, 0o700);
     }
 
     #[test]
-    fn temp_candidate_files_are_not_treated_as_pending_journals() {
+    fn corrupt_journal_is_quarantined_without_blocking_valid_recovery_work() {
+        let temp_dir = TempDirGuard::new("quarantine");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let valid = journal();
+        store.write_pending(&valid).expect("write valid journal");
+
+        let path = temp_dir.as_ref().join("txn-2.json");
+        fs::write(
+            &path,
+            r#"{"schema_version":1,"journal_id":"txn-2","unexpected":true}"#,
+        )
+        .expect("write corrupt journal");
+
+        let report = store
+            .load_pending_report()
+            .expect("load valid and quarantine invalid");
+
+        assert_eq!(report.journals, vec![valid]);
+        assert_eq!(report.quarantined.len(), 1);
+        assert_eq!(report.quarantined[0].original_path, path);
+        assert!(!report.quarantined[0].original_path.exists());
+        assert!(report.quarantined[0].quarantine_path.exists());
+        assert!(report.quarantined[0]
+            .quarantine_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.starts_with("txn-2.json.invalid.")));
+        assert!(!format!("{report:?}").contains("10.13.37.53"));
+    }
+
+    #[test]
+    fn temp_candidate_files_are_cleaned_and_not_treated_as_pending_journals() {
         let temp_dir = TempDirGuard::new("temp");
         let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
-        fs::write(temp_dir.as_ref().join(".txn-1.123.tmp"), b"partial")
-            .expect("write temp candidate");
+        let temp_path = temp_dir.as_ref().join(".txn-1.123.tmp");
+        fs::write(&temp_path, b"partial").expect("write temp candidate");
 
         assert!(store.load_pending().expect("ignore temp").is_empty());
+        assert!(!temp_path.exists());
     }
 
     #[test]
@@ -516,13 +648,14 @@ mod tests {
         let payload = serde_json::to_vec_pretty(&journal).expect("serialize invalid journal");
         fs::write(temp_dir.as_ref().join("txn-1.json"), payload).expect("write invalid journal");
 
-        let err = store
-            .load_pending()
-            .expect_err("invalid persisted state rejected");
-        assert!(matches!(
-            err,
-            NetworkRecoveryJournalError::InvalidPersistedState { .. }
-        ));
+        let report = store
+            .load_pending_report()
+            .expect("invalid persisted state is quarantined");
+        assert!(report.journals.is_empty());
+        assert_eq!(report.quarantined.len(), 1);
+        assert!(report.quarantined[0]
+            .reason
+            .contains("requires rollback metadata"));
     }
 
     #[test]

@@ -73,9 +73,10 @@ Direct Developer ID distribution сохраняется как целевая м
 - [x] Rollback ordering contract: applied network operations несут explicit `apply_order`, а core
   возвращает rollback steps в строгом обратном порядке применения без OS mutation.
 - [x] Recovery journal persistence contract: core записывает и читает typed JSON journal для
-  `NetworkSnapshot` + `AppliedNetworkState` через temp-write/fsync/rename, отклоняет corrupt/unknown
-  fields/invalid state fail-closed и очищает journal только по явной успешной recovery-команде; это
-  ещё не выполняет rollback против ОС.
+  `NetworkSnapshot` + `AppliedNetworkState` через private каталог, temp-write/fsync/rename,
+  карантинит corrupt/unknown fields/invalid state fail-closed, удаляет осиротевшие temp-кандидаты и
+  очищает valid journal только по явной успешной recovery-команде; это ещё не выполняет rollback
+  против ОС.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -251,7 +252,8 @@ Per-app routing является одной из двух главных фун�
 - Missing или duplicate rollback order для применённых операций отклоняется fail-closed до любой
   попытки выполнить компенсацию.
 - Recovery journal хранится как typed JSON с версией схемы; unknown fields, corrupt JSON,
-  несовпадение snapshot/transaction metadata или invalid rollback state отклоняются fail-closed.
+  несовпадение snapshot/transaction metadata или invalid rollback state карантинятся fail-closed без
+  блокировки других валидных journals.
 
 ### FR-009. UI
 
