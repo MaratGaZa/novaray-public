@@ -519,6 +519,11 @@ pub enum NetworkOperationKind {
         gateway: Option<IpAddr>,
         interface: Option<String>,
     },
+    RemoveRoute {
+        destination: IpNetwork,
+        gateway: Option<IpAddr>,
+        interface: Option<String>,
+    },
     SetInterfaceAddress {
         interface: String,
         address: IpNetwork,
@@ -572,6 +577,16 @@ impl fmt::Debug for NetworkOperationKind {
                 interface,
             } => formatter
                 .debug_struct("AddRoute")
+                .field("destination", destination)
+                .field("gateway_present", &gateway.is_some())
+                .field("interface", interface)
+                .finish(),
+            Self::RemoveRoute {
+                destination,
+                gateway,
+                interface,
+            } => formatter
+                .debug_struct("RemoveRoute")
                 .field("destination", destination)
                 .field("gateway_present", &gateway.is_some())
                 .field("interface", interface)
@@ -635,6 +650,11 @@ impl NetworkOperationKind {
             } => validate_optional_id("operation.interface", interface.as_deref()),
             Self::RemoveEndpointRoute { endpoint: _ } => Ok(()),
             Self::AddRoute {
+                destination,
+                interface,
+                gateway: _,
+            }
+            | Self::RemoveRoute {
                 destination,
                 interface,
                 gateway: _,

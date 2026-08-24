@@ -18,8 +18,9 @@ use crate::network_state::{
 const KEY_PRESERVE_ENDPOINT_ROUTE: &str = "001_preserve_endpoint_route";
 const KEY_SET_TUNNEL_ADDRESS: &str = "002_set_tunnel_address";
 const KEY_SET_TUNNEL_MTU: &str = "003_set_tunnel_mtu";
-const KEY_SET_DNS: &str = "004_set_dns";
-const KEY_APPLY_FIREWALL: &str = "005_apply_firewall";
+const KEY_ROUTE_FULL_TUNNEL: &str = "004_route_full_tunnel";
+const KEY_SET_DNS: &str = "005_set_dns";
+const KEY_APPLY_FIREWALL: &str = "006_apply_firewall";
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -97,8 +98,22 @@ impl ConnectNetworkTransactionPlanner {
                 mtu_inverse(snapshot, &intent.tunnel_interface),
             ),
             operation(
-                KEY_SET_DNS,
+                KEY_ROUTE_FULL_TUNNEL,
                 4,
+                NetworkOperationKind::AddRoute {
+                    destination: default_route_for(intent.tunnel_address.address),
+                    gateway: None,
+                    interface: Some(intent.tunnel_interface.clone()),
+                },
+                default_route_inverse(
+                    snapshot,
+                    intent.tunnel_address.address,
+                    &intent.tunnel_interface,
+                ),
+            ),
+            operation(
+                KEY_SET_DNS,
+                5,
                 NetworkOperationKind::SetDns {
                     servers: intent.dns.servers.clone(),
                     search_domains: intent.dns.search_domains.clone(),
@@ -112,7 +127,7 @@ impl ConnectNetworkTransactionPlanner {
             ),
             operation(
                 KEY_APPLY_FIREWALL,
-                5,
+                6,
                 NetworkOperationKind::ApplyFirewallPolicy {
                     policy_id: intent.firewall_policy_id,
                     kill_switch_enabled: intent.kill_switch_enabled,
@@ -165,6 +180,40 @@ fn endpoint_route_inverse(snapshot: &NetworkSnapshot, endpoint: IpAddr) -> Netwo
         },
         None => NetworkOperationKind::RemoveEndpointRoute { endpoint },
     }
+}
+
+fn default_route_inverse(
+    snapshot: &NetworkSnapshot,
+    tunnel_address: IpAddr,
+    tunnel_interface: &str,
+) -> NetworkOperationKind {
+    let destination = default_route_for(tunnel_address);
+    match find_default_route(snapshot, tunnel_address) {
+        Some(route) => NetworkOperationKind::AddRoute {
+            destination,
+            gateway: route.gateway,
+            interface: route.interface.clone(),
+        },
+        None => NetworkOperationKind::RemoveRoute {
+            destination,
+            gateway: None,
+            interface: Some(tunnel_interface.to_string()),
+        },
+    }
+}
+
+fn default_route_for(address: IpAddr) -> IpNetwork {
+    match address {
+        IpAddr::V4(_) => IpNetwork::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 0),
+        IpAddr::V6(_) => IpNetwork::new(IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED), 0),
+    }
+}
+
+fn find_default_route(snapshot: &NetworkSnapshot, address: IpAddr) -> Option<&RouteSnapshot> {
+    let expected_address = default_route_for(address).address;
+    snapshot.routes.iter().find(|route| {
+        route.destination.address == expected_address && route.destination.prefix == 0
+    })
 }
 
 fn find_exact_endpoint_route(
@@ -231,11 +280,18 @@ mod tests {
                 addresses: vec![IpNetwork::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 24)],
                 mtu: Some(1500),
             }],
-            routes: vec![RouteSnapshot {
-                destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)), 32),
-                gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
-                interface: Some("en0".to_string()),
-            }],
+            routes: vec![
+                RouteSnapshot {
+                    destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)), 32),
+                    gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+                    interface: Some("en0".to_string()),
+                },
+                RouteSnapshot {
+                    destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+                    gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+                    interface: Some("en0".to_string()),
+                },
+            ],
             dns: DnsSnapshot {
                 servers: vec![IpAddr::V4(Ipv4Addr::new(10, 13, 37, 53))],
                 search_domains: vec!["corp.internal".to_string()],
@@ -284,10 +340,23 @@ mod tests {
                 (Some(1), KEY_PRESERVE_ENDPOINT_ROUTE),
                 (Some(2), KEY_SET_TUNNEL_ADDRESS),
                 (Some(3), KEY_SET_TUNNEL_MTU),
-                (Some(4), KEY_SET_DNS),
-                (Some(5), KEY_APPLY_FIREWALL),
+                (Some(4), KEY_ROUTE_FULL_TUNNEL),
+                (Some(5), KEY_SET_DNS),
+                (Some(6), KEY_APPLY_FIREWALL),
             ]
         );
+
+        assert!(matches!(
+            plan.operations[3].kind,
+            NetworkOperationKind::AddRoute {
+                destination: IpNetwork {
+                    address: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                    prefix: 0,
+                },
+                gateway: None,
+                interface: Some(_),
+            }
+        ));
 
         for operation in &plan.operations {
             assert_eq!(operation.status, NetworkOperationStatus::Planned);
@@ -315,8 +384,9 @@ mod tests {
                 .map(|step| (step.apply_order, step.operation_key.as_str()))
                 .collect::<Vec<_>>(),
             vec![
-                (5, KEY_APPLY_FIREWALL),
-                (4, KEY_SET_DNS),
+                (6, KEY_APPLY_FIREWALL),
+                (5, KEY_SET_DNS),
+                (4, KEY_ROUTE_FULL_TUNNEL),
                 (3, KEY_SET_TUNNEL_MTU),
                 (2, KEY_SET_TUNNEL_ADDRESS),
                 (1, KEY_PRESERVE_ENDPOINT_ROUTE),
@@ -335,6 +405,30 @@ mod tests {
             plan.operations[0].rollback,
             NetworkRollbackPlan {
                 inverse: Some(NetworkOperationKind::RemoveEndpointRoute { .. }),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn missing_default_route_rolls_back_by_removal() {
+        let mut snapshot = snapshot();
+        snapshot
+            .routes
+            .retain(|route| route.destination.prefix != 0);
+
+        let plan = ConnectNetworkTransactionPlanner::plan(&snapshot, intent()).expect("valid plan");
+
+        assert!(matches!(
+            plan.operations[3].rollback,
+            NetworkRollbackPlan {
+                inverse: Some(NetworkOperationKind::RemoveRoute {
+                    destination: IpNetwork {
+                        address: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                        prefix: 0,
+                    },
+                    ..
+                }),
                 ..
             }
         ));
@@ -371,6 +465,6 @@ mod tests {
         }
 
         assert!(intent_debug.contains("endpoint_family: \"ipv4\""));
-        assert!(plan_debug.contains("operations_len: 5"));
+        assert!(plan_debug.contains("operations_len: 6"));
     }
 }
