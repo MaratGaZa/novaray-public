@@ -71,7 +71,11 @@ Direct Developer ID distribution сохраняется как целевая м
   route/DNS/firewall snapshot, typed операции, phase validation и rollback metadata без `utun`,
   `route`, `scutil`, `pfctl`, DNS/firewall mutation или helper runtime.
 - [x] Rollback ordering contract: applied network operations несут explicit `apply_order`, а core
-  возвращает rollback steps в строгом обратном порядке применения без journal persistence или OS mutation.
+  возвращает rollback steps в строгом обратном порядке применения без OS mutation.
+- [x] Recovery journal persistence contract: core записывает и читает typed JSON journal для
+  `NetworkSnapshot` + `AppliedNetworkState` через temp-write/fsync/rename, отклоняет corrupt/unknown
+  fields/invalid state fail-closed и очищает journal только по явной успешной recovery-команде; это
+  ещё не выполняет rollback против ОС.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -185,6 +189,9 @@ allowed IPs, а не простой разновидностью VLESS-proxy pro
   contract не является доказательством работающего tunnel до реальных L5/L7 проверок.
 - Компенсация network transaction должна выполняться в обратном порядке применения операций; порядок
   фиксируется явным `apply_order`, а не позицией в массиве или результатом диагностической группировки.
+- Незавершённая network transaction должна иметь recovery journal с `NetworkSnapshot` и
+  `AppliedNetworkState`; journal читается fail-closed при следующем запуске, corrupt/partial данные
+  не считаются валидной recovery work, а clear допускается только после явной успешной recovery.
 
 ### FR-005. Split tunneling
 
@@ -243,6 +250,8 @@ Per-app routing является одной из двух главных фун�
   missing rollback metadata и inconsistent transaction phases должны отклоняться fail-closed.
 - Missing или duplicate rollback order для применённых операций отклоняется fail-closed до любой
   попытки выполнить компенсацию.
+- Recovery journal хранится как typed JSON с версией схемы; unknown fields, corrupt JSON,
+  несовпадение snapshot/transaction metadata или invalid rollback state отклоняются fail-closed.
 
 ### FR-009. UI
 

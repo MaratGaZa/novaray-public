@@ -87,7 +87,11 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   route/DNS/firewall snapshots, typed operations, phase validation, and rollback metadata without
   `utun`, `route`, `scutil`, `pfctl`, DNS/firewall mutation, or helper runtime.
 - [x] Rollback ordering contract: applied network operations carry an explicit `apply_order`, and
-  core returns rollback steps in strict reverse apply order without journal persistence or OS mutation.
+  core returns rollback steps in strict reverse apply order without OS mutation.
+- [x] Recovery journal persistence contract: core writes and reads a typed JSON journal for
+  `NetworkSnapshot` + `AppliedNetworkState` via temp-write/fsync/rename, rejects corrupt/unknown
+  fields/invalid state fail-closed, and clears the journal only after an explicit successful
+  recovery command; it still does not execute OS rollback.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -194,6 +198,9 @@ of being ignored.
   this contract is not evidence of a working tunnel until real L5/L7 checks exist.
 - Network transaction compensation must run in reverse operation-apply order; this order is expressed
   by explicit `apply_order`, not by array position or diagnostic grouping output.
+- Unfinished network transactions must have a recovery journal carrying `NetworkSnapshot` and
+  `AppliedNetworkState`; the next launch reads that journal fail-closed, corrupt/partial data is not
+  valid recovery work, and clearing is allowed only after explicit successful recovery.
 
 ### FR-005 — Split tunneling
 
@@ -231,6 +238,8 @@ snapshot.
   missing rollback metadata and inconsistent transaction phases fail closed.
 - Missing or duplicate rollback order for applied operations fails closed before any compensation is
   attempted.
+- The recovery journal is typed versioned JSON; unknown fields, corrupt JSON, mismatched snapshot/
+  transaction metadata, or invalid rollback state fail closed.
 
 ### FR-009 — UI
 
