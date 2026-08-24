@@ -3,6 +3,7 @@
 //! This module models snapshots, planned/applied operations and rollback metadata only. It does
 //! not open sockets, run as root, create `utun`, or mutate routes/DNS/firewall/system proxy state.
 
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::net::IpAddr;
@@ -252,7 +253,7 @@ impl AppliedNetworkState {
             }
         }
 
-        steps.sort_by(|left, right| right.apply_order.cmp(&left.apply_order));
+        steps.sort_by_key(|step| Reverse(step.apply_order));
         Ok(steps)
     }
 }
