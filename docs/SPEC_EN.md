@@ -93,6 +93,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   quarantines corrupt/unknown fields/invalid state fail-closed, removes orphaned temp candidates, and
   clears a valid journal only after an explicit successful recovery command; it still does not
   execute OS rollback.
+- [x] Connect transaction planner: core builds an ordered `AppliedNetworkState` in `Planned` phase
+  for a full-tunnel connect intent with endpoint route, tunnel address/MTU, DNS, and firewall policy
+  operations, including rollback metadata and redacted diagnostics, without helper runtime or OS
+  mutation.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -202,6 +206,9 @@ of being ignored.
 - Unfinished network transactions must have a recovery journal carrying `NetworkSnapshot` and
   `AppliedNetworkState`; the next launch reads that journal fail-closed, corrupt/partial data is not
   valid recovery work, and clearing is allowed only after explicit successful recovery.
+- Connect must first be modeled as an ordered transaction plan: stable operation keys, explicit
+  `apply_order`, typed network operations, and rollback metadata are produced before crossing the
+  privileged boundary; the planner itself is not evidence of real network mutation.
 
 ### FR-005 — Split tunneling
 

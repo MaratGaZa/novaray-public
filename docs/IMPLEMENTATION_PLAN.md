@@ -492,6 +492,12 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     redacted diagnostics. Scope
     intentionally excludes helper runtime, IPC transport, launchd/root, `utun`, route/DNS/firewall
     mutation, rollback execution, system proxy and packet-flow evidence.
+28. [x] Connect transaction planner — issue #26: добавить pure Rust core planner, который превращает
+    typed full-tunnel connect intent в ordered `AppliedNetworkState` (`Planned`) со stable operation
+    keys, explicit `apply_order`, endpoint-route preservation, tunnel address/MTU, DNS и firewall
+    policy descriptors plus rollback metadata. Scope intentionally excludes helper runtime, IPC
+    transport, launchd/root, `utun`, route/DNS/firewall execution, idempotent repeated commands,
+    system proxy and packet-flow evidence.
 
 ## 7. Зависимости
 
