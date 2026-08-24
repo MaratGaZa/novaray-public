@@ -86,6 +86,8 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 - [x] Network transaction contract skeleton: `NetworkSnapshot` and `AppliedNetworkState` describe
   route/DNS/firewall snapshots, typed operations, phase validation, and rollback metadata without
   `utun`, `route`, `scutil`, `pfctl`, DNS/firewall mutation, or helper runtime.
+- [x] Rollback ordering contract: applied network operations carry an explicit `apply_order`, and
+  core returns rollback steps in strict reverse apply order without journal persistence or OS mutation.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -190,6 +192,8 @@ of being ignored.
 - Before any system mutation, the core/helper contract records a `NetworkSnapshot` of the original
   state and an `AppliedNetworkState` with typed operations, transaction phase, and rollback metadata;
   this contract is not evidence of a working tunnel until real L5/L7 checks exist.
+- Network transaction compensation must run in reverse operation-apply order; this order is expressed
+  by explicit `apply_order`, not by array position or diagnostic grouping output.
 
 ### FR-005 — Split tunneling
 
@@ -225,6 +229,8 @@ snapshot.
 - Provide a user-visible safe recovery action.
 - A partially applied network transaction is not successful without an explicit `AppliedNetworkState`;
   missing rollback metadata and inconsistent transaction phases fail closed.
+- Missing or duplicate rollback order for applied operations fails closed before any compensation is
+  attempted.
 
 ### FR-009 — UI
 

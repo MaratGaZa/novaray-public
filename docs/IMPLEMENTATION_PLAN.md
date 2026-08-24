@@ -480,6 +480,11 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     bounded identifier validation. Scope intentionally excludes helper runtime, IPC transport,
     launchd/root, `utun`, `route`, `scutil`, `pfctl`, DNS/firewall mutation, system proxy, engine
     readiness binding and packet-flow evidence.
+26. [x] Deterministic rollback ordering — issue #22: добавить explicit `apply_order` к applied
+    network operations и pure core API `rollback_steps_reverse_order()`, возвращающий compensation
+    steps в строгом обратном порядке применения. Duplicate/missing order fail-closed. Scope
+    intentionally excludes recovery journal persistence, helper runtime, IPC transport, launchd/root,
+    `utun`, route/DNS/firewall mutation, system proxy and packet-flow evidence.
 
 ## 7. Зависимости
 
