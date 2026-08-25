@@ -520,6 +520,11 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     wrapper, принимает exact retry без второго inner execution, отклоняет same-scope conflicts до
     конфликтующей mutation и сохраняет unrelated scopes независимыми. Scope intentionally excludes
     real helper/runtime, root, `utun`, route/DNS/firewall mutation and packet-flow evidence.
+33. [x] Serialize network transaction execution before helper runtime — issue #36: добавить
+    pure-core `SerializedNetworkTransactionExecutor`, который отклоняет вторую активную network
+    transaction до journal write и inner operation execution, но освобождает guard после success,
+    typed operation failure и simulated interruption. Scope intentionally excludes real
+    helper/runtime, IPC transport, root, `utun`, route/DNS/firewall mutation and packet-flow evidence.
 
 ## 7. Зависимости
 

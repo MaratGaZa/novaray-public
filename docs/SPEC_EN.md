@@ -112,6 +112,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   operation execution with the retry contract, accepts exact repeats without a second inner
   execution, rejects same-scope conflicts before the conflicting mutation, and keeps unrelated scopes
   independent. This still uses dry-run adapters only and does not execute OS operations.
+- [x] Network transaction serialization path: core provides a serialized transaction executor that
+  rejects a second active network transaction before journal or operation side effects and releases
+  the guard after success, typed failure, or simulated interruption. This still has no helper runtime
+  or IPC transport.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.

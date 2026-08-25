@@ -95,6 +95,10 @@ Direct Developer ID distribution сохраняется как целевая м
   platform operation execution retry-контрактом, принимает точные повторы без второго inner
   execution, отклоняет same-scope conflicts до конфликтующей мутации и сохраняет unrelated scopes
   независимыми. Пока это только dry-run adapters без OS operations.
+- [x] Network transaction serialization path: core предоставляет serialized transaction executor,
+  который отклоняет вторую активную network transaction до journal или operation side effects и
+  освобождает guard после success, typed failure или simulated interruption. Helper runtime и IPC
+  transport всё ещё отсутствуют.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.

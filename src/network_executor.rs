@@ -85,6 +85,9 @@ pub enum NetworkExecutionError {
 
     #[error(transparent)]
     Journal(#[from] NetworkRecoveryJournalError),
+
+    #[error("network transaction already active: {active_transaction_id}")]
+    ConcurrentTransaction { active_transaction_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -245,6 +248,43 @@ impl NetworkTransactionExecutor {
             state,
             outcome: NetworkExecutionOutcome::Applied,
         })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SerializedNetworkTransactionExecutor {
+    inner: NetworkTransactionExecutor,
+    active_transaction_id: Option<String>,
+}
+
+impl SerializedNetworkTransactionExecutor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_idle(&self) -> bool {
+        self.active_transaction_id.is_none()
+    }
+
+    pub fn execute(
+        &mut self,
+        snapshot: &NetworkSnapshot,
+        plan: AppliedNetworkState,
+        operation_executor: &mut impl NetworkOperationExecutor,
+        journal_writer: &mut impl NetworkRecoveryJournalWriter,
+    ) -> Result<NetworkExecutionReport, NetworkExecutionError> {
+        if let Some(active_transaction_id) = &self.active_transaction_id {
+            return Err(NetworkExecutionError::ConcurrentTransaction {
+                active_transaction_id: active_transaction_id.clone(),
+            });
+        }
+
+        self.active_transaction_id = Some(plan.transaction_id.clone());
+        let result = self
+            .inner
+            .execute(snapshot, plan, operation_executor, journal_writer);
+        self.active_transaction_id = None;
+        result
     }
 }
 
@@ -594,6 +634,91 @@ mod tests {
         let debug = format!("{report:?} {:?}", journal.writes);
         assert!(!debug.contains("192.168.7.254"));
         assert!(!debug.contains("192.168.7.1"));
+    }
+
+    #[test]
+    fn serialized_executor_rejects_concurrent_transaction_before_side_effects() {
+        let snapshot = snapshot();
+        let mut serialized = SerializedNetworkTransactionExecutor {
+            inner: NetworkTransactionExecutor,
+            active_transaction_id: Some("txn-active".to_string()),
+        };
+        let mut executor = DryRunNetworkOperationExecutor::new();
+        let mut journal = RecordingJournalWriter::default();
+
+        let result = serialized.execute(&snapshot, plan(), &mut executor, &mut journal);
+
+        assert!(matches!(
+            result,
+            Err(NetworkExecutionError::ConcurrentTransaction {
+                ref active_transaction_id
+            }) if active_transaction_id == "txn-active"
+        ));
+        assert!(executor.executed().is_empty());
+        assert!(journal.writes.is_empty());
+        assert!(!serialized.is_idle());
+    }
+
+    #[test]
+    fn serialized_executor_releases_guard_after_success() {
+        let snapshot = snapshot();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor = DryRunNetworkOperationExecutor::new();
+        let mut journal = RecordingJournalWriter::default();
+
+        let report = serialized
+            .execute(&snapshot, plan(), &mut executor, &mut journal)
+            .expect("serialized execution succeeds");
+
+        assert_eq!(report.outcome, NetworkExecutionOutcome::Applied);
+        assert!(serialized.is_idle());
+        assert_eq!(executor.executed().len(), 6);
+        assert_eq!(journal.writes.len(), 12);
+    }
+
+    #[test]
+    fn serialized_executor_releases_guard_after_operation_failure() {
+        let snapshot = snapshot();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor = DryRunNetworkOperationExecutor::new().fail_on_apply_order(4);
+        let mut journal = RecordingJournalWriter::default();
+
+        let report = serialized
+            .execute(&snapshot, plan(), &mut executor, &mut journal)
+            .expect("operation failure is reported");
+
+        assert!(matches!(
+            report.outcome,
+            NetworkExecutionOutcome::Failed {
+                ref operation_key,
+                ..
+            } if operation_key == "004_route_full_tunnel"
+        ));
+        assert!(serialized.is_idle());
+        assert_eq!(executor.executed().len(), 3);
+    }
+
+    #[test]
+    fn serialized_executor_releases_guard_after_interruption() {
+        let snapshot = snapshot();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor =
+            DryRunNetworkOperationExecutor::new().interrupt_after_execute_before_postwrite(4);
+        let mut journal = RecordingJournalWriter::default();
+
+        let report = serialized
+            .execute(&snapshot, plan(), &mut executor, &mut journal)
+            .expect("interruption is reported");
+
+        assert_eq!(
+            report.outcome,
+            NetworkExecutionOutcome::Interrupted {
+                after_apply_order: 4,
+                reason: "configured_pre_postwrite_interruption".to_string(),
+            }
+        );
+        assert!(serialized.is_idle());
+        assert_eq!(executor.executed().len(), 4);
     }
 
     #[test]
