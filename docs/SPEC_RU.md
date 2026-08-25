@@ -87,6 +87,10 @@ Direct Developer ID distribution сохраняется как целевая м
   `Planned` → `Applying` → `Applied`/`Failed`, останавливается на первой ошибке и строит rollback
   work по applied/applying prefix; `Applying` трактуется как «возможно применено» и требует
   идемпотентного rollback в будущих platform adapters; это ещё не выполняет OS operations.
+- [x] Network operation idempotency contract: каждая typed route, tunnel address/MTU, DNS, firewall
+  и rollback inverse команда имеет pure-core retry scope; идентичный retry классифицируется как
+  идемпотентный, same-scope другой payload — как конфликтующая мутация, unrelated scope — как
+  независимая работа. Это ещё не выполняет OS operations.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.

@@ -557,6 +557,48 @@ pub enum NetworkOperationKind {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkOperationRetryEffect {
+    IdempotentRepeat,
+    ConflictingMutation,
+    IndependentMutation,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub enum NetworkOperationIdempotencyScope {
+    EndpointRoute { endpoint: IpAddr },
+    Route { destination: IpNetwork },
+    InterfaceAddress { interface: String },
+    InterfaceMtu { interface: String },
+    Dns,
+    Firewall,
+}
+
+impl fmt::Debug for NetworkOperationIdempotencyScope {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EndpointRoute { endpoint } => formatter
+                .debug_struct("EndpointRoute")
+                .field("endpoint_family", &ip_family(*endpoint))
+                .finish(),
+            Self::Route { destination } => formatter
+                .debug_struct("Route")
+                .field("destination", destination)
+                .finish(),
+            Self::InterfaceAddress { interface } => formatter
+                .debug_struct("InterfaceAddress")
+                .field("interface", interface)
+                .finish(),
+            Self::InterfaceMtu { interface } => formatter
+                .debug_struct("InterfaceMtu")
+                .field("interface", interface)
+                .finish(),
+            Self::Dns => formatter.write_str("Dns"),
+            Self::Firewall => formatter.write_str("Firewall"),
+        }
+    }
+}
+
 impl fmt::Debug for NetworkOperationKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -644,6 +686,49 @@ impl fmt::Debug for NetworkOperationKind {
 }
 
 impl NetworkOperationKind {
+    pub fn idempotency_scope(&self) -> NetworkOperationIdempotencyScope {
+        match self {
+            Self::PreserveEndpointRoute { endpoint, .. }
+            | Self::RemoveEndpointRoute { endpoint } => {
+                NetworkOperationIdempotencyScope::EndpointRoute {
+                    endpoint: *endpoint,
+                }
+            }
+            Self::AddRoute { destination, .. } | Self::RemoveRoute { destination, .. } => {
+                NetworkOperationIdempotencyScope::Route {
+                    destination: destination.clone(),
+                }
+            }
+            Self::SetInterfaceAddress { interface, .. }
+            | Self::RemoveInterfaceAddress { interface, .. } => {
+                NetworkOperationIdempotencyScope::InterfaceAddress {
+                    interface: interface.clone(),
+                }
+            }
+            Self::SetMtu { interface, .. } | Self::ResetMtu { interface } => {
+                NetworkOperationIdempotencyScope::InterfaceMtu {
+                    interface: interface.clone(),
+                }
+            }
+            Self::SetDns { .. } => NetworkOperationIdempotencyScope::Dns,
+            Self::ApplyFirewallPolicy { .. } | Self::RestoreFirewallSnapshot { .. } => {
+                NetworkOperationIdempotencyScope::Firewall
+            }
+        }
+    }
+
+    pub fn retry_effect_against(&self, previous: &Self) -> NetworkOperationRetryEffect {
+        if self == previous {
+            return NetworkOperationRetryEffect::IdempotentRepeat;
+        }
+
+        if self.idempotency_scope() == previous.idempotency_scope() {
+            NetworkOperationRetryEffect::ConflictingMutation
+        } else {
+            NetworkOperationRetryEffect::IndependentMutation
+        }
+    }
+
     fn validate(&self) -> Result<(), NetworkStateError> {
         match self {
             Self::PreserveEndpointRoute {
@@ -1009,6 +1094,22 @@ mod tests {
         }
     }
 
+    fn add_route_operation(gateway: IpAddr) -> NetworkOperationKind {
+        NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: Some(gateway),
+            interface: Some("utun4".to_string()),
+        }
+    }
+
+    fn set_dns_operation(server: IpAddr, domain: &str) -> NetworkOperationKind {
+        NetworkOperationKind::SetDns {
+            servers: vec![server],
+            search_domains: vec![domain.to_string()],
+            match_domains: vec![],
+        }
+    }
+
     fn applied_state() -> AppliedNetworkState {
         AppliedNetworkState {
             transaction_id: "txn-1".to_string(),
@@ -1206,6 +1307,224 @@ mod tests {
                 operation_key: "mtu".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn identical_route_commands_are_idempotent_retries() {
+        let operation = add_route_operation(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1)));
+
+        assert_eq!(
+            operation.retry_effect_against(&operation),
+            NetworkOperationRetryEffect::IdempotentRepeat
+        );
+
+        let debug = format!("{:?} {:?}", operation, operation.idempotency_scope());
+        assert!(!debug.contains("192.168.7.1"));
+        assert!(debug.contains("gateway_present: true"));
+    }
+
+    #[test]
+    fn same_route_scope_with_different_payload_is_conflicting_mutation() {
+        let first = add_route_operation(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1)));
+        let second = add_route_operation(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 254)));
+        let unrelated = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)), 32),
+            gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+            interface: Some("en0".to_string()),
+        };
+
+        assert_eq!(
+            second.retry_effect_against(&first),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            unrelated.retry_effect_against(&first),
+            NetworkOperationRetryEffect::IndependentMutation
+        );
+    }
+
+    #[test]
+    fn default_route_restore_conflicts_even_when_interface_changes() {
+        let tunnel_default = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: None,
+            interface: Some("utun4".to_string()),
+        };
+        let restore_physical_default = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+            interface: Some("en0".to_string()),
+        };
+        let remove_tunnel_default = NetworkOperationKind::RemoveRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: None,
+            interface: Some("utun4".to_string()),
+        };
+        let unrelated_route = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0)), 8),
+            gateway: None,
+            interface: Some("utun4".to_string()),
+        };
+
+        assert_eq!(
+            restore_physical_default.retry_effect_against(&tunnel_default),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            remove_tunnel_default.retry_effect_against(&tunnel_default),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            unrelated_route.retry_effect_against(&tunnel_default),
+            NetworkOperationRetryEffect::IndependentMutation
+        );
+
+        let debug = format!(
+            "{:?} {:?}",
+            tunnel_default.idempotency_scope(),
+            restore_physical_default.idempotency_scope()
+        );
+        assert!(!debug.contains("192.168.7.1"));
+        assert!(!debug.contains("utun4"));
+        assert!(!debug.contains("en0"));
+    }
+
+    #[test]
+    fn dns_retry_contract_distinguishes_repeats_from_conflicts() {
+        let first = set_dns_operation(IpAddr::V4(Ipv4Addr::new(10, 13, 37, 53)), "corp.internal");
+        let second = set_dns_operation(IpAddr::V4(Ipv4Addr::new(10, 13, 37, 54)), "corp.internal");
+
+        assert_eq!(
+            first.retry_effect_against(&first),
+            NetworkOperationRetryEffect::IdempotentRepeat
+        );
+        assert_eq!(
+            second.retry_effect_against(&first),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+
+        let debug = format!("{:?} {:?}", first, first.idempotency_scope());
+        assert!(!debug.contains("10.13.37.53"));
+        assert!(!debug.contains("corp.internal"));
+    }
+
+    #[test]
+    fn tunnel_address_and_mtu_retry_contracts_are_interface_scoped() {
+        let address = NetworkOperationKind::SetInterfaceAddress {
+            interface: "utun4".to_string(),
+            address: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(172, 19, 0, 2)), 30),
+        };
+        let other_address = NetworkOperationKind::SetInterfaceAddress {
+            interface: "utun4".to_string(),
+            address: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(172, 19, 0, 6)), 30),
+        };
+        let remove_address = NetworkOperationKind::RemoveInterfaceAddress {
+            interface: "utun4".to_string(),
+            address: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(172, 19, 0, 2)), 30),
+        };
+        let mtu = NetworkOperationKind::SetMtu {
+            interface: "utun4".to_string(),
+            mtu: 1280,
+        };
+        let other_mtu = NetworkOperationKind::SetMtu {
+            interface: "utun4".to_string(),
+            mtu: 1400,
+        };
+        let reset_mtu = NetworkOperationKind::ResetMtu {
+            interface: "utun4".to_string(),
+        };
+
+        assert_eq!(
+            address.retry_effect_against(&address),
+            NetworkOperationRetryEffect::IdempotentRepeat
+        );
+        assert_eq!(
+            other_address.retry_effect_against(&address),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            remove_address.retry_effect_against(&address),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            mtu.retry_effect_against(&mtu),
+            NetworkOperationRetryEffect::IdempotentRepeat
+        );
+        assert_eq!(
+            other_mtu.retry_effect_against(&mtu),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            reset_mtu.retry_effect_against(&mtu),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+    }
+
+    #[test]
+    fn firewall_retry_contract_distinguishes_repeats_from_conflicts() {
+        let policy = NetworkOperationKind::ApplyFirewallPolicy {
+            policy_id: "novaray-full-tunnel".to_string(),
+            kill_switch_enabled: true,
+        };
+        let changed_policy = NetworkOperationKind::ApplyFirewallPolicy {
+            policy_id: "novaray-full-tunnel".to_string(),
+            kill_switch_enabled: false,
+        };
+        let restore = NetworkOperationKind::RestoreFirewallSnapshot {
+            policy_id: Some("pf-baseline".to_string()),
+            kill_switch_enabled: false,
+        };
+
+        assert_eq!(
+            policy.retry_effect_against(&policy),
+            NetworkOperationRetryEffect::IdempotentRepeat
+        );
+        assert_eq!(
+            changed_policy.retry_effect_against(&policy),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            restore.retry_effect_against(&policy),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+    }
+
+    #[test]
+    fn rollback_inverse_commands_are_idempotent_retries() {
+        let operations = [
+            NetworkOperationKind::RemoveEndpointRoute {
+                endpoint: IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)),
+            },
+            NetworkOperationKind::RemoveRoute {
+                destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+                gateway: None,
+                interface: Some("utun4".to_string()),
+            },
+            NetworkOperationKind::RemoveInterfaceAddress {
+                interface: "utun4".to_string(),
+                address: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(172, 19, 0, 2)), 30),
+            },
+            NetworkOperationKind::ResetMtu {
+                interface: "utun4".to_string(),
+            },
+            NetworkOperationKind::SetDns {
+                servers: vec![IpAddr::V4(Ipv4Addr::new(192, 0, 2, 53))],
+                search_domains: vec!["example.test".to_string()],
+                match_domains: vec![],
+            },
+            NetworkOperationKind::RestoreFirewallSnapshot {
+                policy_id: None,
+                kill_switch_enabled: false,
+            },
+        ];
+
+        for operation in operations {
+            assert_eq!(
+                operation.retry_effect_against(&operation),
+                NetworkOperationRetryEffect::IdempotentRepeat,
+                "{operation:?}"
+            );
+        }
     }
 
     #[test]
