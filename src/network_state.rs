@@ -566,19 +566,10 @@ pub enum NetworkOperationRetryEffect {
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum NetworkOperationIdempotencyScope {
-    EndpointRoute {
-        endpoint: IpAddr,
-    },
-    Route {
-        destination: IpNetwork,
-        interface: Option<String>,
-    },
-    InterfaceAddress {
-        interface: String,
-    },
-    InterfaceMtu {
-        interface: String,
-    },
+    EndpointRoute { endpoint: IpAddr },
+    Route { destination: IpNetwork },
+    InterfaceAddress { interface: String },
+    InterfaceMtu { interface: String },
     Dns,
     Firewall,
 }
@@ -590,13 +581,9 @@ impl fmt::Debug for NetworkOperationIdempotencyScope {
                 .debug_struct("EndpointRoute")
                 .field("endpoint_family", &ip_family(*endpoint))
                 .finish(),
-            Self::Route {
-                destination,
-                interface,
-            } => formatter
+            Self::Route { destination } => formatter
                 .debug_struct("Route")
                 .field("destination", destination)
-                .field("interface", interface)
                 .finish(),
             Self::InterfaceAddress { interface } => formatter
                 .debug_struct("InterfaceAddress")
@@ -707,19 +694,11 @@ impl NetworkOperationKind {
                     endpoint: *endpoint,
                 }
             }
-            Self::AddRoute {
-                destination,
-                interface,
-                ..
+            Self::AddRoute { destination, .. } | Self::RemoveRoute { destination, .. } => {
+                NetworkOperationIdempotencyScope::Route {
+                    destination: destination.clone(),
+                }
             }
-            | Self::RemoveRoute {
-                destination,
-                interface,
-                ..
-            } => NetworkOperationIdempotencyScope::Route {
-                destination: destination.clone(),
-                interface: interface.clone(),
-            },
             Self::SetInterfaceAddress { interface, .. }
             | Self::RemoveInterfaceAddress { interface, .. } => {
                 NetworkOperationIdempotencyScope::InterfaceAddress {
@@ -1362,6 +1341,52 @@ mod tests {
             unrelated.retry_effect_against(&first),
             NetworkOperationRetryEffect::IndependentMutation
         );
+    }
+
+    #[test]
+    fn default_route_restore_conflicts_even_when_interface_changes() {
+        let tunnel_default = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: None,
+            interface: Some("utun4".to_string()),
+        };
+        let restore_physical_default = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+            interface: Some("en0".to_string()),
+        };
+        let remove_tunnel_default = NetworkOperationKind::RemoveRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: None,
+            interface: Some("utun4".to_string()),
+        };
+        let unrelated_route = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0)), 8),
+            gateway: None,
+            interface: Some("utun4".to_string()),
+        };
+
+        assert_eq!(
+            restore_physical_default.retry_effect_against(&tunnel_default),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            remove_tunnel_default.retry_effect_against(&tunnel_default),
+            NetworkOperationRetryEffect::ConflictingMutation
+        );
+        assert_eq!(
+            unrelated_route.retry_effect_against(&tunnel_default),
+            NetworkOperationRetryEffect::IndependentMutation
+        );
+
+        let debug = format!(
+            "{:?} {:?}",
+            tunnel_default.idempotency_scope(),
+            restore_physical_default.idempotency_scope()
+        );
+        assert!(!debug.contains("192.168.7.1"));
+        assert!(!debug.contains("utun4"));
+        assert!(!debug.contains("en0"));
     }
 
     #[test]
