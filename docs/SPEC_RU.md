@@ -91,6 +91,10 @@ Direct Developer ID distribution сохраняется как целевая м
   и rollback inverse команда имеет pure-core retry scope; идентичный retry классифицируется как
   идемпотентный, same-scope другой payload — как конфликтующая мутация, unrelated scope — как
   независимая работа. Это ещё не выполняет OS operations.
+- [x] Adapter-level idempotency enforcement path: typed transaction executor теперь оборачивает
+  platform operation execution retry-контрактом, принимает точные повторы без второго inner
+  execution, отклоняет same-scope conflicts до конфликтующей мутации и сохраняет unrelated scopes
+  независимыми. Пока это только dry-run adapters без OS operations.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.

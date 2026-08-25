@@ -515,6 +515,11 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     payload является конфликтующей мутацией, unrelated scope независим. Покрыть route, DNS, tunnel
     address/MTU, firewall и rollback inverse commands без shell, helper runtime, root, `utun`,
     route/DNS/firewall mutation or packet-flow evidence.
+32. [x] Enforce network operation idempotency contract in adapter path — issue #34: штатный
+    `NetworkTransactionExecutor` применяет `NetworkOperationKind` через idempotency-enforcing
+    wrapper, принимает exact retry без второго inner execution, отклоняет same-scope conflicts до
+    конфликтующей mutation и сохраняет unrelated scopes независимыми. Scope intentionally excludes
+    real helper/runtime, root, `utun`, route/DNS/firewall mutation and packet-flow evidence.
 
 ## 7. Зависимости
 
