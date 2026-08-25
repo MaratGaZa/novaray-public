@@ -39,6 +39,13 @@ pub trait NetworkRecoveryJournalWriter {
     ) -> Result<(), NetworkRecoveryJournalError>;
 }
 
+pub trait NetworkTransactionStartGate {
+    fn ensure_can_start_transaction(
+        &mut self,
+        transaction_id: &str,
+    ) -> Result<(), NetworkExecutionError>;
+}
+
 impl NetworkRecoveryJournalWriter for NetworkRecoveryJournalStore {
     fn write_recovery_journal(
         &mut self,
@@ -46,6 +53,22 @@ impl NetworkRecoveryJournalWriter for NetworkRecoveryJournalStore {
     ) -> Result<(), NetworkRecoveryJournalError> {
         self.write_pending(journal)?;
         Ok(())
+    }
+}
+
+impl NetworkTransactionStartGate for NetworkRecoveryJournalStore {
+    fn ensure_can_start_transaction(
+        &mut self,
+        _transaction_id: &str,
+    ) -> Result<(), NetworkExecutionError> {
+        let report = self.load_pending_report()?;
+        if report.journals.is_empty() {
+            Ok(())
+        } else {
+            Err(NetworkExecutionError::PendingRecoveryJournal {
+                pending_count: report.journals.len(),
+            })
+        }
     }
 }
 
@@ -86,8 +109,8 @@ pub enum NetworkExecutionError {
     #[error(transparent)]
     Journal(#[from] NetworkRecoveryJournalError),
 
-    #[error("network transaction already active: {active_transaction_id}")]
-    ConcurrentTransaction { active_transaction_id: String },
+    #[error("pending network recovery journal exists: {pending_count}")]
+    PendingRecoveryJournal { pending_count: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -254,7 +277,6 @@ impl NetworkTransactionExecutor {
 #[derive(Debug, Clone, Default)]
 pub struct SerializedNetworkTransactionExecutor {
     inner: NetworkTransactionExecutor,
-    active_transaction_id: Option<String>,
 }
 
 impl SerializedNetworkTransactionExecutor {
@@ -263,7 +285,7 @@ impl SerializedNetworkTransactionExecutor {
     }
 
     pub fn is_idle(&self) -> bool {
-        self.active_transaction_id.is_none()
+        true
     }
 
     pub fn execute(
@@ -272,19 +294,11 @@ impl SerializedNetworkTransactionExecutor {
         plan: AppliedNetworkState,
         operation_executor: &mut impl NetworkOperationExecutor,
         journal_writer: &mut impl NetworkRecoveryJournalWriter,
+        start_gate: &mut impl NetworkTransactionStartGate,
     ) -> Result<NetworkExecutionReport, NetworkExecutionError> {
-        if let Some(active_transaction_id) = &self.active_transaction_id {
-            return Err(NetworkExecutionError::ConcurrentTransaction {
-                active_transaction_id: active_transaction_id.clone(),
-            });
-        }
-
-        self.active_transaction_id = Some(plan.transaction_id.clone());
-        let result = self
-            .inner
-            .execute(snapshot, plan, operation_executor, journal_writer);
-        self.active_transaction_id = None;
-        result
+        start_gate.ensure_can_start_transaction(&plan.transaction_id)?;
+        self.inner
+            .execute(snapshot, plan, operation_executor, journal_writer)
     }
 }
 
@@ -432,6 +446,38 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct RecordingStartGate {
+        pending_count: usize,
+        checked_transaction_ids: Vec<String>,
+    }
+
+    impl RecordingStartGate {
+        fn with_pending_count(pending_count: usize) -> Self {
+            Self {
+                pending_count,
+                checked_transaction_ids: Vec::new(),
+            }
+        }
+    }
+
+    impl NetworkTransactionStartGate for RecordingStartGate {
+        fn ensure_can_start_transaction(
+            &mut self,
+            transaction_id: &str,
+        ) -> Result<(), NetworkExecutionError> {
+            self.checked_transaction_ids
+                .push(transaction_id.to_string());
+            if self.pending_count == 0 {
+                Ok(())
+            } else {
+                Err(NetworkExecutionError::PendingRecoveryJournal {
+                    pending_count: self.pending_count,
+                })
+            }
+        }
+    }
+
     fn owner() -> NetworkStateOwner {
         NetworkStateOwner {
             component: "core".to_string(),
@@ -516,6 +562,13 @@ mod tests {
                 }),
             },
         }
+    }
+
+    fn recoverable_journal_state() -> AppliedNetworkState {
+        let mut state = plan();
+        state.phase = NetworkTransactionPhase::RollingBack;
+        state.operations[0].status = NetworkOperationStatus::Applying;
+        state
     }
 
     #[test]
@@ -637,26 +690,64 @@ mod tests {
     }
 
     #[test]
-    fn serialized_executor_rejects_concurrent_transaction_before_side_effects() {
+    fn serialized_executor_rejects_pending_recovery_before_side_effects() {
         let snapshot = snapshot();
-        let mut serialized = SerializedNetworkTransactionExecutor {
-            inner: NetworkTransactionExecutor,
-            active_transaction_id: Some("txn-active".to_string()),
-        };
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
         let mut executor = DryRunNetworkOperationExecutor::new();
         let mut journal = RecordingJournalWriter::default();
+        let mut start_gate = RecordingStartGate::with_pending_count(1);
 
-        let result = serialized.execute(&snapshot, plan(), &mut executor, &mut journal);
+        let result = serialized.execute(
+            &snapshot,
+            plan(),
+            &mut executor,
+            &mut journal,
+            &mut start_gate,
+        );
 
         assert!(matches!(
             result,
-            Err(NetworkExecutionError::ConcurrentTransaction {
-                ref active_transaction_id
-            }) if active_transaction_id == "txn-active"
+            Err(NetworkExecutionError::PendingRecoveryJournal { pending_count: 1 })
         ));
         assert!(executor.executed().is_empty());
         assert!(journal.writes.is_empty());
-        assert!(!serialized.is_idle());
+        assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
+        assert!(serialized.is_idle());
+    }
+
+    #[test]
+    fn serialized_executor_uses_recovery_journal_store_as_start_gate() {
+        let snapshot = snapshot();
+        let temp_dir = TempDirGuard::new("pending_recovery_start_gate");
+        let existing_store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        existing_store
+            .write_pending(&NetworkRecoveryJournal::new(
+                snapshot.clone(),
+                recoverable_journal_state(),
+            ))
+            .expect("write pending recovery journal");
+
+        let mut start_gate = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let mut new_journal_writer = RecordingJournalWriter::default();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor = DryRunNetworkOperationExecutor::new();
+
+        let result = serialized.execute(
+            &snapshot,
+            plan(),
+            &mut executor,
+            &mut new_journal_writer,
+            &mut start_gate,
+        );
+
+        assert_eq!(
+            result
+                .expect_err("pending journal blocks new transaction")
+                .to_string(),
+            "pending network recovery journal exists: 1"
+        );
+        assert!(executor.executed().is_empty());
+        assert!(new_journal_writer.writes.is_empty());
     }
 
     #[test]
@@ -665,15 +756,23 @@ mod tests {
         let mut serialized = SerializedNetworkTransactionExecutor::new();
         let mut executor = DryRunNetworkOperationExecutor::new();
         let mut journal = RecordingJournalWriter::default();
+        let mut start_gate = RecordingStartGate::default();
 
         let report = serialized
-            .execute(&snapshot, plan(), &mut executor, &mut journal)
+            .execute(
+                &snapshot,
+                plan(),
+                &mut executor,
+                &mut journal,
+                &mut start_gate,
+            )
             .expect("serialized execution succeeds");
 
         assert_eq!(report.outcome, NetworkExecutionOutcome::Applied);
         assert!(serialized.is_idle());
         assert_eq!(executor.executed().len(), 6);
         assert_eq!(journal.writes.len(), 12);
+        assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
     }
 
     #[test]
@@ -682,9 +781,16 @@ mod tests {
         let mut serialized = SerializedNetworkTransactionExecutor::new();
         let mut executor = DryRunNetworkOperationExecutor::new().fail_on_apply_order(4);
         let mut journal = RecordingJournalWriter::default();
+        let mut start_gate = RecordingStartGate::default();
 
         let report = serialized
-            .execute(&snapshot, plan(), &mut executor, &mut journal)
+            .execute(
+                &snapshot,
+                plan(),
+                &mut executor,
+                &mut journal,
+                &mut start_gate,
+            )
             .expect("operation failure is reported");
 
         assert!(matches!(
@@ -696,6 +802,7 @@ mod tests {
         ));
         assert!(serialized.is_idle());
         assert_eq!(executor.executed().len(), 3);
+        assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
     }
 
     #[test]
@@ -705,9 +812,16 @@ mod tests {
         let mut executor =
             DryRunNetworkOperationExecutor::new().interrupt_after_execute_before_postwrite(4);
         let mut journal = RecordingJournalWriter::default();
+        let mut start_gate = RecordingStartGate::default();
 
         let report = serialized
-            .execute(&snapshot, plan(), &mut executor, &mut journal)
+            .execute(
+                &snapshot,
+                plan(),
+                &mut executor,
+                &mut journal,
+                &mut start_gate,
+            )
             .expect("interruption is reported");
 
         assert_eq!(
@@ -719,6 +833,7 @@ mod tests {
         );
         assert!(serialized.is_idle());
         assert_eq!(executor.executed().len(), 4);
+        assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
     }
 
     #[test]

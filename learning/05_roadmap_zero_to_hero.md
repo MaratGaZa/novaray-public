@@ -308,9 +308,10 @@ Android VpnService → Android UI → release
   retry и останавливает same-scope conflict до конфликтующей mutation. Реальные route/DNS/firewall
   adapters и packet-flow evidence всё ещё ждут helper/runtime slice.
 - [x] Сериализовать concurrent connect/disconnect на core/adapter path: `ConnectionState` executor
-  запрещает недопустимые state transitions, а `SerializedNetworkTransactionExecutor` отклоняет
-  вторую активную network transaction до journal write и inner operation execution. IPC/runtime
-  serialization для настоящего helper всё ещё ждёт helper/runtime slice.
+  запрещает недопустимые state transitions, а `SerializedNetworkTransactionExecutor` проверяет
+  shared recovery-journal store и отклоняет новую network transaction при наличии pending recovery
+  work до journal write и inner operation execution. IPC/runtime serialization для настоящего helper
+  всё ещё ждёт helper/runtime slice.
 
 ### 3.4. Проверки data plane
 
