@@ -21,6 +21,10 @@ use crate::network_state::NetworkSnapshot;
 pub trait NetworkOperationExecutor {
     fn execute(&mut self, operation: &NetworkOperationKind) -> Result<(), NetworkOperationError>;
 
+    fn interruption_after_execute_before_postwrite(&self, _apply_order: u32) -> Option<String> {
+        None
+    }
+
     fn interruption_after(&self, _apply_order: u32) -> Option<String> {
         None
     }
@@ -118,12 +122,25 @@ impl NetworkTransactionExecutor {
         order.sort_by_key(|(apply_order, _)| *apply_order);
 
         for (apply_order, index) in order {
+            state.operations[index].status = NetworkOperationStatus::Applying;
             write_recovery_journal(snapshot, &state, journal_writer)?;
 
             let operation_key = state.operations[index].key.clone();
             let operation_kind = state.operations[index].kind.clone();
             match operation_executor.execute(&operation_kind) {
                 Ok(()) => {
+                    if let Some(reason) =
+                        operation_executor.interruption_after_execute_before_postwrite(apply_order)
+                    {
+                        return Ok(NetworkExecutionReport {
+                            state,
+                            outcome: NetworkExecutionOutcome::Interrupted {
+                                after_apply_order: apply_order,
+                                reason,
+                            },
+                        });
+                    }
+
                     state.operations[index].status = NetworkOperationStatus::Applied;
                     write_recovery_journal(snapshot, &state, journal_writer)?;
                 }
@@ -178,6 +195,7 @@ fn write_recovery_journal(
 pub struct DryRunNetworkOperationExecutor {
     executed: Vec<NetworkOperationKind>,
     fail_on_apply_order: Option<u32>,
+    interrupt_after_execute_before_postwrite_order: Option<u32>,
     interrupt_after_apply_order: Option<u32>,
 }
 
@@ -187,6 +205,10 @@ impl fmt::Debug for DryRunNetworkOperationExecutor {
             .debug_struct("DryRunNetworkOperationExecutor")
             .field("executed_len", &self.executed.len())
             .field("fail_on_apply_order", &self.fail_on_apply_order)
+            .field(
+                "interrupt_after_execute_before_postwrite_order",
+                &self.interrupt_after_execute_before_postwrite_order,
+            )
             .field(
                 "interrupt_after_apply_order",
                 &self.interrupt_after_apply_order,
@@ -202,6 +224,11 @@ impl DryRunNetworkOperationExecutor {
 
     pub fn fail_on_apply_order(mut self, apply_order: u32) -> Self {
         self.fail_on_apply_order = Some(apply_order);
+        self
+    }
+
+    pub fn interrupt_after_execute_before_postwrite(mut self, apply_order: u32) -> Self {
+        self.interrupt_after_execute_before_postwrite_order = Some(apply_order);
         self
     }
 
@@ -226,6 +253,11 @@ impl NetworkOperationExecutor for DryRunNetworkOperationExecutor {
 
         self.executed.push(operation.clone());
         Ok(())
+    }
+
+    fn interruption_after_execute_before_postwrite(&self, apply_order: u32) -> Option<String> {
+        (self.interrupt_after_execute_before_postwrite_order == Some(apply_order))
+            .then(|| "configured_pre_postwrite_interruption".to_string())
     }
 
     fn interruption_after(&self, apply_order: u32) -> Option<String> {
@@ -383,15 +415,24 @@ mod tests {
                     .count(),
                 index
             );
+            assert_eq!(
+                state_before_execute
+                    .operations
+                    .iter()
+                    .filter(|operation| operation.status == NetworkOperationStatus::Applying)
+                    .count(),
+                1
+            );
         }
     }
 
     #[test]
-    fn interruption_after_full_tunnel_route_persists_recoverable_applied_prefix() {
+    fn interruption_before_postwrite_persists_applying_operation_for_rollback() {
         let snapshot = snapshot();
-        let temp_dir = TempDirGuard::new("route_crash");
+        let temp_dir = TempDirGuard::new("route_crash_before_postwrite");
         let mut store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
-        let mut executor = DryRunNetworkOperationExecutor::new().interrupt_after_apply_order(4);
+        let mut executor =
+            DryRunNetworkOperationExecutor::new().interrupt_after_execute_before_postwrite(4);
 
         let report = NetworkTransactionExecutor
             .execute(&snapshot, plan(), &mut executor, &mut store)
@@ -401,7 +442,7 @@ mod tests {
             report.outcome,
             NetworkExecutionOutcome::Interrupted {
                 after_apply_order: 4,
-                reason: "configured_interruption".to_string(),
+                reason: "configured_pre_postwrite_interruption".to_string(),
             }
         );
         assert_eq!(report.state.phase, NetworkTransactionPhase::RollingBack);
@@ -416,7 +457,7 @@ mod tests {
                 NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applied,
-                NetworkOperationStatus::Applied,
+                NetworkOperationStatus::Applying,
                 NetworkOperationStatus::Planned,
                 NetworkOperationStatus::Planned,
             ]
@@ -444,6 +485,40 @@ mod tests {
                 (1, "001_preserve_endpoint_route"),
             ]
         );
+    }
+
+    #[test]
+    fn interruption_after_postwrite_persists_recoverable_applied_prefix() {
+        let snapshot = snapshot();
+        let temp_dir = TempDirGuard::new("route_crash_after_postwrite");
+        let mut store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let mut executor = DryRunNetworkOperationExecutor::new().interrupt_after_apply_order(4);
+
+        let report = NetworkTransactionExecutor
+            .execute(&snapshot, plan(), &mut executor, &mut store)
+            .expect("execute until simulated interruption");
+
+        assert_eq!(
+            report
+                .state
+                .operations
+                .iter()
+                .map(|operation| operation.status)
+                .collect::<Vec<_>>(),
+            vec![
+                NetworkOperationStatus::Applied,
+                NetworkOperationStatus::Applied,
+                NetworkOperationStatus::Applied,
+                NetworkOperationStatus::Applied,
+                NetworkOperationStatus::Planned,
+                NetworkOperationStatus::Planned,
+            ]
+        );
+
+        let loaded = store
+            .load_pending()
+            .expect("load persisted route-crash state");
+        assert_eq!(loaded[0].applied_state, report.state);
     }
 
     #[test]

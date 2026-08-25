@@ -84,8 +84,9 @@ Direct Developer ID distribution сохраняется как целевая м
   runtime или OS mutation.
 - [x] Dry-run network operation executor contract: core применяет typed `NetworkOperationKind` plan
   в `apply_order`, пишет recovery journal до/после dry-run операции, обновляет статусы
-  `Planned` → `Applied`/`Failed`, останавливается на первой ошибке и строит rollback work только по
-  applied prefix; это ещё не выполняет OS operations.
+  `Planned` → `Applying` → `Applied`/`Failed`, останавливается на первой ошибке и строит rollback
+  work по applied/applying prefix; `Applying` трактуется как «возможно применено» и требует
+  идемпотентного rollback в будущих platform adapters; это ещё не выполняет OS operations.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.

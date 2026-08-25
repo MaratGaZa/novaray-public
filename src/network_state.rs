@@ -231,7 +231,9 @@ impl AppliedNetworkState {
         for operation in &self.operations {
             if !matches!(
                 operation.status,
-                NetworkOperationStatus::Applied | NetworkOperationStatus::Failed
+                NetworkOperationStatus::Applying
+                    | NetworkOperationStatus::Applied
+                    | NetworkOperationStatus::Failed
             ) {
                 continue;
             }
@@ -493,6 +495,7 @@ pub enum NetworkTransactionPhase {
 #[serde(rename_all = "snake_case")]
 pub enum NetworkOperationStatus {
     Planned,
+    Applying,
     Applied,
     Failed,
     RolledBack,
@@ -738,7 +741,9 @@ impl NetworkRollbackPlan {
 
         if matches!(
             status,
-            NetworkOperationStatus::Applied | NetworkOperationStatus::Failed
+            NetworkOperationStatus::Applying
+                | NetworkOperationStatus::Applied
+                | NetworkOperationStatus::Failed
         ) && !self.required
         {
             return Err(NetworkStateError::MissingRollback {

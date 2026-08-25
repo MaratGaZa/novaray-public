@@ -296,8 +296,8 @@ Android VpnService → Android UI → release
   ждёт helper/runtime slice.
 - [x] Добавить dry-run executor contract: pure core `NetworkTransactionExecutor` принимает только
   typed `NetworkOperationKind`, выполняет planned transaction в `apply_order`, пишет recovery journal
-  до/после dry-run операции, обновляет operation statuses и доказывает applied-prefix rollback без
-  shell, helper runtime или OS mutation.
+  со статусом `Applying` до dry-run side-effect и `Applied` после него, обновляет operation statuses
+  и доказывает applied/applying-prefix rollback без shell, helper runtime или OS mutation.
 - [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает
   недопустимые state transitions; runtime/helper-level serialization ждёт IPC transport и real
   network transaction.
