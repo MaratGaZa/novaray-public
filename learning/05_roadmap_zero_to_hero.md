@@ -303,6 +303,10 @@ Android VpnService → Android UI → release
   firewall и rollback inverse команд; identical retry безопасен, same-scope другой payload
   конфликтует, unrelated scope независим. Реальное OS выполнение и проверка идемпотентности adapter
   ждут helper/runtime slice.
+- [x] Enforce idempotency contract на adapter-level path: штатный `NetworkTransactionExecutor`
+  оборачивает operation executor retry-контрактом, не вызывает inner executor второй раз для exact
+  retry и останавливает same-scope conflict до конфликтующей mutation. Реальные route/DNS/firewall
+  adapters и packet-flow evidence всё ещё ждут helper/runtime slice.
 - [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает
   недопустимые state transitions; runtime/helper-level serialization ждёт IPC transport и real
   network transaction.

@@ -4,12 +4,14 @@
 //! invoking platform APIs. It does not create `utun`, run as root, execute shell commands, or mutate
 //! routes, DNS, firewall, system proxy, or packet-flow state.
 
+use std::collections::HashMap;
 use std::fmt;
 
 use thiserror::Error;
 
 use crate::network_state::{
-    AppliedNetworkState, NetworkOperationKind, NetworkOperationStatus, NetworkStateError,
+    AppliedNetworkState, NetworkOperationIdempotencyScope, NetworkOperationKind,
+    NetworkOperationRetryEffect, NetworkOperationStatus, NetworkStateError,
     NetworkTransactionPhase,
 };
 use crate::recovery_journal::{
@@ -89,6 +91,70 @@ pub enum NetworkExecutionError {
 pub enum NetworkOperationError {
     #[error("dry-run operation failed: {reason}")]
     DryRunFailure { reason: String },
+
+    #[error("network operation conflicts with previous same-scope mutation: {scope}")]
+    IdempotencyConflict { scope: String },
+}
+
+pub struct IdempotentNetworkOperationExecutor<'a, E: NetworkOperationExecutor> {
+    inner: &'a mut E,
+    applied_by_scope: HashMap<NetworkOperationIdempotencyScope, NetworkOperationKind>,
+}
+
+impl<E: NetworkOperationExecutor> fmt::Debug for IdempotentNetworkOperationExecutor<'_, E> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("IdempotentNetworkOperationExecutor")
+            .field("tracked_scopes_len", &self.applied_by_scope.len())
+            .finish()
+    }
+}
+
+impl<'a, E: NetworkOperationExecutor> IdempotentNetworkOperationExecutor<'a, E> {
+    pub fn new(inner: &'a mut E) -> Self {
+        Self {
+            inner,
+            applied_by_scope: HashMap::new(),
+        }
+    }
+
+    pub fn tracked_scopes_len(&self) -> usize {
+        self.applied_by_scope.len()
+    }
+}
+
+impl<E: NetworkOperationExecutor> NetworkOperationExecutor
+    for IdempotentNetworkOperationExecutor<'_, E>
+{
+    fn execute(&mut self, operation: &NetworkOperationKind) -> Result<(), NetworkOperationError> {
+        let scope = operation.idempotency_scope();
+        if let Some(previous) = self.applied_by_scope.get(&scope) {
+            return match operation.retry_effect_against(previous) {
+                NetworkOperationRetryEffect::IdempotentRepeat => Ok(()),
+                NetworkOperationRetryEffect::ConflictingMutation => {
+                    Err(NetworkOperationError::IdempotencyConflict {
+                        scope: format!("{scope:?}"),
+                    })
+                }
+                NetworkOperationRetryEffect::IndependentMutation => unreachable!(
+                    "operations in one idempotency scope cannot be independent mutations"
+                ),
+            };
+        }
+
+        self.inner.execute(operation)?;
+        self.applied_by_scope.insert(scope, operation.clone());
+        Ok(())
+    }
+
+    fn interruption_after_execute_before_postwrite(&self, apply_order: u32) -> Option<String> {
+        self.inner
+            .interruption_after_execute_before_postwrite(apply_order)
+    }
+
+    fn interruption_after(&self, apply_order: u32) -> Option<String> {
+        self.inner.interruption_after(apply_order)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -120,6 +186,8 @@ impl NetworkTransactionExecutor {
             })
             .collect::<Result<Vec<_>, _>>()?;
         order.sort_by_key(|(apply_order, _)| *apply_order);
+
+        let mut operation_executor = IdempotentNetworkOperationExecutor::new(operation_executor);
 
         for (apply_order, index) in order {
             state.operations[index].status = NetworkOperationStatus::Applying;
@@ -272,8 +340,9 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use crate::network_state::{
-        DnsSnapshot, FirewallSnapshot, IpNetwork, NetworkInterfaceSnapshot, NetworkStateOwner,
-        NetworkTransactionPhase, RouteSnapshot,
+        AppliedNetworkOperation, DnsSnapshot, FirewallSnapshot, IpNetwork,
+        NetworkInterfaceSnapshot, NetworkRollbackPlan, NetworkStateOwner, NetworkTransactionPhase,
+        RouteSnapshot,
     };
     use crate::network_transaction::{ConnectNetworkIntent, ConnectNetworkTransactionPlanner};
     use crate::platform_contract::PlatformKind;
@@ -388,6 +457,27 @@ mod tests {
         ConnectNetworkTransactionPlanner::plan(&snapshot(), intent()).expect("valid plan")
     }
 
+    fn conflicting_default_route_operation(apply_order: u32) -> AppliedNetworkOperation {
+        AppliedNetworkOperation {
+            key: format!("{apply_order:03}_conflicting_default_route"),
+            apply_order: Some(apply_order),
+            kind: NetworkOperationKind::AddRoute {
+                destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+                gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 254))),
+                interface: Some("en0".to_string()),
+            },
+            status: NetworkOperationStatus::Planned,
+            rollback: NetworkRollbackPlan {
+                required: true,
+                inverse: Some(NetworkOperationKind::RemoveRoute {
+                    destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+                    gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 254))),
+                    interface: Some("en0".to_string()),
+                }),
+            },
+        }
+    }
+
     #[test]
     fn dry_run_executor_records_successful_execution_order() {
         let snapshot = snapshot();
@@ -424,6 +514,86 @@ mod tests {
                 1
             );
         }
+    }
+
+    #[test]
+    fn idempotency_wrapper_accepts_repeats_without_second_inner_execution() {
+        let operation = NetworkOperationKind::RemoveRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: None,
+            interface: Some("utun4".to_string()),
+        };
+        let mut inner = DryRunNetworkOperationExecutor::new();
+        let mut executor = IdempotentNetworkOperationExecutor::new(&mut inner);
+
+        executor.execute(&operation).expect("first execution");
+        executor.execute(&operation).expect("idempotent retry");
+
+        assert_eq!(executor.tracked_scopes_len(), 1);
+        drop(executor);
+        assert_eq!(inner.executed(), &[operation]);
+    }
+
+    #[test]
+    fn idempotency_wrapper_rejects_same_scope_conflict_before_inner_execution() {
+        let first = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: None,
+            interface: Some("utun4".to_string()),
+        };
+        let conflicting_restore = NetworkOperationKind::AddRoute {
+            destination: IpNetwork::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 1))),
+            interface: Some("en0".to_string()),
+        };
+        let mut inner = DryRunNetworkOperationExecutor::new();
+        let mut executor = IdempotentNetworkOperationExecutor::new(&mut inner);
+
+        executor.execute(&first).expect("first execution");
+        assert_eq!(
+            executor.execute(&conflicting_restore),
+            Err(NetworkOperationError::IdempotencyConflict {
+                scope: "Route { destination: IpNetwork { family: \"ipv4\", prefix: 0 } }"
+                    .to_string(),
+            })
+        );
+        assert_eq!(executor.tracked_scopes_len(), 1);
+        drop(executor);
+        assert_eq!(inner.executed(), &[first]);
+    }
+
+    #[test]
+    fn transaction_executor_enforces_idempotency_before_conflicting_mutation() {
+        let snapshot = snapshot();
+        let mut plan = plan();
+        plan.operations.push(conflicting_default_route_operation(7));
+        plan.validate()
+            .expect("conflicting plan is structurally valid");
+        let mut executor = DryRunNetworkOperationExecutor::new();
+        let mut journal = RecordingJournalWriter::default();
+
+        let report = NetworkTransactionExecutor
+            .execute(&snapshot, plan, &mut executor, &mut journal)
+            .expect("idempotency conflict is a typed report");
+
+        assert_eq!(executor.executed().len(), 6);
+        assert!(matches!(
+            report.outcome,
+            NetworkExecutionOutcome::Failed {
+                ref operation_key,
+                ref reason,
+            } if operation_key == "007_conflicting_default_route"
+                && reason.contains("network operation conflicts")
+        ));
+        assert_eq!(report.state.phase, NetworkTransactionPhase::Failed);
+        assert_eq!(
+            report.state.operations[6].status,
+            NetworkOperationStatus::Failed
+        );
+
+        let debug = format!("{report:?} {:?}", journal.writes);
+        assert!(!debug.contains("192.168.7.254"));
+        assert!(!debug.contains("192.168.7.1"));
     }
 
     #[test]
