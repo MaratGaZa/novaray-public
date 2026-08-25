@@ -298,10 +298,14 @@ Android VpnService → Android UI → release
   typed `NetworkOperationKind`, выполняет planned transaction в `apply_order`, пишет recovery journal
   со статусом `Applying` до dry-run side-effect и `Applied` после него, обновляет operation statuses
   и доказывает applied/applying-prefix rollback без shell, helper runtime или OS mutation.
+- [x] Сделать повторные команды идемпотентными на уровне pure-core contract: typed
+  `NetworkOperationKind` теперь классифицирует retry scope для route, tunnel address/MTU, DNS,
+  firewall и rollback inverse команд; identical retry безопасен, same-scope другой payload
+  конфликтует, unrelated scope независим. Реальное OS выполнение и проверка идемпотентности adapter
+  ждут helper/runtime slice.
 - [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает
   недопустимые state transitions; runtime/helper-level serialization ждёт IPC transport и real
   network transaction.
-- [ ] Сделать повторные команды идемпотентными.
 
 ### 3.4. Проверки data plane
 

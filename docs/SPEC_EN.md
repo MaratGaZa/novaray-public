@@ -104,6 +104,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   produces rollback work from the applied/applying prefix; `Applying` is treated as
   "possibly applied" and requires idempotent rollback in future platform adapters; it still does not
   execute OS operations.
+- [x] Network operation idempotency contract: each typed route, tunnel address/MTU, DNS, firewall
+  and rollback inverse command exposes a pure-core retry scope; identical retries are classified as
+  idempotent, same-scope different payloads as conflicting mutations, and unrelated scopes as
+  independent work. This still does not execute OS operations.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.

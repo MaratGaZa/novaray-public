@@ -510,6 +510,11 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     после него, останавливается на первой typed ошибке и доказывает rollback applied/applying-prefix
     behavior без shell, helper runtime, root, `utun`, route/DNS/firewall mutation or packet-flow
     evidence.
+31. [x] Idempotent network operation command contract — issue #32: добавить pure-core retry scope
+    и классификацию для typed `NetworkOperationKind`: identical retry безопасен, same-scope другой
+    payload является конфликтующей мутацией, unrelated scope независим. Покрыть route, DNS, tunnel
+    address/MTU, firewall и rollback inverse commands без shell, helper runtime, root, `utun`,
+    route/DNS/firewall mutation or packet-flow evidence.
 
 ## 7. Зависимости
 
