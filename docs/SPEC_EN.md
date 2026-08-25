@@ -98,6 +98,12 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   for a full-tunnel connect intent with endpoint route, tunnel address/MTU, default-route/full-tunnel
   route, DNS, and firewall policy operations, including rollback metadata and redacted diagnostics,
   without helper runtime or OS mutation.
+- [x] Dry-run network operation executor contract: core applies a typed `NetworkOperationKind` plan
+  in `apply_order`, writes recovery journal state before/after each dry-run operation, updates
+  statuses from `Planned` to `Applying` to `Applied`/`Failed`, stops on the first error, and
+  produces rollback work from the applied/applying prefix; `Applying` is treated as
+  "possibly applied" and requires idempotent rollback in future platform adapters; it still does not
+  execute OS operations.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.

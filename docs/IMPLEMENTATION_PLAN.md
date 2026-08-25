@@ -504,6 +504,12 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     applied prefix, включая восстановление существующего default route, interface-bound удаление
     добавленного tunnel default route и разделение IPv4/IPv6 route families. Scope intentionally
     excludes helper runtime, real route mutation and OS rollback execution.
+30. [x] Dry-run network operation executor contract — issue #30: добавить pure Rust core runner и
+    typed executor trait для `NetworkOperationKind`, который применяет planned network transaction
+    в `apply_order`, пишет recovery journal со статусом `Applying` до dry-run side-effect и `Applied`
+    после него, останавливается на первой typed ошибке и доказывает rollback applied/applying-prefix
+    behavior без shell, helper runtime, root, `utun`, route/DNS/firewall mutation or packet-flow
+    evidence.
 
 ## 7. Зависимости
 

@@ -294,6 +294,10 @@ Android VpnService → Android UI → release
   осиротевшие temp-кандидаты, очищает valid journal только после явной успешной recovery и имеет
   deterministic evidence для crash сразу после `004_route_full_tunnel`; реальное выполнение rollback
   ждёт helper/runtime slice.
+- [x] Добавить dry-run executor contract: pure core `NetworkTransactionExecutor` принимает только
+  typed `NetworkOperationKind`, выполняет planned transaction в `apply_order`, пишет recovery journal
+  со статусом `Applying` до dry-run side-effect и `Applied` после него, обновляет operation statuses
+  и доказывает applied/applying-prefix rollback без shell, helper runtime или OS mutation.
 - [~] Сериализовать concurrent connect/disconnect: core `ConnectionState` executor запрещает
   недопустимые state transitions; runtime/helper-level serialization ждёт IPC transport и real
   network transaction.
