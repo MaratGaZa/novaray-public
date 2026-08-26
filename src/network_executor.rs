@@ -37,6 +37,18 @@ pub trait NetworkRecoveryJournalWriter {
         &mut self,
         journal: &NetworkRecoveryJournal,
     ) -> Result<(), NetworkRecoveryJournalError>;
+
+    fn clear_recovery_journal(
+        &mut self,
+        transaction_id: &str,
+    ) -> Result<bool, NetworkRecoveryJournalError>;
+}
+
+pub trait NetworkTransactionStartGate {
+    fn ensure_can_start_transaction(
+        &mut self,
+        transaction_id: &str,
+    ) -> Result<(), NetworkExecutionError>;
 }
 
 impl NetworkRecoveryJournalWriter for NetworkRecoveryJournalStore {
@@ -46,6 +58,34 @@ impl NetworkRecoveryJournalWriter for NetworkRecoveryJournalStore {
     ) -> Result<(), NetworkRecoveryJournalError> {
         self.write_pending(journal)?;
         Ok(())
+    }
+
+    fn clear_recovery_journal(
+        &mut self,
+        transaction_id: &str,
+    ) -> Result<bool, NetworkRecoveryJournalError> {
+        self.clear_pending(transaction_id)
+    }
+}
+
+impl NetworkTransactionStartGate for NetworkRecoveryJournalStore {
+    fn ensure_can_start_transaction(
+        &mut self,
+        transaction_id: &str,
+    ) -> Result<(), NetworkExecutionError> {
+        let report = self.load_pending_report()?;
+        let pending_other_transactions = report
+            .journals
+            .iter()
+            .filter(|journal| journal.applied_state.transaction_id != transaction_id)
+            .count();
+        if pending_other_transactions == 0 {
+            Ok(())
+        } else {
+            Err(NetworkExecutionError::PendingRecoveryJournal {
+                pending_count: pending_other_transactions,
+            })
+        }
     }
 }
 
@@ -85,6 +125,9 @@ pub enum NetworkExecutionError {
 
     #[error(transparent)]
     Journal(#[from] NetworkRecoveryJournalError),
+
+    #[error("pending network recovery journal exists: {pending_count}")]
+    PendingRecoveryJournal { pending_count: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -241,10 +284,39 @@ impl NetworkTransactionExecutor {
 
         state.phase = NetworkTransactionPhase::Applied;
         state.validate()?;
+        journal_writer.clear_recovery_journal(&state.transaction_id)?;
         Ok(NetworkExecutionReport {
             state,
             outcome: NetworkExecutionOutcome::Applied,
         })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SerializedNetworkTransactionExecutor {
+    inner: NetworkTransactionExecutor,
+}
+
+impl SerializedNetworkTransactionExecutor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_idle(&self) -> bool {
+        true
+    }
+
+    pub fn execute(
+        &mut self,
+        snapshot: &NetworkSnapshot,
+        plan: AppliedNetworkState,
+        operation_executor: &mut impl NetworkOperationExecutor,
+        journal_writer: &mut impl NetworkRecoveryJournalWriter,
+        start_gate: &mut impl NetworkTransactionStartGate,
+    ) -> Result<NetworkExecutionReport, NetworkExecutionError> {
+        start_gate.ensure_can_start_transaction(&plan.transaction_id)?;
+        self.inner
+            .execute(snapshot, plan, operation_executor, journal_writer)
     }
 }
 
@@ -380,6 +452,7 @@ mod tests {
     #[derive(Debug, Default)]
     struct RecordingJournalWriter {
         writes: Vec<AppliedNetworkState>,
+        cleared_transaction_ids: Vec<String>,
     }
 
     impl NetworkRecoveryJournalWriter for RecordingJournalWriter {
@@ -389,6 +462,47 @@ mod tests {
         ) -> Result<(), NetworkRecoveryJournalError> {
             self.writes.push(journal.applied_state.clone());
             Ok(())
+        }
+
+        fn clear_recovery_journal(
+            &mut self,
+            transaction_id: &str,
+        ) -> Result<bool, NetworkRecoveryJournalError> {
+            self.cleared_transaction_ids
+                .push(transaction_id.to_string());
+            Ok(true)
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct RecordingStartGate {
+        pending_count: usize,
+        checked_transaction_ids: Vec<String>,
+    }
+
+    impl RecordingStartGate {
+        fn with_pending_count(pending_count: usize) -> Self {
+            Self {
+                pending_count,
+                checked_transaction_ids: Vec::new(),
+            }
+        }
+    }
+
+    impl NetworkTransactionStartGate for RecordingStartGate {
+        fn ensure_can_start_transaction(
+            &mut self,
+            transaction_id: &str,
+        ) -> Result<(), NetworkExecutionError> {
+            self.checked_transaction_ids
+                .push(transaction_id.to_string());
+            if self.pending_count == 0 {
+                Ok(())
+            } else {
+                Err(NetworkExecutionError::PendingRecoveryJournal {
+                    pending_count: self.pending_count,
+                })
+            }
         }
     }
 
@@ -457,6 +571,12 @@ mod tests {
         ConnectNetworkTransactionPlanner::plan(&snapshot(), intent()).expect("valid plan")
     }
 
+    fn plan_with_transaction_id(transaction_id: &str) -> AppliedNetworkState {
+        let mut intent = intent();
+        intent.transaction_id = transaction_id.to_string();
+        ConnectNetworkTransactionPlanner::plan(&snapshot(), intent).expect("valid plan")
+    }
+
     fn conflicting_default_route_operation(apply_order: u32) -> AppliedNetworkOperation {
         AppliedNetworkOperation {
             key: format!("{apply_order:03}_conflicting_default_route"),
@@ -478,6 +598,13 @@ mod tests {
         }
     }
 
+    fn recoverable_journal_state() -> AppliedNetworkState {
+        let mut state = plan();
+        state.phase = NetworkTransactionPhase::RollingBack;
+        state.operations[0].status = NetworkOperationStatus::Applying;
+        state
+    }
+
     #[test]
     fn dry_run_executor_records_successful_execution_order() {
         let snapshot = snapshot();
@@ -496,6 +623,7 @@ mod tests {
             NetworkOperationKind::AddRoute { .. }
         ));
         assert_eq!(journal.writes.len(), 12);
+        assert_eq!(journal.cleared_transaction_ids, vec!["txn-1"]);
         for (index, state_before_execute) in journal.writes.iter().step_by(2).enumerate() {
             assert_eq!(
                 state_before_execute
@@ -594,6 +722,229 @@ mod tests {
         let debug = format!("{report:?} {:?}", journal.writes);
         assert!(!debug.contains("192.168.7.254"));
         assert!(!debug.contains("192.168.7.1"));
+    }
+
+    #[test]
+    fn serialized_executor_rejects_pending_recovery_before_side_effects() {
+        let snapshot = snapshot();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor = DryRunNetworkOperationExecutor::new();
+        let mut journal = RecordingJournalWriter::default();
+        let mut start_gate = RecordingStartGate::with_pending_count(1);
+
+        let result = serialized.execute(
+            &snapshot,
+            plan(),
+            &mut executor,
+            &mut journal,
+            &mut start_gate,
+        );
+
+        assert!(matches!(
+            result,
+            Err(NetworkExecutionError::PendingRecoveryJournal { pending_count: 1 })
+        ));
+        assert!(executor.executed().is_empty());
+        assert!(journal.writes.is_empty());
+        assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
+        assert!(serialized.is_idle());
+    }
+
+    #[test]
+    fn serialized_executor_uses_recovery_journal_store_as_start_gate() {
+        let snapshot = snapshot();
+        let temp_dir = TempDirGuard::new("pending_recovery_start_gate");
+        let existing_store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        existing_store
+            .write_pending(&NetworkRecoveryJournal::new(
+                snapshot.clone(),
+                recoverable_journal_state(),
+            ))
+            .expect("write pending recovery journal");
+
+        let mut start_gate = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let mut new_journal_writer = RecordingJournalWriter::default();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor = DryRunNetworkOperationExecutor::new();
+
+        let result = serialized.execute(
+            &snapshot,
+            plan_with_transaction_id("txn-2"),
+            &mut executor,
+            &mut new_journal_writer,
+            &mut start_gate,
+        );
+
+        assert_eq!(
+            result
+                .expect_err("pending journal blocks new transaction")
+                .to_string(),
+            "pending network recovery journal exists: 1"
+        );
+        assert!(executor.executed().is_empty());
+        assert!(new_journal_writer.writes.is_empty());
+    }
+
+    #[test]
+    fn recovery_journal_store_gate_allows_same_transaction_recovery_only() {
+        let snapshot = snapshot();
+        let temp_dir = TempDirGuard::new("same_transaction_recovery_gate");
+        let existing_store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        existing_store
+            .write_pending(&NetworkRecoveryJournal::new(
+                snapshot.clone(),
+                recoverable_journal_state(),
+            ))
+            .expect("write pending recovery journal");
+
+        let mut same_transaction_gate = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        same_transaction_gate
+            .ensure_can_start_transaction("txn-1")
+            .expect("same transaction may resume recovery");
+
+        let mut different_transaction_gate = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        assert_eq!(
+            different_transaction_gate
+                .ensure_can_start_transaction("txn-2")
+                .expect_err("different transaction remains blocked")
+                .to_string(),
+            "pending network recovery journal exists: 1"
+        );
+    }
+
+    #[test]
+    fn serialized_executor_clears_successful_journal_before_next_transaction() {
+        let snapshot = snapshot();
+        let temp_dir = TempDirGuard::new("successful_journal_lifecycle");
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+
+        let mut first_executor = DryRunNetworkOperationExecutor::new();
+        let mut first_writer = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let mut first_gate = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let first_report = serialized
+            .execute(
+                &snapshot,
+                plan_with_transaction_id("txn-1"),
+                &mut first_executor,
+                &mut first_writer,
+                &mut first_gate,
+            )
+            .expect("first transaction succeeds");
+        assert_eq!(first_report.outcome, NetworkExecutionOutcome::Applied);
+        assert!(first_writer
+            .load_pending()
+            .expect("successful journal was cleared")
+            .is_empty());
+
+        let mut second_executor = DryRunNetworkOperationExecutor::new();
+        let mut second_writer = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let mut second_gate = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let second_report = serialized
+            .execute(
+                &snapshot,
+                plan_with_transaction_id("txn-2"),
+                &mut second_executor,
+                &mut second_writer,
+                &mut second_gate,
+            )
+            .expect("second transaction is not blocked by successful first transaction");
+
+        assert_eq!(second_report.outcome, NetworkExecutionOutcome::Applied);
+        assert_eq!(first_executor.executed().len(), 6);
+        assert_eq!(second_executor.executed().len(), 6);
+        assert!(second_writer
+            .load_pending()
+            .expect("second successful journal was cleared")
+            .is_empty());
+    }
+
+    #[test]
+    fn serialized_executor_releases_guard_after_success() {
+        let snapshot = snapshot();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor = DryRunNetworkOperationExecutor::new();
+        let mut journal = RecordingJournalWriter::default();
+        let mut start_gate = RecordingStartGate::default();
+
+        let report = serialized
+            .execute(
+                &snapshot,
+                plan(),
+                &mut executor,
+                &mut journal,
+                &mut start_gate,
+            )
+            .expect("serialized execution succeeds");
+
+        assert_eq!(report.outcome, NetworkExecutionOutcome::Applied);
+        assert!(serialized.is_idle());
+        assert_eq!(executor.executed().len(), 6);
+        assert_eq!(journal.writes.len(), 12);
+        assert_eq!(journal.cleared_transaction_ids, vec!["txn-1"]);
+        assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
+    }
+
+    #[test]
+    fn serialized_executor_releases_guard_after_operation_failure() {
+        let snapshot = snapshot();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor = DryRunNetworkOperationExecutor::new().fail_on_apply_order(4);
+        let mut journal = RecordingJournalWriter::default();
+        let mut start_gate = RecordingStartGate::default();
+
+        let report = serialized
+            .execute(
+                &snapshot,
+                plan(),
+                &mut executor,
+                &mut journal,
+                &mut start_gate,
+            )
+            .expect("operation failure is reported");
+
+        assert!(matches!(
+            report.outcome,
+            NetworkExecutionOutcome::Failed {
+                ref operation_key,
+                ..
+            } if operation_key == "004_route_full_tunnel"
+        ));
+        assert!(serialized.is_idle());
+        assert_eq!(executor.executed().len(), 3);
+        assert!(journal.cleared_transaction_ids.is_empty());
+        assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
+    }
+
+    #[test]
+    fn serialized_executor_releases_guard_after_interruption() {
+        let snapshot = snapshot();
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor =
+            DryRunNetworkOperationExecutor::new().interrupt_after_execute_before_postwrite(4);
+        let mut journal = RecordingJournalWriter::default();
+        let mut start_gate = RecordingStartGate::default();
+
+        let report = serialized
+            .execute(
+                &snapshot,
+                plan(),
+                &mut executor,
+                &mut journal,
+                &mut start_gate,
+            )
+            .expect("interruption is reported");
+
+        assert_eq!(
+            report.outcome,
+            NetworkExecutionOutcome::Interrupted {
+                after_apply_order: 4,
+                reason: "configured_pre_postwrite_interruption".to_string(),
+            }
+        );
+        assert!(serialized.is_idle());
+        assert_eq!(executor.executed().len(), 4);
+        assert!(journal.cleared_transaction_ids.is_empty());
+        assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
     }
 
     #[test]
