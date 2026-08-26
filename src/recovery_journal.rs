@@ -288,6 +288,7 @@ impl NetworkRecoveryJournalStore {
 
         replace_file(&temp_path, &target_path)?;
         sync_parent_dir(&dir)?;
+        self.clear_other_applied_states(&record.record_id)?;
         Ok(target_path)
     }
 
@@ -394,6 +395,21 @@ impl NetworkRecoveryJournalStore {
         }
     }
 
+    pub fn clear_applied_state(
+        &self,
+        transaction_id: &str,
+    ) -> Result<bool, NetworkRecoveryJournalError> {
+        let path = self.applied_state_path_for(transaction_id)?;
+        match fs::remove_file(path) {
+            Ok(()) => {
+                sync_parent_dir(&self.applied_state_dir())?;
+                Ok(true)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     pub fn journal_path_for(
         &self,
         transaction_id: &str,
@@ -412,6 +428,42 @@ impl NetworkRecoveryJournalStore {
 
     pub fn applied_state_dir(&self) -> PathBuf {
         self.dir.join("applied")
+    }
+
+    fn clear_other_applied_states(
+        &self,
+        active_record_id: &str,
+    ) -> Result<(), NetworkRecoveryJournalError> {
+        validate_journal_file_component("record_id", active_record_id)?;
+        let dir = self.applied_state_dir();
+        if !dir.exists() {
+            return Ok(());
+        }
+
+        let active_file_name = journal_file_name(active_record_id)?;
+        let mut removed = false;
+        for entry in fs::read_dir(&dir)? {
+            let path = entry?.path();
+            if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("json")
+            {
+                continue;
+            }
+            if path.file_name().and_then(|value| value.to_str()) == Some(active_file_name.as_str())
+            {
+                continue;
+            }
+
+            match fs::remove_file(&path) {
+                Ok(()) => removed = true,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        if removed {
+            sync_parent_dir(&dir)?;
+        }
+        Ok(())
     }
 
     fn temp_path_for(&self, transaction_id: &str) -> Result<PathBuf, NetworkRecoveryJournalError> {
@@ -751,6 +803,12 @@ mod tests {
         NetworkAppliedStateRecord::new(snapshot(), applied_state())
     }
 
+    fn applied_record_with_id(transaction_id: &str) -> NetworkAppliedStateRecord {
+        let mut state = applied_state();
+        state.transaction_id = transaction_id.to_string();
+        NetworkAppliedStateRecord::new(snapshot(), state)
+    }
+
     fn connect_snapshot() -> NetworkSnapshot {
         NetworkSnapshot {
             snapshot_id: "connect-snap-1".to_string(),
@@ -892,6 +950,46 @@ mod tests {
                 .expect("load applied state records"),
             vec![record]
         );
+
+        assert!(store
+            .clear_applied_state("txn-1")
+            .expect("clear applied state"));
+        assert!(!store
+            .clear_applied_state("txn-1")
+            .expect("clear applied state is idempotent"));
+        assert!(store
+            .load_applied_state()
+            .expect("empty applied state after clear")
+            .is_empty());
+    }
+
+    #[test]
+    fn writing_applied_state_replaces_previous_active_record() {
+        let temp_dir = TempDirGuard::new("applied_replace");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        store
+            .write_applied_state(&applied_record_with_id("txn-1"))
+            .expect("write first applied state");
+        store
+            .write_applied_state(&applied_record_with_id("txn-2"))
+            .expect("write replacement applied state");
+        store
+            .write_applied_state(&applied_record_with_id("txn-3"))
+            .expect("write latest applied state");
+
+        let records = store
+            .load_applied_state()
+            .expect("load active applied state");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].record_id, "txn-3");
+        assert!(!store
+            .applied_state_path_for("txn-1")
+            .expect("txn-1 applied path")
+            .exists());
+        assert!(!store
+            .applied_state_path_for("txn-2")
+            .expect("txn-2 applied path")
+            .exists());
     }
 
     #[test]
@@ -1024,6 +1122,13 @@ mod tests {
 
         assert!(matches!(
             store.applied_state_path_for("a b"),
+            Err(NetworkRecoveryJournalError::InvalidJournalId {
+                field: "transaction_id"
+            })
+        ));
+
+        assert!(matches!(
+            store.clear_applied_state("a\\b"),
             Err(NetworkRecoveryJournalError::InvalidJournalId {
                 field: "transaction_id"
             })

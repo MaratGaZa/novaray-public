@@ -118,9 +118,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   runtime or IPC transport.
 - [x] Applied network state persistence contract: after a dry-run transaction reaches `Applied`, core
   clears pending recovery work and writes a separate durable applied-state record that startup can
-  load to derive rollback work after a crash during the long-lived connected state. Applied-state
-  records do not block new transactions; this still has no helper runtime, OS mutation, or actual
-  rollback execution.
+  load to derive rollback work after a crash during the long-lived connected state. The store keeps
+  at most one active applied-state record and exposes explicit clear for a future successful
+  disconnect/recovery flow. Applied-state records do not block new transactions; this still has no
+  helper runtime, OS mutation, or actual rollback execution.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -233,7 +234,10 @@ of being ignored.
 - Successfully applied network state must be persisted separately from pending recovery journals so
   startup can detect and recover a previously connected session after a crash/relaunch. This applied
   state does not block new transactions, but it must remain typed, versioned, private, redacted in
-  diagnostics, and able to produce rollback steps in reverse `apply_order`.
+  diagnostics, clearable after successful disconnect/recovery, bounded to one active record, and
+  able to produce rollback steps in reverse `apply_order`. If a crash happens after writing applied
+  state but before clearing the pending journal, recovery may safely prefer the pending journal and
+  perform an idempotent rollback.
 - Connect must first be modeled as an ordered transaction plan: stable operation keys, explicit
   `apply_order`, typed network operations, and rollback metadata are produced before crossing the
   privileged boundary; the planner itself is not evidence of real network mutation.

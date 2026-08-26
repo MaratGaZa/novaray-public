@@ -868,8 +868,10 @@ mod tests {
             first_writer
                 .load_applied_state()
                 .expect("successful applied state was persisted")
-                .len(),
-            1
+                .iter()
+                .map(|record| record.record_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["txn-1"]
         );
 
         let mut second_executor = DryRunNetworkOperationExecutor::new();
@@ -892,13 +894,11 @@ mod tests {
             .load_pending()
             .expect("second successful journal was cleared")
             .is_empty());
-        assert_eq!(
-            second_writer
-                .load_applied_state()
-                .expect("applied state records do not block later transactions")
-                .len(),
-            2
-        );
+        let applied_records = second_writer
+            .load_applied_state()
+            .expect("applied state records do not block later transactions");
+        assert_eq!(applied_records.len(), 1);
+        assert_eq!(applied_records[0].record_id, "txn-2");
     }
 
     #[test]
