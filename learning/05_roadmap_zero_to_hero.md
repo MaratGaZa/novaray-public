@@ -312,6 +312,11 @@ Android VpnService → Android UI → release
   shared recovery-journal store и отклоняет новую network transaction при наличии pending recovery
   work до journal write и inner operation execution. IPC/runtime serialization для настоящего helper
   всё ещё ждёт helper/runtime slice.
+- [x] Сохранять durable applied network state отдельно от pending recovery journal: successful
+  dry-run transaction очищает свой pending journal только после записи single active applied-state
+  record, startup может загрузить record после crash/relaunch и построить rollback steps в reverse
+  `apply_order`; store предоставляет explicit clear для будущего successful disconnect/recovery, а
+  real OS rollback execution ждёт helper/runtime slice.
 
 ### 3.4. Проверки data plane
 

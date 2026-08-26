@@ -99,6 +99,12 @@ Direct Developer ID distribution сохраняется как целевая м
   который проверяет shared recovery-journal store перед стартом и отклоняет новую transaction при
   наличии pending recovery work до любых новых journal или operation side effects. Helper runtime и
   IPC transport всё ещё отсутствуют.
+- [x] Applied network state persistence contract: после перехода dry-run transaction в `Applied`
+  core очищает pending recovery work и записывает отдельный durable applied-state record, который
+  startup может загрузить для построения rollback work после crash во время долгого connected-state.
+  Store хранит не больше одного active applied-state record и предоставляет explicit clear для
+  будущего successful disconnect/recovery flow. Applied-state records не блокируют новые
+  transactions; helper runtime, OS mutation и реальное выполнение rollback всё ещё отсутствуют.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -215,6 +221,13 @@ allowed IPs, а не простой разновидностью VLESS-proxy pro
 - Незавершённая network transaction должна иметь recovery journal с `NetworkSnapshot` и
   `AppliedNetworkState`; journal читается fail-closed при следующем запуске, corrupt/partial данные
   не считаются валидной recovery work, а clear допускается только после явной успешной recovery.
+- Успешно применённое network state должно сохраняться отдельно от pending recovery journals, чтобы
+  startup мог обнаружить и восстановить ранее подключённую сессию после crash/relaunch. Это applied
+  state не блокирует новые transactions, но остаётся typed, versioned, private, redacted в
+  diagnostics, clearable после successful disconnect/recovery, ограниченным одним active record и
+  должно строить rollback steps в обратном `apply_order`. Если crash происходит после записи
+  applied state, но до очистки pending journal, recovery может безопасно предпочесть pending journal
+  и выполнить идемпотентный rollback.
 - Connect должен сначала моделироваться как ordered transaction plan: stable operation keys,
   explicit `apply_order`, typed network operations и rollback metadata формируются до передачи в
   privileged boundary; сам planner не доказывает реальную мутацию сети.

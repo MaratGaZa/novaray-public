@@ -296,7 +296,7 @@ impl fmt::Debug for NetworkInterfaceSnapshot {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("NetworkInterfaceSnapshot")
-            .field("name", &self.name)
+            .field("name_len", &self.name.len())
             .field("addresses_len", &self.addresses.len())
             .field("mtu", &self.mtu)
             .finish()
@@ -333,7 +333,7 @@ impl fmt::Debug for RouteSnapshot {
             .debug_struct("RouteSnapshot")
             .field("destination", &self.destination)
             .field("gateway_present", &self.gateway.is_some())
-            .field("interface", &self.interface)
+            .field("interface_present", &self.interface.is_some())
             .finish()
     }
 }
@@ -356,7 +356,7 @@ impl RouteSnapshot {
             "{:?}|gateway_present={}|interface={:?}",
             self.destination,
             self.gateway.is_some(),
-            self.interface
+            self.interface.as_ref().map(|value| value.len())
         )
     }
 }
@@ -587,11 +587,11 @@ impl fmt::Debug for NetworkOperationIdempotencyScope {
                 .finish(),
             Self::InterfaceAddress { interface } => formatter
                 .debug_struct("InterfaceAddress")
-                .field("interface", interface)
+                .field("interface_len", &interface.len())
                 .finish(),
             Self::InterfaceMtu { interface } => formatter
                 .debug_struct("InterfaceMtu")
-                .field("interface", interface)
+                .field("interface_len", &interface.len())
                 .finish(),
             Self::Dns => formatter.write_str("Dns"),
             Self::Firewall => formatter.write_str("Firewall"),
@@ -610,7 +610,7 @@ impl fmt::Debug for NetworkOperationKind {
                 .debug_struct("PreserveEndpointRoute")
                 .field("endpoint_family", &ip_family(*endpoint))
                 .field("gateway_present", &gateway.is_some())
-                .field("interface", interface)
+                .field("interface_present", &interface.is_some())
                 .finish(),
             Self::RemoveEndpointRoute { endpoint } => formatter
                 .debug_struct("RemoveEndpointRoute")
@@ -624,7 +624,7 @@ impl fmt::Debug for NetworkOperationKind {
                 .debug_struct("AddRoute")
                 .field("destination", destination)
                 .field("gateway_present", &gateway.is_some())
-                .field("interface", interface)
+                .field("interface_present", &interface.is_some())
                 .finish(),
             Self::RemoveRoute {
                 destination,
@@ -634,26 +634,26 @@ impl fmt::Debug for NetworkOperationKind {
                 .debug_struct("RemoveRoute")
                 .field("destination", destination)
                 .field("gateway_present", &gateway.is_some())
-                .field("interface", interface)
+                .field("interface_present", &interface.is_some())
                 .finish(),
             Self::SetInterfaceAddress { interface, address } => formatter
                 .debug_struct("SetInterfaceAddress")
-                .field("interface", interface)
+                .field("interface_len", &interface.len())
                 .field("address", address)
                 .finish(),
             Self::RemoveInterfaceAddress { interface, address } => formatter
                 .debug_struct("RemoveInterfaceAddress")
-                .field("interface", interface)
+                .field("interface_len", &interface.len())
                 .field("address", address)
                 .finish(),
             Self::SetMtu { interface, mtu } => formatter
                 .debug_struct("SetMtu")
-                .field("interface", interface)
+                .field("interface_len", &interface.len())
                 .field("mtu", mtu)
                 .finish(),
             Self::ResetMtu { interface } => formatter
                 .debug_struct("ResetMtu")
-                .field("interface", interface)
+                .field("interface_len", &interface.len())
                 .finish(),
             Self::SetDns {
                 servers,
@@ -1139,7 +1139,7 @@ mod tests {
             snapshot.validate(),
             Err(NetworkStateError::DuplicateKey {
                 field: "routes",
-                key: "IpNetwork { family: \"ipv4\", prefix: 0 }|gateway_present=true|interface=Some(\"en0\")".to_string(),
+                key: "IpNetwork { family: \"ipv4\", prefix: 0 }|gateway_present=true|interface=Some(3)".to_string(),
             })
         );
     }

@@ -19,6 +19,7 @@ use crate::network_state::{
 };
 
 pub const NETWORK_RECOVERY_JOURNAL_VERSION: u32 = 1;
+pub const NETWORK_APPLIED_STATE_RECORD_VERSION: u32 = 1;
 
 static JOURNAL_TMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -105,6 +106,93 @@ impl NetworkRecoveryJournal {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkAppliedStateRecord {
+    pub schema_version: u32,
+    pub record_id: String,
+    pub snapshot: NetworkSnapshot,
+    pub applied_state: AppliedNetworkState,
+}
+
+impl fmt::Debug for NetworkAppliedStateRecord {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NetworkAppliedStateRecord")
+            .field("schema_version", &self.schema_version)
+            .field("record_id", &self.record_id)
+            .field("snapshot_id", &self.snapshot.snapshot_id)
+            .field("transaction_id", &self.applied_state.transaction_id)
+            .field("platform", &self.applied_state.platform)
+            .field("phase", &self.applied_state.phase)
+            .field("operations_len", &self.applied_state.operations.len())
+            .finish()
+    }
+}
+
+impl NetworkAppliedStateRecord {
+    pub fn new(snapshot: NetworkSnapshot, applied_state: AppliedNetworkState) -> Self {
+        Self {
+            schema_version: NETWORK_APPLIED_STATE_RECORD_VERSION,
+            record_id: applied_state.transaction_id.clone(),
+            snapshot,
+            applied_state,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), NetworkRecoveryJournalError> {
+        if self.schema_version != NETWORK_APPLIED_STATE_RECORD_VERSION {
+            return Err(
+                NetworkRecoveryJournalError::UnsupportedAppliedStateVersion {
+                    expected: NETWORK_APPLIED_STATE_RECORD_VERSION,
+                    actual: self.schema_version,
+                },
+            );
+        }
+
+        validate_journal_file_component("record_id", &self.record_id)?;
+        validate_journal_file_component("transaction_id", &self.applied_state.transaction_id)?;
+        self.snapshot.validate()?;
+        self.applied_state.validate()?;
+
+        if self.record_id != self.applied_state.transaction_id {
+            return Err(
+                NetworkRecoveryJournalError::MismatchedAppliedStateTransactionId {
+                    record_id: self.record_id.clone(),
+                    transaction_id: self.applied_state.transaction_id.clone(),
+                },
+            );
+        }
+
+        if self.snapshot.snapshot_id != self.applied_state.snapshot_id {
+            return Err(NetworkRecoveryJournalError::MismatchedSnapshotId {
+                snapshot_id: self.snapshot.snapshot_id.clone(),
+                applied_snapshot_id: self.applied_state.snapshot_id.clone(),
+            });
+        }
+
+        if self.snapshot.platform != self.applied_state.platform {
+            return Err(NetworkRecoveryJournalError::MismatchedPlatform);
+        }
+
+        if self.snapshot.owner != self.applied_state.owner {
+            return Err(NetworkRecoveryJournalError::MismatchedOwner {
+                snapshot_owner: self.snapshot.owner.clone(),
+                applied_owner: self.applied_state.owner.clone(),
+            });
+        }
+
+        if !matches!(self.applied_state.phase, NetworkTransactionPhase::Applied) {
+            return Err(NetworkRecoveryJournalError::NotAppliedStatePhase {
+                phase: self.applied_state.phase,
+            });
+        }
+
+        self.applied_state.rollback_steps_reverse_order()?;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct NetworkRecoveryJournalStore {
     dir: PathBuf,
@@ -113,6 +201,12 @@ pub struct NetworkRecoveryJournalStore {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NetworkRecoveryJournalLoadReport {
     pub journals: Vec<NetworkRecoveryJournal>,
+    pub quarantined: Vec<QuarantinedRecoveryJournal>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NetworkAppliedStateLoadReport {
+    pub records: Vec<NetworkAppliedStateRecord>,
     pub quarantined: Vec<QuarantinedRecoveryJournal>,
 }
 
@@ -164,6 +258,40 @@ impl NetworkRecoveryJournalStore {
         Ok(target_path)
     }
 
+    pub fn write_applied_state(
+        &self,
+        record: &NetworkAppliedStateRecord,
+    ) -> Result<PathBuf, NetworkRecoveryJournalError> {
+        record.validate()?;
+        let dir = self.applied_state_dir();
+        ensure_private_journal_dir(&dir)?;
+
+        let target_path = self.applied_state_path_for(&record.record_id)?;
+        let temp_path = temp_path_for(&dir, &record.record_id)?;
+        let payload = serde_json::to_vec_pretty(record)?;
+
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        set_owner_only_permissions(&mut options);
+
+        let mut file = options.open(&temp_path)?;
+        let write_result = (|| -> Result<(), NetworkRecoveryJournalError> {
+            file.write_all(&payload)?;
+            file.sync_all()?;
+            Ok(())
+        })();
+
+        if let Err(error) = write_result {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error);
+        }
+
+        replace_file(&temp_path, &target_path)?;
+        sync_parent_dir(&dir)?;
+        self.clear_other_applied_states(&record.record_id)?;
+        Ok(target_path)
+    }
+
     pub fn load_pending(&self) -> Result<Vec<NetworkRecoveryJournal>, NetworkRecoveryJournalError> {
         Ok(self.load_pending_report()?.journals)
     }
@@ -208,11 +336,73 @@ impl NetworkRecoveryJournalStore {
         })
     }
 
+    pub fn load_applied_state(
+        &self,
+    ) -> Result<Vec<NetworkAppliedStateRecord>, NetworkRecoveryJournalError> {
+        Ok(self.load_applied_state_report()?.records)
+    }
+
+    pub fn load_applied_state_report(
+        &self,
+    ) -> Result<NetworkAppliedStateLoadReport, NetworkRecoveryJournalError> {
+        let dir = self.applied_state_dir();
+        if !dir.exists() {
+            return Ok(NetworkAppliedStateLoadReport {
+                records: Vec::new(),
+                quarantined: Vec::new(),
+            });
+        }
+
+        let removed_temp_files = cleanup_temp_candidates(&dir)?;
+        let mut paths = Vec::new();
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|value| value.to_str()) == Some("json") {
+                paths.push(path);
+            }
+        }
+        paths.sort();
+
+        let mut records = Vec::new();
+        let mut quarantined = Vec::new();
+        for path in paths {
+            match load_one_applied_state_record(&path) {
+                Ok(record) => records.push(record),
+                Err(reason) => quarantined.push(quarantine_journal_file(&path, reason)?),
+            }
+        }
+
+        if removed_temp_files || !quarantined.is_empty() {
+            sync_parent_dir(&dir)?;
+        }
+
+        Ok(NetworkAppliedStateLoadReport {
+            records,
+            quarantined,
+        })
+    }
+
     pub fn clear_pending(&self, transaction_id: &str) -> Result<bool, NetworkRecoveryJournalError> {
         let path = self.journal_path_for(transaction_id)?;
         match fs::remove_file(path) {
             Ok(()) => {
                 sync_parent_dir(&self.dir)?;
+                Ok(true)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub fn clear_applied_state(
+        &self,
+        transaction_id: &str,
+    ) -> Result<bool, NetworkRecoveryJournalError> {
+        let path = self.applied_state_path_for(transaction_id)?;
+        match fs::remove_file(path) {
+            Ok(()) => {
+                sync_parent_dir(&self.applied_state_dir())?;
                 Ok(true)
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -228,14 +418,56 @@ impl NetworkRecoveryJournalStore {
         Ok(self.dir.join(file_name))
     }
 
+    pub fn applied_state_path_for(
+        &self,
+        transaction_id: &str,
+    ) -> Result<PathBuf, NetworkRecoveryJournalError> {
+        let file_name = journal_file_name(transaction_id)?;
+        Ok(self.applied_state_dir().join(file_name))
+    }
+
+    pub fn applied_state_dir(&self) -> PathBuf {
+        self.dir.join("applied")
+    }
+
+    fn clear_other_applied_states(
+        &self,
+        active_record_id: &str,
+    ) -> Result<(), NetworkRecoveryJournalError> {
+        validate_journal_file_component("record_id", active_record_id)?;
+        let dir = self.applied_state_dir();
+        if !dir.exists() {
+            return Ok(());
+        }
+
+        let active_file_name = journal_file_name(active_record_id)?;
+        let mut removed = false;
+        for entry in fs::read_dir(&dir)? {
+            let path = entry?.path();
+            if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("json")
+            {
+                continue;
+            }
+            if path.file_name().and_then(|value| value.to_str()) == Some(active_file_name.as_str())
+            {
+                continue;
+            }
+
+            match fs::remove_file(&path) {
+                Ok(()) => removed = true,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        if removed {
+            sync_parent_dir(&dir)?;
+        }
+        Ok(())
+    }
+
     fn temp_path_for(&self, transaction_id: &str) -> Result<PathBuf, NetworkRecoveryJournalError> {
-        validate_journal_file_component("transaction_id", transaction_id)?;
-        let sequence = JOURNAL_TMP_COUNTER.fetch_add(1, Ordering::SeqCst);
-        Ok(self.dir.join(format!(
-            ".{transaction_id}.{}.{}.tmp",
-            std::process::id(),
-            sequence
-        )))
+        temp_path_for(&self.dir, transaction_id)
     }
 }
 
@@ -247,9 +479,18 @@ pub enum NetworkRecoveryJournalError {
     #[error("unsupported recovery journal version {actual}; expected {expected}")]
     UnsupportedVersion { expected: u32, actual: u32 },
 
+    #[error("unsupported applied network state version {actual}; expected {expected}")]
+    UnsupportedAppliedStateVersion { expected: u32, actual: u32 },
+
     #[error("recovery journal id {journal_id} does not match transaction id {transaction_id}")]
     MismatchedTransactionId {
         journal_id: String,
+        transaction_id: String,
+    },
+
+    #[error("applied network state id {record_id} does not match transaction id {transaction_id}")]
+    MismatchedAppliedStateTransactionId {
+        record_id: String,
         transaction_id: String,
     },
 
@@ -270,6 +511,9 @@ pub enum NetworkRecoveryJournalError {
 
     #[error("recovery journal phase {phase:?} is not recoverable")]
     NotRecoverablePhase { phase: NetworkTransactionPhase },
+
+    #[error("applied network state phase {phase:?} is not applied")]
+    NotAppliedStatePhase { phase: NetworkTransactionPhase },
 
     #[error("invalid recovery journal file {path:?}: {reason}")]
     InvalidJournalFile { path: PathBuf, reason: String },
@@ -328,6 +572,24 @@ fn load_one_journal(path: &Path) -> Result<NetworkRecoveryJournal, String> {
         serde_json::from_slice(&payload).map_err(|source| source.to_string())?;
     journal.validate().map_err(|source| source.to_string())?;
     Ok(journal)
+}
+
+fn load_one_applied_state_record(path: &Path) -> Result<NetworkAppliedStateRecord, String> {
+    let payload = fs::read(path).map_err(|source| source.to_string())?;
+    let record: NetworkAppliedStateRecord =
+        serde_json::from_slice(&payload).map_err(|source| source.to_string())?;
+    record.validate().map_err(|source| source.to_string())?;
+    Ok(record)
+}
+
+fn temp_path_for(dir: &Path, transaction_id: &str) -> Result<PathBuf, NetworkRecoveryJournalError> {
+    validate_journal_file_component("transaction_id", transaction_id)?;
+    let sequence = JOURNAL_TMP_COUNTER.fetch_add(1, Ordering::SeqCst);
+    Ok(dir.join(format!(
+        ".{transaction_id}.{}.{}.tmp",
+        std::process::id(),
+        sequence
+    )))
 }
 
 fn cleanup_temp_candidates(dir: &Path) -> Result<bool, NetworkRecoveryJournalError> {
@@ -537,6 +799,16 @@ mod tests {
         NetworkRecoveryJournal::new(snapshot(), applied_state())
     }
 
+    fn applied_record() -> NetworkAppliedStateRecord {
+        NetworkAppliedStateRecord::new(snapshot(), applied_state())
+    }
+
+    fn applied_record_with_id(transaction_id: &str) -> NetworkAppliedStateRecord {
+        let mut state = applied_state();
+        state.transaction_id = transaction_id.to_string();
+        NetworkAppliedStateRecord::new(snapshot(), state)
+    }
+
     fn connect_snapshot() -> NetworkSnapshot {
         NetworkSnapshot {
             snapshot_id: "connect-snap-1".to_string(),
@@ -650,6 +922,77 @@ mod tests {
     }
 
     #[test]
+    fn applied_state_record_roundtrips_without_becoming_pending_work() {
+        let temp_dir = TempDirGuard::new("applied_roundtrip");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let record = applied_record();
+
+        let path = store
+            .write_applied_state(&record)
+            .expect("write applied state");
+        assert_eq!(
+            path.file_name().and_then(|value| value.to_str()),
+            Some("txn-1.json")
+        );
+        assert_eq!(
+            path.parent(),
+            Some(store.applied_state_dir().as_path()),
+            "applied records live outside the pending journal directory"
+        );
+
+        assert!(store
+            .load_pending()
+            .expect("applied state is not pending recovery work")
+            .is_empty());
+        assert_eq!(
+            store
+                .load_applied_state()
+                .expect("load applied state records"),
+            vec![record]
+        );
+
+        assert!(store
+            .clear_applied_state("txn-1")
+            .expect("clear applied state"));
+        assert!(!store
+            .clear_applied_state("txn-1")
+            .expect("clear applied state is idempotent"));
+        assert!(store
+            .load_applied_state()
+            .expect("empty applied state after clear")
+            .is_empty());
+    }
+
+    #[test]
+    fn writing_applied_state_replaces_previous_active_record() {
+        let temp_dir = TempDirGuard::new("applied_replace");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        store
+            .write_applied_state(&applied_record_with_id("txn-1"))
+            .expect("write first applied state");
+        store
+            .write_applied_state(&applied_record_with_id("txn-2"))
+            .expect("write replacement applied state");
+        store
+            .write_applied_state(&applied_record_with_id("txn-3"))
+            .expect("write latest applied state");
+
+        let records = store
+            .load_applied_state()
+            .expect("load active applied state");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].record_id, "txn-3");
+        assert!(!store
+            .applied_state_path_for("txn-1")
+            .expect("txn-1 applied path")
+            .exists());
+        assert!(!store
+            .applied_state_path_for("txn-2")
+            .expect("txn-2 applied path")
+            .exists());
+    }
+
+    #[test]
     #[cfg(unix)]
     fn journal_directory_is_owner_only_on_unix() {
         use std::os::unix::fs::PermissionsExt;
@@ -660,6 +1003,26 @@ mod tests {
 
         let mode = fs::metadata(temp_dir.as_ref())
             .expect("journal dir metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+
+        assert_eq!(mode, 0o700);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn applied_state_directory_is_owner_only_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDirGuard::new("applied_permissions");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        store
+            .write_applied_state(&applied_record())
+            .expect("write applied state");
+
+        let mode = fs::metadata(store.applied_state_dir())
+            .expect("applied state dir metadata")
             .permissions()
             .mode()
             & 0o777;
@@ -699,6 +1062,35 @@ mod tests {
     }
 
     #[test]
+    fn corrupt_applied_state_is_quarantined_without_hiding_valid_records() {
+        let temp_dir = TempDirGuard::new("applied_quarantine");
+        let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let valid = applied_record();
+        store
+            .write_applied_state(&valid)
+            .expect("write valid applied state");
+
+        fs::write(
+            store.applied_state_dir().join("txn-2.json"),
+            r#"{"schema_version":1,"record_id":"txn-2","unexpected":true}"#,
+        )
+        .expect("write corrupt applied state");
+
+        let report = store
+            .load_applied_state_report()
+            .expect("load valid and quarantine invalid applied state");
+
+        assert_eq!(report.records, vec![valid]);
+        assert_eq!(report.quarantined.len(), 1);
+        assert!(report.quarantined[0]
+            .quarantine_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.starts_with("txn-2.json.invalid.")));
+        assert!(!format!("{report:?}").contains("10.13.37.53"));
+    }
+
+    #[test]
     fn temp_candidate_files_are_cleaned_and_not_treated_as_pending_journals() {
         let temp_dir = TempDirGuard::new("temp");
         let store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
@@ -723,6 +1115,20 @@ mod tests {
 
         assert!(matches!(
             store.clear_pending("txn/1"),
+            Err(NetworkRecoveryJournalError::InvalidJournalId {
+                field: "transaction_id"
+            })
+        ));
+
+        assert!(matches!(
+            store.applied_state_path_for("a b"),
+            Err(NetworkRecoveryJournalError::InvalidJournalId {
+                field: "transaction_id"
+            })
+        ));
+
+        assert!(matches!(
+            store.clear_applied_state("a\\b"),
             Err(NetworkRecoveryJournalError::InvalidJournalId {
                 field: "transaction_id"
             })
@@ -766,9 +1172,24 @@ mod tests {
     }
 
     #[test]
+    fn non_applied_phase_is_not_an_applied_state_record() {
+        let mut record = applied_record();
+        record.applied_state.phase = NetworkTransactionPhase::RollingBack;
+
+        assert!(matches!(
+            record.validate(),
+            Err(NetworkRecoveryJournalError::NotAppliedStatePhase {
+                phase: NetworkTransactionPhase::RollingBack
+            })
+        ));
+    }
+
+    #[test]
     fn debug_output_redacts_network_identity_values() {
         let journal = journal();
+        let record = applied_record();
         let debug = format!("{journal:?}");
+        let applied_debug = format!("{record:?}");
         let error_debug = format!(
             "{:?}",
             NetworkRecoveryJournalError::MismatchedOwner {
@@ -777,11 +1198,12 @@ mod tests {
             }
         );
 
-        for output in [&debug, &error_debug] {
+        for output in [&debug, &applied_debug, &error_debug] {
             assert!(!output.contains("192.168.7.1"));
             assert!(!output.contains("10.13.37.53"));
             assert!(!output.contains("corp.internal"));
             assert!(!output.contains("proxy.internal"));
+            assert!(!output.contains("en0"));
         }
 
         assert!(debug.contains("transaction_id: \"txn-1\""));
