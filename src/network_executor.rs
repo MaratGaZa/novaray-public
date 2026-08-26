@@ -15,7 +15,8 @@ use crate::network_state::{
     NetworkTransactionPhase,
 };
 use crate::recovery_journal::{
-    NetworkRecoveryJournal, NetworkRecoveryJournalError, NetworkRecoveryJournalStore,
+    NetworkAppliedStateRecord, NetworkRecoveryJournal, NetworkRecoveryJournalError,
+    NetworkRecoveryJournalStore,
 };
 
 use crate::network_state::NetworkSnapshot;
@@ -42,6 +43,11 @@ pub trait NetworkRecoveryJournalWriter {
         &mut self,
         transaction_id: &str,
     ) -> Result<bool, NetworkRecoveryJournalError>;
+
+    fn write_applied_state_record(
+        &mut self,
+        record: &NetworkAppliedStateRecord,
+    ) -> Result<(), NetworkRecoveryJournalError>;
 }
 
 pub trait NetworkTransactionStartGate {
@@ -65,6 +71,14 @@ impl NetworkRecoveryJournalWriter for NetworkRecoveryJournalStore {
         transaction_id: &str,
     ) -> Result<bool, NetworkRecoveryJournalError> {
         self.clear_pending(transaction_id)
+    }
+
+    fn write_applied_state_record(
+        &mut self,
+        record: &NetworkAppliedStateRecord,
+    ) -> Result<(), NetworkRecoveryJournalError> {
+        self.write_applied_state(record)?;
+        Ok(())
     }
 }
 
@@ -284,6 +298,10 @@ impl NetworkTransactionExecutor {
 
         state.phase = NetworkTransactionPhase::Applied;
         state.validate()?;
+        journal_writer.write_applied_state_record(&NetworkAppliedStateRecord::new(
+            snapshot.clone(),
+            state.clone(),
+        ))?;
         journal_writer.clear_recovery_journal(&state.transaction_id)?;
         Ok(NetworkExecutionReport {
             state,
@@ -453,6 +471,7 @@ mod tests {
     struct RecordingJournalWriter {
         writes: Vec<AppliedNetworkState>,
         cleared_transaction_ids: Vec<String>,
+        applied_records: Vec<NetworkAppliedStateRecord>,
     }
 
     impl NetworkRecoveryJournalWriter for RecordingJournalWriter {
@@ -471,6 +490,14 @@ mod tests {
             self.cleared_transaction_ids
                 .push(transaction_id.to_string());
             Ok(true)
+        }
+
+        fn write_applied_state_record(
+            &mut self,
+            record: &NetworkAppliedStateRecord,
+        ) -> Result<(), NetworkRecoveryJournalError> {
+            self.applied_records.push(record.clone());
+            Ok(())
         }
     }
 
@@ -623,6 +650,8 @@ mod tests {
             NetworkOperationKind::AddRoute { .. }
         ));
         assert_eq!(journal.writes.len(), 12);
+        assert_eq!(journal.applied_records.len(), 1);
+        assert_eq!(journal.applied_records[0].applied_state, report.state);
         assert_eq!(journal.cleared_transaction_ids, vec!["txn-1"]);
         for (index, state_before_execute) in journal.writes.iter().step_by(2).enumerate() {
             assert_eq!(
@@ -835,6 +864,13 @@ mod tests {
             .load_pending()
             .expect("successful journal was cleared")
             .is_empty());
+        assert_eq!(
+            first_writer
+                .load_applied_state()
+                .expect("successful applied state was persisted")
+                .len(),
+            1
+        );
 
         let mut second_executor = DryRunNetworkOperationExecutor::new();
         let mut second_writer = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
@@ -856,6 +892,70 @@ mod tests {
             .load_pending()
             .expect("second successful journal was cleared")
             .is_empty());
+        assert_eq!(
+            second_writer
+                .load_applied_state()
+                .expect("applied state records do not block later transactions")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn applied_state_record_survives_restart_and_produces_rollback_work() {
+        let snapshot = snapshot();
+        let temp_dir = TempDirGuard::new("applied_state_restart");
+        let mut serialized = SerializedNetworkTransactionExecutor::new();
+        let mut executor = DryRunNetworkOperationExecutor::new();
+        let mut writer = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        let mut gate = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+
+        let report = serialized
+            .execute(
+                &snapshot,
+                plan_with_transaction_id("txn-applied"),
+                &mut executor,
+                &mut writer,
+                &mut gate,
+            )
+            .expect("transaction succeeds");
+        assert_eq!(report.outcome, NetworkExecutionOutcome::Applied);
+
+        let restarted_store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
+        assert!(restarted_store
+            .load_pending()
+            .expect("pending journal was cleared")
+            .is_empty());
+        let applied = restarted_store
+            .load_applied_state()
+            .expect("load applied state after restart");
+
+        assert_eq!(applied.len(), 1);
+        assert_eq!(applied[0].applied_state, report.state);
+        let steps = applied[0]
+            .applied_state
+            .rollback_steps_reverse_order()
+            .expect("applied state yields rollback steps");
+        assert_eq!(
+            steps
+                .iter()
+                .map(|step| step.apply_order)
+                .collect::<Vec<_>>(),
+            vec![6, 5, 4, 3, 2, 1]
+        );
+
+        let debug = format!("{:?} {:?}", applied[0], steps);
+        for leaked in [
+            "192.168.7.1",
+            "10.13.37.53",
+            "198.51.100.53",
+            "corp.internal",
+            "vpn.internal",
+            "utun4",
+            "en0",
+        ] {
+            assert!(!debug.contains(leaked), "debug leaked {leaked}");
+        }
     }
 
     #[test]
@@ -880,6 +980,8 @@ mod tests {
         assert!(serialized.is_idle());
         assert_eq!(executor.executed().len(), 6);
         assert_eq!(journal.writes.len(), 12);
+        assert_eq!(journal.applied_records.len(), 1);
+        assert_eq!(journal.applied_records[0].applied_state, report.state);
         assert_eq!(journal.cleared_transaction_ids, vec!["txn-1"]);
         assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
     }
@@ -911,6 +1013,7 @@ mod tests {
         ));
         assert!(serialized.is_idle());
         assert_eq!(executor.executed().len(), 3);
+        assert!(journal.applied_records.is_empty());
         assert!(journal.cleared_transaction_ids.is_empty());
         assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
     }
@@ -943,6 +1046,7 @@ mod tests {
         );
         assert!(serialized.is_idle());
         assert_eq!(executor.executed().len(), 4);
+        assert!(journal.applied_records.is_empty());
         assert!(journal.cleared_transaction_ids.is_empty());
         assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
     }

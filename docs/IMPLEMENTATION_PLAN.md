@@ -525,6 +525,13 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     store перед стартом и отклоняет новую network transaction при наличии pending recovery work до
     любых новых journal write и inner operation execution. Scope intentionally excludes real
     helper/runtime, IPC transport, root, `utun`, route/DNS/firewall mutation and packet-flow evidence.
+34. [x] Persist applied network state for connected-session crash recovery — issue #38: добавить
+    pure-core durable applied-state record отдельно от pending recovery journal. Successful
+    dry-run transaction пишет applied-state record после `Applied`, затем очищает только свой pending
+    journal; startup/restart API может загрузить applied state и построить rollback steps в reverse
+    `apply_order`, while applied-state records do not block later transactions. Scope intentionally
+    excludes real helper/runtime, IPC transport, root, `utun`, route/DNS/firewall mutation, actual
+    OS rollback execution and packet-flow evidence.
 
 ## 7. Зависимости
 
