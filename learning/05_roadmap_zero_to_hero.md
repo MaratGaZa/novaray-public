@@ -263,6 +263,10 @@ Android VpnService → Android UI → release
 - [x] Реализовать `ConnectionState` и serialized helper command executor в Rust core без
   transport/runtime side effects: connect/status/disconnect/recover intents, observed-state mapping,
   transition validation и запрет concurrent connect/disconnect на уровне core skeleton.
+- [x] Добавить side-effect-free macOS helper binary/harness `novaray-platform-helper`: stdin/stdout
+  JSON поверх typed platform contract, macOS capability/status report, deterministic exit codes,
+  fail-closed validation и CLI-level rejection tests без `launchd`, root, IPC sockets, `utun`,
+  route/DNS/firewall mutation или packet-flow evidence.
 
 ### 3.2. Tunnel lifecycle
 

@@ -122,6 +122,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   at most one active applied-state record and exposes explicit clear for a future successful
   disconnect/recovery flow. Applied-state records do not block new transactions; this still has no
   helper runtime, OS mutation, or actual rollback execution.
+- [x] macOS platform helper skeleton binary: `novaray-platform-helper` runs as a side-effect-free
+  stdin/stdout harness over the typed platform helper contract, validates commands fail-closed,
+  reports macOS capabilities/status, and proves CLI-level rejection paths without `launchd`, root,
+  IPC sockets, `utun`, route/DNS/firewall mutation, packet flow, or real helper installation.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
