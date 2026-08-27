@@ -553,6 +553,12 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     spellings. Scope intentionally excludes `sudo`, Authorization Services prompt, writes to
     `/Library`, `launchctl`, root execution, persistent IPC transport, `utun`, route/DNS/firewall
     mutation, system proxy, packet flow and real helper lifecycle.
+38. [x] macOS helper install artifact integrity contract — issue #46: добавить обязательный
+    expected lowercase SHA-256 helper artifact metadata в typed `CopyHelper` operation и fail-closed
+    validation missing/invalid/tampered hash до будущего privileged executor. Scope intentionally
+    excludes hash computation, signature/Team ID verification, `sudo`, Authorization Services
+    prompt, writes to `/Library`, `launchctl`, root execution, persistent IPC transport, `utun`,
+    route/DNS/firewall mutation, system proxy, packet flow and real helper lifecycle.
 
 ## 7. Зависимости
 

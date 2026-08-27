@@ -262,6 +262,10 @@ Android VpnService → Android UI → release
   обязательный admin authorization metadata, fixed root:wheel ownership/modes и fail-closed path
   validation без `sudo`, Authorization Services prompt, записи в `/Library`, `launchctl`, root,
   IPC runtime, `utun`, routes/DNS/firewall или packet-flow evidence (issue #44).
+- [x] Добавить expected helper artifact SHA-256 в install plan contract: операция копирования несёт
+  обязательный lowercase SHA-256, missing/invalid/tampered hash отклоняется fail-closed без
+  вычисления hash, signature verification, `sudo`, filesystem writes, `launchctl`, root, IPC runtime,
+  `utun`, routes/DNS/firewall или packet-flow evidence (issue #46).
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
