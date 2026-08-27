@@ -109,6 +109,10 @@ Direct Developer ID distribution сохраняется как целевая м
   stdin/stdout harness поверх typed platform helper contract, валидирует команды fail-closed,
   сообщает macOS capabilities/status и доказывает CLI-level rejection paths без `launchd`, root,
   IPC sockets, `utun`, route/DNS/firewall mutation, packet flow или реальной установки helper.
+- [x] macOS launchd daemon boundary descriptor: core генерирует deterministic disabled-by-default
+  LaunchDaemon plist для `novaray-platform-helper` с fail-closed validation label/path/arguments.
+  Это source-level descriptor без установки, `launchctl`, root execution, IPC runtime, `utun`,
+  routes, DNS, firewall, system proxy или packet-flow evidence.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
