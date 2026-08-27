@@ -121,7 +121,11 @@ pub fn run_helper_once(input: &[u8]) -> PlatformHelperRunResult {
     let command = match serde_json::from_slice::<PlatformHelperCommand>(input) {
         Ok(command) => command,
         Err(error) => {
-            return rejected(format!("invalid helper command JSON: {error}"));
+            return rejected(format!(
+                "invalid_command_json: line={} column={}",
+                error.line(),
+                error.column()
+            ));
         }
     };
 
@@ -198,11 +202,21 @@ mod tests {
     fn invalid_json_unknown_fields_and_unsupported_versions_fail_closed() {
         let invalid_json = run_helper_once(br#"{"type":"status","payload":null,"extra":true}"#);
         assert_eq!(invalid_json.exit_code, PlatformHelperExitCode::Rejected);
-        assert!(matches!(
+        assert_eq!(
             invalid_json.event,
-            PlatformHelperEvent::CommandRejected(ref reason)
-                if reason.contains("invalid helper command JSON")
-        ));
+            PlatformHelperEvent::CommandRejected(
+                "invalid_command_json: line=1 column=39".to_string()
+            )
+        );
+
+        let invalid_value =
+            run_helper_once(br#"{"type":"handshake","payload":{"protocol_version":1,"min_supported_protocol_version":1,"required_capabilities":"00000000-0000-4000-8000-000000000001"}}"#);
+        assert_eq!(invalid_value.exit_code, PlatformHelperExitCode::Rejected);
+        let PlatformHelperEvent::CommandRejected(reason) = invalid_value.event else {
+            panic!("expected rejected command");
+        };
+        assert!(reason.starts_with("invalid_command_json: line=1 column="));
+        assert!(!reason.contains("00000000-0000-4000-8000-000000000001"));
 
         let incompatible = PlatformHelperCommand::Handshake(CoreHello {
             protocol_version: CURRENT_PLATFORM_CONTRACT_VERSION,

@@ -3,6 +3,7 @@ use std::process::{Command, Stdio};
 
 use novaray_core::platform_contract::{
     PlatformHelperEvent, PlatformHelperStatus, PlatformKind, PlatformObservedState,
+    MAX_PLATFORM_MESSAGE_BYTES,
 };
 
 fn helper_bin() -> &'static str {
@@ -89,6 +90,33 @@ fn helper_rejects_unknown_fields_fail_closed() {
     assert!(matches!(
         event,
         PlatformHelperEvent::CommandRejected(reason)
-            if reason.contains("invalid helper command JSON")
+            if reason.starts_with("invalid_command_json: line=1 column=")
     ));
+}
+
+#[test]
+fn helper_rejects_oversized_stdin_before_deserialization() {
+    let output = run_helper_stdin(&vec![b'x'; MAX_PLATFORM_MESSAGE_BYTES + 128]);
+
+    assert_eq!(output.status.code(), Some(3));
+    let event: PlatformHelperEvent =
+        serde_json::from_slice(&output.stdout).expect("parse helper event");
+    assert_eq!(
+        event,
+        PlatformHelperEvent::CommandRejected(format!(
+            "payload_too_large: limit={MAX_PLATFORM_MESSAGE_BYTES}"
+        ))
+    );
+}
+
+#[test]
+fn helper_parse_rejection_does_not_echo_input_values() {
+    let output = run_helper_stdin(
+        br#"{"type":"handshake","payload":{"protocol_version":1,"min_supported_protocol_version":1,"required_capabilities":"00000000-0000-4000-8000-000000000001"}}"#,
+    );
+
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("invalid_command_json"));
+    assert!(!stdout.contains("00000000-0000-4000-8000-000000000001"));
 }

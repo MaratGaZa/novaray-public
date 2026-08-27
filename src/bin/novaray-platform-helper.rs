@@ -2,6 +2,7 @@
 
 use std::io::{self, Read, Write};
 
+use novaray_core::platform_contract::{PlatformHelperEvent, MAX_PLATFORM_MESSAGE_BYTES};
 use novaray_core::platform_helper::{run_helper_once, PlatformHelperExitCode};
 
 fn main() {
@@ -18,29 +19,40 @@ fn main() {
         std::process::exit(PlatformHelperExitCode::Usage.as_i32());
     }
 
-    let mut input = Vec::new();
-    if let Err(error) = io::stdin().read_to_end(&mut input) {
+    let mut input = Vec::with_capacity(MAX_PLATFORM_MESSAGE_BYTES.min(8192));
+    let read_limit = MAX_PLATFORM_MESSAGE_BYTES as u64 + 1;
+    if let Err(error) = io::stdin().take(read_limit).read_to_end(&mut input) {
         eprintln!("failed to read command: {error}");
         std::process::exit(PlatformHelperExitCode::IoError.as_i32());
     }
 
-    let result = run_helper_once(&input);
-    match serde_json::to_vec(&result.event) {
-        Ok(payload) => {
-            let mut stdout = io::stdout().lock();
-            if stdout
-                .write_all(&payload)
-                .and_then(|_| stdout.write_all(b"\n"))
-                .is_err()
-            {
-                std::process::exit(PlatformHelperExitCode::IoError.as_i32());
-            }
+    if input.len() > MAX_PLATFORM_MESSAGE_BYTES {
+        let event = PlatformHelperEvent::CommandRejected(format!(
+            "payload_too_large: limit={MAX_PLATFORM_MESSAGE_BYTES}"
+        ));
+        if write_event(&event).is_err() {
+            std::process::exit(PlatformHelperExitCode::IoError.as_i32());
         }
-        Err(error) => {
-            eprintln!("failed to serialize helper event: {error}");
-            std::process::exit(PlatformHelperExitCode::InternalError.as_i32());
+        std::process::exit(PlatformHelperExitCode::Rejected.as_i32());
+    }
+
+    let result = run_helper_once(&input);
+    match write_event(&result.event) {
+        Ok(()) => {}
+        Err(exit_code) => {
+            eprintln!("failed to write helper event");
+            std::process::exit(exit_code.as_i32());
         }
     }
 
     std::process::exit(result.exit_code.as_i32());
+}
+
+fn write_event(event: &PlatformHelperEvent) -> Result<(), PlatformHelperExitCode> {
+    let payload = serde_json::to_vec(event).map_err(|_| PlatformHelperExitCode::InternalError)?;
+    let mut stdout = io::stdout().lock();
+    stdout
+        .write_all(&payload)
+        .and_then(|_| stdout.write_all(b"\n"))
+        .map_err(|_| PlatformHelperExitCode::IoError)
 }
