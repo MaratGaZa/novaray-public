@@ -224,7 +224,9 @@ impl HelperInstallPlan {
         let is_uninstall = has_unload || removes_plist || removes_helper;
         match (is_install, is_uninstall) {
             (true, true) => Err(HelperInstallError::MixedInstallAndUninstall),
-            (true, false) if has_helper_copy && has_plist_write && has_load => Ok(()),
+            (true, false) if has_helper_copy && has_plist_write && has_load => {
+                validate_install_operation_order(&self.operations)
+            }
             (true, false) => Err(HelperInstallError::IncompleteInstallPlan),
             (false, true) if has_unload && removes_plist && removes_helper => Ok(()),
             (false, true) => Err(HelperInstallError::IncompleteUninstallPlan),
@@ -407,6 +409,9 @@ pub enum HelperInstallError {
     #[error("helper install plan is missing copy, plist write or load")]
     IncompleteInstallPlan,
 
+    #[error("helper install plan must verify helper integrity before plist write or launchd load")]
+    InvalidInstallOperationOrder,
+
     #[error("helper uninstall plan is missing unload, plist removal or helper removal")]
     IncompleteUninstallPlan,
 
@@ -475,6 +480,17 @@ fn validate_expected_sha256(expected_sha256: &str) -> Result<(), HelperInstallEr
         return Err(HelperInstallError::InvalidExpectedSha256);
     }
     Ok(())
+}
+
+fn validate_install_operation_order(
+    operations: &[HelperInstallOperation],
+) -> Result<(), HelperInstallError> {
+    match operations {
+        [HelperInstallOperation::CopyHelper { .. }, HelperInstallOperation::WriteLaunchDaemonPlist { .. }, HelperInstallOperation::LoadLaunchDaemon { .. }] => {
+            Ok(())
+        }
+        _ => Err(HelperInstallError::InvalidInstallOperationOrder),
+    }
 }
 
 fn validate_label(label: &str) -> Result<(), HelperInstallError> {
@@ -659,6 +675,26 @@ mod tests {
             executor.into_inner().requested_paths,
             [HELPER_SOURCE_PATH.to_string()]
         );
+    }
+
+    #[test]
+    fn install_plan_rejects_reordered_steps_before_preflight_records() {
+        let mut plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        plan.operations.rotate_left(1);
+
+        assert_eq!(
+            plan.validate(),
+            Err(HelperInstallError::InvalidInstallOperationOrder)
+        );
+
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(VALID_HELPER_SHA256));
+        let mut executor = HelperInstallPreflightExecutor::new(inspector);
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::InvalidInstallOperationOrder)
+        );
+        assert!(executor.records().is_empty());
     }
 
     #[test]
