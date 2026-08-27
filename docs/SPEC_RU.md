@@ -115,9 +115,10 @@ Direct Developer ID distribution сохраняется как целевая м
   routes, DNS, firewall, system proxy или packet-flow evidence.
 - [x] macOS helper install/uninstall plan contract: core моделирует установку и деинсталляцию
   privileged helper как typed allowlisted operations с обязательным admin authorization metadata,
-  fixed root:wheel ownership/modes и fail-closed path validation. Это plan contract без `sudo`,
-  Authorization Services prompt, записи в `/Library`, `launchctl`, root execution, IPC runtime,
-  `utun`, routes, DNS, firewall, system proxy или packet-flow evidence.
+  fixed root:wheel ownership/modes, expected helper SHA-256 integrity metadata и fail-closed path/
+  hash validation. Это plan contract без `sudo`, Authorization Services prompt, записи в
+  `/Library`, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS, firewall, system proxy
+  или packet-flow evidence.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -341,6 +342,9 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   allowlisted commands/events, strict schema validation, redacted debug output и bounded validation.
   Он не устанавливает helper, не открывает IPC transport, не запускается под `root` и не мутирует
   `utun`, routes, DNS, firewall или system proxy.
+- macOS helper install plan contract обязан указывать expected lowercase SHA-256 helper artifact для
+  операции копирования и отклонять missing/invalid hash до будущего privileged executor. Это не
+  вычисляет hash, не проверяет подпись и не выполняет filesystem/launchd operations.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

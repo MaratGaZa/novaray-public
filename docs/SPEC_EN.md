@@ -132,9 +132,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   `utun`, routes, DNS, firewall, system proxy, or packet-flow evidence.
 - [x] macOS helper install/uninstall plan contract: core models privileged-helper install and
   uninstall as typed allowlisted operations with mandatory admin authorization metadata, fixed
-  root:wheel ownership/modes, and fail-closed path validation. This is a plan contract without
-  `sudo`, Authorization Services prompts, writes to `/Library`, `launchctl`, root execution, IPC
-  runtime, `utun`, routes, DNS, firewall, system proxy, or packet-flow evidence.
+  root:wheel ownership/modes, expected helper SHA-256 integrity metadata, and fail-closed path/hash
+  validation. This is a plan contract without `sudo`, Authorization Services prompts, writes to
+  `/Library`, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS, firewall, system proxy,
+  or packet-flow evidence.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -319,6 +320,10 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   allowlisted commands/events, strict schema validation, redacted debug output, and bounded
   validation. It does not install a helper, open an IPC transport, run as `root`, or mutate `utun`,
   routes, DNS, firewall, or system proxy state.
+- The macOS helper install plan contract must carry the expected lowercase SHA-256 of the helper
+  artifact for the copy operation and reject missing/invalid hashes before a future privileged
+  executor. This does not compute the hash, verify a signature, or execute filesystem/launchd
+  operations.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,

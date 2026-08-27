@@ -17,6 +17,7 @@ pub const WHEEL_GROUP: &str = "wheel";
 pub const HELPER_MODE: u16 = 0o755;
 pub const PLIST_MODE: u16 = 0o644;
 pub const MAX_INSTALL_PATH_BYTES: usize = 4096;
+pub const SHA256_HEX_BYTES: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdminAuthorizationMethod {
@@ -58,6 +59,7 @@ impl fmt::Debug for HelperInstallPlan {
 pub enum HelperInstallOperation {
     CopyHelper {
         source_path: String,
+        expected_sha256: String,
         destination_path: String,
         owner: String,
         group: String,
@@ -84,9 +86,14 @@ pub enum HelperInstallOperation {
 }
 
 impl HelperInstallPlan {
-    pub fn install(source_helper_path: impl Into<String>) -> Result<Self, HelperInstallError> {
+    pub fn install(
+        source_helper_path: impl Into<String>,
+        expected_sha256: impl Into<String>,
+    ) -> Result<Self, HelperInstallError> {
         let source_helper_path = source_helper_path.into();
+        let expected_sha256 = expected_sha256.into();
         validate_install_path(&source_helper_path)?;
+        validate_expected_sha256(&expected_sha256)?;
 
         let launchd = LaunchdDaemonSpec {
             disabled: false,
@@ -103,6 +110,7 @@ impl HelperInstallPlan {
             operations: vec![
                 HelperInstallOperation::CopyHelper {
                     source_path: source_helper_path,
+                    expected_sha256,
                     destination_path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
                     owner: ROOT_USER.to_string(),
                     group: WHEEL_GROUP.to_string(),
@@ -162,12 +170,14 @@ impl HelperInstallPlan {
             match operation {
                 HelperInstallOperation::CopyHelper {
                     source_path,
+                    expected_sha256,
                     destination_path,
                     owner,
                     group,
                     mode,
                 } => {
                     validate_install_path(source_path)?;
+                    validate_expected_sha256(expected_sha256)?;
                     validate_fixed_path(destination_path, DEFAULT_HELPER_PROGRAM_PATH)?;
                     validate_root_wheel(owner, group)?;
                     validate_mode(*mode, HELPER_MODE)?;
@@ -242,6 +252,12 @@ pub enum HelperInstallError {
 
     #[error("helper install path must not point at a shell or command dispatcher")]
     ShellProgramPath,
+
+    #[error("helper install plan requires expected helper SHA-256")]
+    MissingExpectedSha256,
+
+    #[error("helper install plan expected helper SHA-256 must be 64 lowercase hex characters")]
+    InvalidExpectedSha256,
 
     #[error("helper install plan used an unexpected fixed path")]
     UnexpectedFixedPath,
@@ -323,6 +339,20 @@ fn validate_install_path(path: &str) -> Result<(), HelperInstallError> {
     Ok(())
 }
 
+fn validate_expected_sha256(expected_sha256: &str) -> Result<(), HelperInstallError> {
+    if expected_sha256.is_empty() {
+        return Err(HelperInstallError::MissingExpectedSha256);
+    }
+    if expected_sha256.len() != SHA256_HEX_BYTES
+        || !expected_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(HelperInstallError::InvalidExpectedSha256);
+    }
+    Ok(())
+}
+
 fn validate_label(label: &str) -> Result<(), HelperInstallError> {
     if label == DEFAULT_LAUNCHD_LABEL {
         Ok(())
@@ -368,11 +398,16 @@ fn validate_mode(actual: u16, expected: u16) -> Result<(), HelperInstallError> {
 mod tests {
     use super::*;
 
+    const VALID_HELPER_SHA256: &str =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
     #[test]
     fn install_plan_is_allowlisted_and_requires_admin_authorization() {
-        let plan =
-            HelperInstallPlan::install("/Users/build/target/release/novaray-platform-helper")
-                .expect("install plan");
+        let plan = HelperInstallPlan::install(
+            "/Users/build/target/release/novaray-platform-helper",
+            VALID_HELPER_SHA256,
+        )
+        .expect("install plan");
 
         assert_eq!(
             plan.authorization.method,
@@ -383,11 +418,13 @@ mod tests {
             &plan.operations[0],
             HelperInstallOperation::CopyHelper {
                 source_path,
+                expected_sha256,
                 destination_path,
                 owner,
                 group,
                 mode,
             } if source_path == "/Users/build/target/release/novaray-platform-helper"
+                && expected_sha256 == VALID_HELPER_SHA256
                 && destination_path == DEFAULT_HELPER_PROGRAM_PATH
                 && owner == ROOT_USER
                 && group == WHEEL_GROUP
@@ -422,6 +459,49 @@ mod tests {
     }
 
     #[test]
+    fn install_plan_rejects_missing_or_invalid_helper_integrity() {
+        assert_eq!(
+            HelperInstallPlan::install("/Users/build/target/release/novaray-platform-helper", "",)
+                .unwrap_err(),
+            HelperInstallError::MissingExpectedSha256
+        );
+        assert_eq!(
+            HelperInstallPlan::install(
+                "/Users/build/target/release/novaray-platform-helper",
+                "0123456789abcdef",
+            )
+            .unwrap_err(),
+            HelperInstallError::InvalidExpectedSha256
+        );
+        assert_eq!(
+            HelperInstallPlan::install(
+                "/Users/build/target/release/novaray-platform-helper",
+                "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef",
+            )
+            .unwrap_err(),
+            HelperInstallError::InvalidExpectedSha256
+        );
+
+        let mut plan = HelperInstallPlan::install(
+            "/Users/build/target/release/novaray-platform-helper",
+            VALID_HELPER_SHA256,
+        )
+        .expect("install plan");
+        let HelperInstallOperation::CopyHelper {
+            expected_sha256, ..
+        } = &mut plan.operations[0]
+        else {
+            panic!("expected copy helper");
+        };
+        *expected_sha256 =
+            "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffz".to_string();
+        assert_eq!(
+            plan.validate(),
+            Err(HelperInstallError::InvalidExpectedSha256)
+        );
+    }
+
+    #[test]
     fn uninstall_plan_is_reversible_and_removes_only_owned_paths() {
         let plan = HelperInstallPlan::uninstall().expect("uninstall plan");
 
@@ -448,28 +528,35 @@ mod tests {
     #[test]
     fn path_validation_rejects_relative_traversal_shell_and_control_paths() {
         assert_eq!(
-            HelperInstallPlan::install("target/release/novaray-platform-helper").unwrap_err(),
+            HelperInstallPlan::install(
+                "target/release/novaray-platform-helper",
+                VALID_HELPER_SHA256
+            )
+            .unwrap_err(),
             HelperInstallError::RelativePath
         );
         assert_eq!(
-            HelperInstallPlan::install("/opt/../usr/local/bin/helper").unwrap_err(),
+            HelperInstallPlan::install("/opt/../usr/local/bin/helper", VALID_HELPER_SHA256)
+                .unwrap_err(),
             HelperInstallError::TraversalPath
         );
         assert_eq!(
-            HelperInstallPlan::install("/bin/sh").unwrap_err(),
+            HelperInstallPlan::install("/bin/sh", VALID_HELPER_SHA256).unwrap_err(),
             HelperInstallError::ShellProgramPath
         );
         assert_eq!(
-            HelperInstallPlan::install("/tmp/helper\nx").unwrap_err(),
+            HelperInstallPlan::install("/tmp/helper\nx", VALID_HELPER_SHA256).unwrap_err(),
             HelperInstallError::ControlCharacter
         );
     }
 
     #[test]
     fn install_plan_rejects_tampered_plist_label_owner_mode_and_missing_steps() {
-        let mut plan =
-            HelperInstallPlan::install("/Users/build/target/release/novaray-platform-helper")
-                .expect("install plan");
+        let mut plan = HelperInstallPlan::install(
+            "/Users/build/target/release/novaray-platform-helper",
+            VALID_HELPER_SHA256,
+        )
+        .expect("install plan");
 
         let HelperInstallOperation::WriteLaunchDaemonPlist { label, .. } = &mut plan.operations[1]
         else {
@@ -478,27 +565,33 @@ mod tests {
         *label = "org.novaray.other".to_string();
         assert_eq!(plan.validate(), Err(HelperInstallError::InvalidLabel));
 
-        let mut plan =
-            HelperInstallPlan::install("/Users/build/target/release/novaray-platform-helper")
-                .expect("install plan");
+        let mut plan = HelperInstallPlan::install(
+            "/Users/build/target/release/novaray-platform-helper",
+            VALID_HELPER_SHA256,
+        )
+        .expect("install plan");
         let HelperInstallOperation::CopyHelper { owner, .. } = &mut plan.operations[0] else {
             panic!("expected copy helper");
         };
         *owner = "user".to_string();
         assert_eq!(plan.validate(), Err(HelperInstallError::InvalidOwner));
 
-        let mut plan =
-            HelperInstallPlan::install("/Users/build/target/release/novaray-platform-helper")
-                .expect("install plan");
+        let mut plan = HelperInstallPlan::install(
+            "/Users/build/target/release/novaray-platform-helper",
+            VALID_HELPER_SHA256,
+        )
+        .expect("install plan");
         let HelperInstallOperation::CopyHelper { mode, .. } = &mut plan.operations[0] else {
             panic!("expected copy helper");
         };
         *mode = 0o777;
         assert_eq!(plan.validate(), Err(HelperInstallError::InvalidMode));
 
-        let mut plan =
-            HelperInstallPlan::install("/Users/build/target/release/novaray-platform-helper")
-                .expect("install plan");
+        let mut plan = HelperInstallPlan::install(
+            "/Users/build/target/release/novaray-platform-helper",
+            VALID_HELPER_SHA256,
+        )
+        .expect("install plan");
         plan.operations.pop();
         assert_eq!(
             plan.validate(),
@@ -508,9 +601,11 @@ mod tests {
 
     #[test]
     fn install_and_uninstall_operations_cannot_be_mixed() {
-        let mut plan =
-            HelperInstallPlan::install("/Users/build/target/release/novaray-platform-helper")
-                .expect("install plan");
+        let mut plan = HelperInstallPlan::install(
+            "/Users/build/target/release/novaray-platform-helper",
+            VALID_HELPER_SHA256,
+        )
+        .expect("install plan");
         plan.operations
             .push(HelperInstallOperation::UnloadLaunchDaemon {
                 label: DEFAULT_LAUNCHD_LABEL.to_string(),
