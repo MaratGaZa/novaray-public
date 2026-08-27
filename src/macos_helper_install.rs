@@ -228,7 +228,9 @@ impl HelperInstallPlan {
                 validate_install_operation_order(&self.operations)
             }
             (true, false) => Err(HelperInstallError::IncompleteInstallPlan),
-            (false, true) if has_unload && removes_plist && removes_helper => Ok(()),
+            (false, true) if has_unload && removes_plist && removes_helper => {
+                validate_uninstall_operation_order(&self.operations)
+            }
             (false, true) => Err(HelperInstallError::IncompleteUninstallPlan),
             (false, false) => Err(HelperInstallError::MissingOperation),
         }
@@ -415,6 +417,9 @@ pub enum HelperInstallError {
     #[error("helper uninstall plan is missing unload, plist removal or helper removal")]
     IncompleteUninstallPlan,
 
+    #[error("helper uninstall plan must unload launchd before removing plist or helper binary")]
+    InvalidUninstallOperationOrder,
+
     #[error("helper install plan must not mix install and uninstall operations")]
     MixedInstallAndUninstall,
 
@@ -490,6 +495,20 @@ fn validate_install_operation_order(
             Ok(())
         }
         _ => Err(HelperInstallError::InvalidInstallOperationOrder),
+    }
+}
+
+fn validate_uninstall_operation_order(
+    operations: &[HelperInstallOperation],
+) -> Result<(), HelperInstallError> {
+    match operations {
+        [HelperInstallOperation::UnloadLaunchDaemon { .. }, HelperInstallOperation::RemoveFile { path: plist_path }, HelperInstallOperation::RemoveFile { path: helper_path }]
+            if plist_path == DEFAULT_LAUNCHD_PLIST_PATH
+                && helper_path == DEFAULT_HELPER_PROGRAM_PATH =>
+        {
+            Ok(())
+        }
+        _ => Err(HelperInstallError::InvalidUninstallOperationOrder),
     }
 }
 
@@ -734,6 +753,26 @@ mod tests {
                 },
             ]
         );
+        assert!(executor.into_inner().requested_paths.is_empty());
+    }
+
+    #[test]
+    fn uninstall_plan_rejects_reordered_steps_before_preflight_records() {
+        let mut plan = HelperInstallPlan::uninstall().expect("uninstall plan");
+        plan.operations.reverse();
+
+        assert_eq!(
+            plan.validate(),
+            Err(HelperInstallError::InvalidUninstallOperationOrder)
+        );
+
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Err("should not inspect"));
+        let mut executor = HelperInstallPreflightExecutor::new(inspector);
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::InvalidUninstallOperationOrder)
+        );
+        assert!(executor.records().is_empty());
         assert!(executor.into_inner().requested_paths.is_empty());
     }
 
