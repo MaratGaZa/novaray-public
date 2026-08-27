@@ -540,6 +540,12 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     Scope intentionally excludes launchd/root install, persistent IPC transport, privilege
     escalation, `utun`, route/DNS/firewall mutation, system proxy, packet flow and real helper
     lifecycle.
+36. [x] macOS launchd daemon boundary descriptor — issue #42: добавить pure Rust source-level
+    descriptor для future LaunchDaemon вокруг `novaray-platform-helper`: deterministic
+    disabled-by-default plist, fail-closed validation label/path/arguments and tests that reject shell
+    dispatchers, relative paths, mismatched argv0 and control characters. Scope intentionally
+    excludes helper installation, `launchctl`, root execution, persistent IPC transport, `utun`,
+    route/DNS/firewall mutation, system proxy, packet flow and real helper lifecycle.
 
 ## 7. Зависимости
 

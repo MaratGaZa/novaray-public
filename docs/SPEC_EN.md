@@ -126,6 +126,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   stdin/stdout harness over the typed platform helper contract, validates commands fail-closed,
   reports macOS capabilities/status, and proves CLI-level rejection paths without `launchd`, root,
   IPC sockets, `utun`, route/DNS/firewall mutation, packet flow, or real helper installation.
+- [x] macOS launchd daemon boundary descriptor: core generates a deterministic disabled-by-default
+  LaunchDaemon plist for `novaray-platform-helper` with fail-closed label/path/argument validation.
+  This is a source-level descriptor without installation, `launchctl`, root execution, IPC runtime,
+  `utun`, routes, DNS, firewall, system proxy, or packet-flow evidence.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.

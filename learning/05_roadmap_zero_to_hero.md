@@ -255,7 +255,9 @@ Android VpnService → Android UI → release
 
 ### 3.1. Privileged helper skeleton
 
-- [ ] Создать отдельный привилегированный компонент (`launchd`-демон) согласно ADR-003.
+- [x] Добавить source-level descriptor LaunchDaemon для `novaray-platform-helper`: deterministic
+  disabled-by-default plist, fail-closed validation label/path/arguments и тесты без установки,
+  `launchctl`, root, IPC runtime, `utun`, routes/DNS/firewall или packet-flow evidence (issue #42).
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
