@@ -105,6 +105,10 @@ Direct Developer ID distribution сохраняется как целевая м
   Store хранит не больше одного active applied-state record и предоставляет explicit clear для
   будущего successful disconnect/recovery flow. Applied-state records не блокируют новые
   transactions; helper runtime, OS mutation и реальное выполнение rollback всё ещё отсутствуют.
+- [x] macOS platform helper skeleton binary: `novaray-platform-helper` работает как side-effect-free
+  stdin/stdout harness поверх typed platform helper contract, валидирует команды fail-closed,
+  сообщает macOS capabilities/status и доказывает CLI-level rejection paths без `launchd`, root,
+  IPC sockets, `utun`, route/DNS/firewall mutation, packet flow или реальной установки helper.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.

@@ -533,6 +533,13 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     transactions and expose explicit clear for future successful disconnect/recovery. Scope
     intentionally excludes real helper/runtime, IPC transport, root, `utun`, route/DNS/firewall
     mutation, actual OS rollback execution and packet-flow evidence.
+35. [x] macOS platform helper skeleton binary — issue #40: добавить отдельный
+    `novaray-platform-helper` binary как side-effect-free stdin/stdout harness поверх typed
+    platform helper contract. Helper validates allowlisted JSON commands fail-closed, reports macOS
+    capabilities/status, exposes deterministic exit codes, and is covered by CLI-level tests.
+    Scope intentionally excludes launchd/root install, persistent IPC transport, privilege
+    escalation, `utun`, route/DNS/firewall mutation, system proxy, packet flow and real helper
+    lifecycle.
 
 ## 7. Зависимости
 

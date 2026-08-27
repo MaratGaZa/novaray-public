@@ -11,6 +11,7 @@ pub mod network_state;
 pub mod network_transaction;
 pub mod parser;
 pub mod platform_contract;
+pub mod platform_helper;
 pub mod recovery_journal;
 pub mod routing;
 pub mod sing_box_generator;
