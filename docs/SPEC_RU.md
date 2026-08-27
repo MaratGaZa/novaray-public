@@ -113,6 +113,11 @@ Direct Developer ID distribution сохраняется как целевая м
   LaunchDaemon plist для `novaray-platform-helper` с fail-closed validation label/path/arguments.
   Это source-level descriptor без установки, `launchctl`, root execution, IPC runtime, `utun`,
   routes, DNS, firewall, system proxy или packet-flow evidence.
+- [x] macOS helper install/uninstall plan contract: core моделирует установку и деинсталляцию
+  privileged helper как typed allowlisted operations с обязательным admin authorization metadata,
+  fixed root:wheel ownership/modes и fail-closed path validation. Это plan contract без `sudo`,
+  Authorization Services prompt, записи в `/Library`, `launchctl`, root execution, IPC runtime,
+  `utun`, routes, DNS, firewall, system proxy или packet-flow evidence.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.

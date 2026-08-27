@@ -130,6 +130,11 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   LaunchDaemon plist for `novaray-platform-helper` with fail-closed label/path/argument validation.
   This is a source-level descriptor without installation, `launchctl`, root execution, IPC runtime,
   `utun`, routes, DNS, firewall, system proxy, or packet-flow evidence.
+- [x] macOS helper install/uninstall plan contract: core models privileged-helper install and
+  uninstall as typed allowlisted operations with mandatory admin authorization metadata, fixed
+  root:wheel ownership/modes, and fail-closed path validation. This is a plan contract without
+  `sudo`, Authorization Services prompts, writes to `/Library`, `launchctl`, root execution, IPC
+  runtime, `utun`, routes, DNS, firewall, system proxy, or packet-flow evidence.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
