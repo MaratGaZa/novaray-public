@@ -119,6 +119,11 @@ Direct Developer ID distribution сохраняется как целевая м
   hash validation. Это plan contract без `sudo`, Authorization Services prompt, записи в
   `/Library`, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS, firewall, system proxy
   или packet-flow evidence.
+- [x] macOS helper install integrity preflight executor contract: core side-effect-free проверяет
+  expected SHA-256 ровно для `CopyHelper.source_path` в момент обработки copy-step и останавливает
+  install plan до plist/load records при mismatch. Это не выполняет filesystem writes, `sudo`,
+  Authorization Services prompt, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS,
+  firewall, system proxy или packet-flow evidence.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -345,6 +350,10 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
 - macOS helper install plan contract обязан указывать expected lowercase SHA-256 helper artifact для
   операции копирования и отклонять missing/invalid hash до будущего privileged executor. Это не
   вычисляет hash, не проверяет подпись и не выполняет filesystem/launchd operations.
+- macOS helper install preflight executor contract обязан сверять expected SHA-256 с фактическим
+  SHA-256 именно того `CopyHelper.source_path`, который будет копироваться, и обязан остановиться до
+  plist/load steps при mismatch или ошибке source inspector. Это side-effect-free executor contract:
+  он не копирует файлы, не пишет plist и не загружает launchd job.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

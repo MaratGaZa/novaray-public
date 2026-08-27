@@ -233,6 +233,124 @@ impl HelperInstallPlan {
     }
 }
 
+pub trait HelperInstallSourceInspector {
+    fn helper_sha256(&mut self, source_path: &str) -> Result<String, String>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelperInstallPreflightExecutor<I> {
+    inspector: I,
+    records: Vec<HelperInstallPreflightRecord>,
+}
+
+impl<I> HelperInstallPreflightExecutor<I>
+where
+    I: HelperInstallSourceInspector,
+{
+    pub fn new(inspector: I) -> Self {
+        Self {
+            inspector,
+            records: Vec::new(),
+        }
+    }
+
+    pub fn execute(&mut self, plan: &HelperInstallPlan) -> Result<(), HelperInstallError> {
+        plan.validate()?;
+        self.records.clear();
+
+        for operation in &plan.operations {
+            match operation {
+                HelperInstallOperation::CopyHelper {
+                    source_path,
+                    expected_sha256,
+                    destination_path,
+                    ..
+                } => {
+                    let actual_sha256 = self
+                        .inspector
+                        .helper_sha256(source_path)
+                        .map_err(|reason| HelperInstallError::SourceInspectorFailed { reason })?;
+                    validate_expected_sha256(&actual_sha256)?;
+                    if actual_sha256 != *expected_sha256 {
+                        return Err(HelperInstallError::HelperSourceSha256Mismatch {
+                            expected: expected_sha256.clone(),
+                            actual: actual_sha256,
+                        });
+                    }
+                    self.records
+                        .push(HelperInstallPreflightRecord::CopyHelperVerified {
+                            source_path: source_path.clone(),
+                            expected_sha256: expected_sha256.clone(),
+                            actual_sha256,
+                            destination_path: destination_path.clone(),
+                        });
+                }
+                HelperInstallOperation::WriteLaunchDaemonPlist { path, label, .. } => {
+                    self.records.push(
+                        HelperInstallPreflightRecord::WriteLaunchDaemonPlistValidated {
+                            path: path.clone(),
+                            label: label.clone(),
+                        },
+                    );
+                }
+                HelperInstallOperation::LoadLaunchDaemon { path, label } => {
+                    self.records
+                        .push(HelperInstallPreflightRecord::LoadLaunchDaemonValidated {
+                            path: path.clone(),
+                            label: label.clone(),
+                        });
+                }
+                HelperInstallOperation::UnloadLaunchDaemon { label } => {
+                    self.records
+                        .push(HelperInstallPreflightRecord::UnloadLaunchDaemonValidated {
+                            label: label.clone(),
+                        });
+                }
+                HelperInstallOperation::RemoveFile { path } => {
+                    self.records
+                        .push(HelperInstallPreflightRecord::RemoveFileValidated {
+                            path: path.clone(),
+                        });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn records(&self) -> &[HelperInstallPreflightRecord] {
+        &self.records
+    }
+
+    pub fn into_inner(self) -> I {
+        self.inspector
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HelperInstallPreflightRecord {
+    CopyHelperVerified {
+        source_path: String,
+        expected_sha256: String,
+        actual_sha256: String,
+        destination_path: String,
+    },
+    WriteLaunchDaemonPlistValidated {
+        path: String,
+        label: String,
+    },
+    LoadLaunchDaemonValidated {
+        path: String,
+        label: String,
+    },
+    UnloadLaunchDaemonValidated {
+        label: String,
+    },
+    RemoveFileValidated {
+        path: String,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum HelperInstallError {
     #[error("helper install plan requires an administrative authorization reason")]
@@ -258,6 +376,12 @@ pub enum HelperInstallError {
 
     #[error("helper install plan expected helper SHA-256 must be 64 lowercase hex characters")]
     InvalidExpectedSha256,
+
+    #[error("helper install source inspector failed: {reason}")]
+    SourceInspectorFailed { reason: String },
+
+    #[error("helper install source SHA-256 mismatch")]
+    HelperSourceSha256Mismatch { expected: String, actual: String },
 
     #[error("helper install plan used an unexpected fixed path")]
     UnexpectedFixedPath,
@@ -400,14 +524,39 @@ mod tests {
 
     const VALID_HELPER_SHA256: &str =
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const OTHER_HELPER_SHA256: &str =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    const HELPER_SOURCE_PATH: &str = "/Users/build/target/release/novaray-platform-helper";
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestInspector {
+        expected_path: String,
+        sha256: Result<String, String>,
+        requested_paths: Vec<String>,
+    }
+
+    impl TestInspector {
+        fn new(expected_path: &str, sha256: Result<&str, &str>) -> Self {
+            Self {
+                expected_path: expected_path.to_string(),
+                sha256: sha256.map(String::from).map_err(String::from),
+                requested_paths: Vec::new(),
+            }
+        }
+    }
+
+    impl HelperInstallSourceInspector for TestInspector {
+        fn helper_sha256(&mut self, source_path: &str) -> Result<String, String> {
+            assert_eq!(source_path, self.expected_path);
+            self.requested_paths.push(source_path.to_string());
+            self.sha256.clone()
+        }
+    }
 
     #[test]
     fn install_plan_is_allowlisted_and_requires_admin_authorization() {
-        let plan = HelperInstallPlan::install(
-            "/Users/build/target/release/novaray-platform-helper",
-            VALID_HELPER_SHA256,
-        )
-        .expect("install plan");
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
 
         assert_eq!(
             plan.authorization.method,
@@ -423,7 +572,7 @@ mod tests {
                 owner,
                 group,
                 mode,
-            } if source_path == "/Users/build/target/release/novaray-platform-helper"
+            } if source_path == HELPER_SOURCE_PATH
                 && expected_sha256 == VALID_HELPER_SHA256
                 && destination_path == DEFAULT_HELPER_PROGRAM_PATH
                 && owner == ROOT_USER
@@ -459,34 +608,120 @@ mod tests {
     }
 
     #[test]
+    fn install_preflight_verifies_exact_copy_source_before_later_install_steps() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(VALID_HELPER_SHA256));
+        let mut executor = HelperInstallPreflightExecutor::new(inspector);
+
+        assert_eq!(executor.execute(&plan), Ok(()));
+        assert_eq!(
+            executor.records(),
+            [
+                HelperInstallPreflightRecord::CopyHelperVerified {
+                    source_path: HELPER_SOURCE_PATH.to_string(),
+                    expected_sha256: VALID_HELPER_SHA256.to_string(),
+                    actual_sha256: VALID_HELPER_SHA256.to_string(),
+                    destination_path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                },
+                HelperInstallPreflightRecord::WriteLaunchDaemonPlistValidated {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                    label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                },
+                HelperInstallPreflightRecord::LoadLaunchDaemonValidated {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                    label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                },
+            ]
+        );
+        assert_eq!(
+            executor.into_inner().requested_paths,
+            [HELPER_SOURCE_PATH.to_string()]
+        );
+    }
+
+    #[test]
+    fn install_preflight_hash_mismatch_stops_before_plist_or_load_records() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(OTHER_HELPER_SHA256));
+        let mut executor = HelperInstallPreflightExecutor::new(inspector);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::HelperSourceSha256Mismatch {
+                expected: VALID_HELPER_SHA256.to_string(),
+                actual: OTHER_HELPER_SHA256.to_string(),
+            })
+        );
+        assert!(executor.records().is_empty());
+        assert_eq!(
+            executor.into_inner().requested_paths,
+            [HELPER_SOURCE_PATH.to_string()]
+        );
+    }
+
+    #[test]
+    fn install_preflight_propagates_source_inspector_failure() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Err("source disappeared"));
+        let mut executor = HelperInstallPreflightExecutor::new(inspector);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::SourceInspectorFailed {
+                reason: "source disappeared".to_string(),
+            })
+        );
+        assert!(executor.records().is_empty());
+    }
+
+    #[test]
+    fn uninstall_preflight_does_not_inspect_helper_artifact_bytes() {
+        let plan = HelperInstallPlan::uninstall().expect("uninstall plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Err("should not inspect"));
+        let mut executor = HelperInstallPreflightExecutor::new(inspector);
+
+        assert_eq!(executor.execute(&plan), Ok(()));
+        assert_eq!(
+            executor.records(),
+            [
+                HelperInstallPreflightRecord::UnloadLaunchDaemonValidated {
+                    label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                },
+                HelperInstallPreflightRecord::RemoveFileValidated {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                },
+                HelperInstallPreflightRecord::RemoveFileValidated {
+                    path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                },
+            ]
+        );
+        assert!(executor.into_inner().requested_paths.is_empty());
+    }
+
+    #[test]
     fn install_plan_rejects_missing_or_invalid_helper_integrity() {
         assert_eq!(
-            HelperInstallPlan::install("/Users/build/target/release/novaray-platform-helper", "",)
-                .unwrap_err(),
+            HelperInstallPlan::install(HELPER_SOURCE_PATH, "",).unwrap_err(),
             HelperInstallError::MissingExpectedSha256
         );
         assert_eq!(
-            HelperInstallPlan::install(
-                "/Users/build/target/release/novaray-platform-helper",
-                "0123456789abcdef",
-            )
-            .unwrap_err(),
+            HelperInstallPlan::install(HELPER_SOURCE_PATH, "0123456789abcdef",).unwrap_err(),
             HelperInstallError::InvalidExpectedSha256
         );
         assert_eq!(
             HelperInstallPlan::install(
-                "/Users/build/target/release/novaray-platform-helper",
+                HELPER_SOURCE_PATH,
                 "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef",
             )
             .unwrap_err(),
             HelperInstallError::InvalidExpectedSha256
         );
 
-        let mut plan = HelperInstallPlan::install(
-            "/Users/build/target/release/novaray-platform-helper",
-            VALID_HELPER_SHA256,
-        )
-        .expect("install plan");
+        let mut plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
         let HelperInstallOperation::CopyHelper {
             expected_sha256, ..
         } = &mut plan.operations[0]
@@ -552,11 +787,8 @@ mod tests {
 
     #[test]
     fn install_plan_rejects_tampered_plist_label_owner_mode_and_missing_steps() {
-        let mut plan = HelperInstallPlan::install(
-            "/Users/build/target/release/novaray-platform-helper",
-            VALID_HELPER_SHA256,
-        )
-        .expect("install plan");
+        let mut plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
 
         let HelperInstallOperation::WriteLaunchDaemonPlist { label, .. } = &mut plan.operations[1]
         else {
@@ -565,33 +797,24 @@ mod tests {
         *label = "org.novaray.other".to_string();
         assert_eq!(plan.validate(), Err(HelperInstallError::InvalidLabel));
 
-        let mut plan = HelperInstallPlan::install(
-            "/Users/build/target/release/novaray-platform-helper",
-            VALID_HELPER_SHA256,
-        )
-        .expect("install plan");
+        let mut plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
         let HelperInstallOperation::CopyHelper { owner, .. } = &mut plan.operations[0] else {
             panic!("expected copy helper");
         };
         *owner = "user".to_string();
         assert_eq!(plan.validate(), Err(HelperInstallError::InvalidOwner));
 
-        let mut plan = HelperInstallPlan::install(
-            "/Users/build/target/release/novaray-platform-helper",
-            VALID_HELPER_SHA256,
-        )
-        .expect("install plan");
+        let mut plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
         let HelperInstallOperation::CopyHelper { mode, .. } = &mut plan.operations[0] else {
             panic!("expected copy helper");
         };
         *mode = 0o777;
         assert_eq!(plan.validate(), Err(HelperInstallError::InvalidMode));
 
-        let mut plan = HelperInstallPlan::install(
-            "/Users/build/target/release/novaray-platform-helper",
-            VALID_HELPER_SHA256,
-        )
-        .expect("install plan");
+        let mut plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
         plan.operations.pop();
         assert_eq!(
             plan.validate(),
@@ -601,11 +824,8 @@ mod tests {
 
     #[test]
     fn install_and_uninstall_operations_cannot_be_mixed() {
-        let mut plan = HelperInstallPlan::install(
-            "/Users/build/target/release/novaray-platform-helper",
-            VALID_HELPER_SHA256,
-        )
-        .expect("install plan");
+        let mut plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
         plan.operations
             .push(HelperInstallOperation::UnloadLaunchDaemon {
                 label: DEFAULT_LAUNCHD_LABEL.to_string(),
