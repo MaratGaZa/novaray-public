@@ -546,6 +546,13 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     dispatchers, relative paths, mismatched argv0 and control characters. Scope intentionally
     excludes helper installation, `launchctl`, root execution, persistent IPC transport, `utun`,
     route/DNS/firewall mutation, system proxy, packet flow and real helper lifecycle.
+37. [x] macOS helper install/uninstall plan contract — issue #44: добавить side-effect-free Rust
+    contract, который моделирует install/uninstall privileged helper как typed allowlisted
+    operations с обязательным admin authorization metadata, fixed root:wheel ownership/modes,
+    deterministic LaunchDaemon plist payload и fail-closed POSIX path validation включая traversal
+    spellings. Scope intentionally excludes `sudo`, Authorization Services prompt, writes to
+    `/Library`, `launchctl`, root execution, persistent IPC transport, `utun`, route/DNS/firewall
+    mutation, system proxy, packet flow and real helper lifecycle.
 
 ## 7. Зависимости
 

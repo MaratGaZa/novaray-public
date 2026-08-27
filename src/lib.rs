@@ -5,6 +5,7 @@ pub mod config_generator;
 pub mod connection;
 pub mod core;
 pub mod engine;
+pub mod macos_helper_install;
 pub mod macos_launchd;
 pub mod matcher;
 pub mod network_executor;

@@ -258,6 +258,10 @@ Android VpnService → Android UI → release
 - [x] Добавить source-level descriptor LaunchDaemon для `novaray-platform-helper`: deterministic
   disabled-by-default plist, fail-closed validation label/path/arguments и тесты без установки,
   `launchctl`, root, IPC runtime, `utun`, routes/DNS/firewall или packet-flow evidence (issue #42).
+- [x] Добавить side-effect-free install/uninstall plan contract: typed allowlisted operations,
+  обязательный admin authorization metadata, fixed root:wheel ownership/modes и fail-closed path
+  validation без `sudo`, Authorization Services prompt, записи в `/Library`, `launchctl`, root,
+  IPC runtime, `utun`, routes/DNS/firewall или packet-flow evidence (issue #44).
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
