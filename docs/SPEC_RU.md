@@ -136,6 +136,12 @@ Direct Developer ID distribution сохраняется как целевая м
   началу для будущего copy-step. Это не выполняет copy, filesystem writes, `sudo`, Authorization
   Services prompt, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS, firewall, system
   proxy или packet-flow evidence.
+- [x] macOS helper source symlink diagnostics contract: core возвращает typed source error с путём
+  symlink-компонента, который вызвал fail-closed отказ helper source opener. На macOS это явно
+  покрывает пути через `/tmp` и `/var`; такие source paths должны быть заранее canonicalized или
+  размещены под real path без symlink components. Это diagnostic-only contract и не выполняет copy,
+  filesystem writes, Authorization Services prompt, `sudo`, `launchctl`, root execution или helper
+  lifecycle.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -376,6 +382,9 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   только через этот handle, перематывать handle к началу после успешного hash и возвращать typed
   source errors без отражения содержимого helper artifact. Это still preflight/open contract, а не
   privileged copy/install.
+- Helper source symlink diagnostics обязаны указывать path component, который оказался symbolic link,
+  без чтения или отражения helper artifact contents. Сообщение должно объяснять, почему macOS paths
+  через `/tmp` или `/var` fail closed: эти компоненты сами являются symlink prefixes.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

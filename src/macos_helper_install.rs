@@ -13,8 +13,9 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 #[cfg(unix)]
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, PathBuf};
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -391,8 +392,10 @@ fn open_helper_source_file(source_path: &str) -> Result<File, HelperInstallSourc
         ));
     }
     let mut current_dir = unsafe { File::from_raw_fd(root_fd) };
+    let mut current_path = PathBuf::from("/");
 
     for component in components {
+        let next_path = current_path.join(&component);
         let component = component_c_string(&component)?;
         let next_fd = unsafe {
             libc::openat(
@@ -402,11 +405,13 @@ fn open_helper_source_file(source_path: &str) -> Result<File, HelperInstallSourc
             )
         };
         if next_fd < 0 {
-            return Err(HelperInstallSourceError::from_open_error(
+            return Err(HelperInstallSourceError::from_open_error_for_component(
                 io::Error::last_os_error(),
+                &next_path,
             ));
         }
         current_dir = unsafe { File::from_raw_fd(next_fd) };
+        current_path = next_path;
     }
 
     let file_name = component_c_string(&file_name)?;
@@ -418,8 +423,9 @@ fn open_helper_source_file(source_path: &str) -> Result<File, HelperInstallSourc
         )
     };
     if file_fd < 0 {
-        return Err(HelperInstallSourceError::from_open_error(
+        return Err(HelperInstallSourceError::from_open_error_for_component(
             io::Error::last_os_error(),
+            path,
         ));
     }
 
@@ -661,8 +667,8 @@ pub enum HelperInstallSourceError {
     #[error("helper source metadata inspection failed: {kind:?}")]
     OpenMetadataFailed { kind: io::ErrorKind },
 
-    #[error("helper source must not be a symbolic link")]
-    Symlink,
+    #[error("helper source path component must not be a symbolic link: {component_path}")]
+    Symlink { component_path: String },
 
     #[error("helper source must be a regular file")]
     NotRegularFile,
@@ -680,7 +686,16 @@ pub enum HelperInstallSourceError {
 impl HelperInstallSourceError {
     fn from_open_error(error: io::Error) -> Self {
         if is_symlink_open_error(&error) {
-            Self::Symlink
+            Self::symlink_component("<unknown>")
+        } else {
+            Self::OpenFailed { kind: error.kind() }
+        }
+    }
+
+    #[cfg(unix)]
+    fn from_open_error_for_component(error: io::Error, component_path: impl AsRef<Path>) -> Self {
+        if is_symlink_open_error(&error) {
+            Self::symlink_component(component_path)
         } else {
             Self::OpenFailed { kind: error.kind() }
         }
@@ -696,6 +711,12 @@ impl HelperInstallSourceError {
 
     fn from_hash_seek_error(error: io::Error) -> Self {
         Self::HashSeekFailed { kind: error.kind() }
+    }
+
+    fn symlink_component(component_path: impl AsRef<Path>) -> Self {
+        Self::Symlink {
+            component_path: component_path.as_ref().to_string_lossy().into_owned(),
+        }
     }
 }
 
@@ -714,7 +735,7 @@ fn reject_symlink_before_open(source_path: &str) -> Result<(), HelperInstallSour
     let metadata = std::fs::symlink_metadata(source_path)
         .map_err(HelperInstallSourceError::from_open_metadata_error)?;
     if metadata.file_type().is_symlink() {
-        Err(HelperInstallSourceError::Symlink)
+        Err(HelperInstallSourceError::symlink_component(source_path))
     } else {
         Ok(())
     }
@@ -735,7 +756,7 @@ fn reject_symlink_path_components_before_open(
                 let metadata = std::fs::symlink_metadata(&current)
                     .map_err(HelperInstallSourceError::from_open_metadata_error)?;
                 if metadata.file_type().is_symlink() {
-                    return Err(HelperInstallSourceError::Symlink);
+                    return Err(HelperInstallSourceError::symlink_component(&current));
                 }
             }
             Component::CurDir | Component::ParentDir | Component::Prefix(_) => {}
@@ -1251,7 +1272,7 @@ mod tests {
         assert_eq!(
             executor.execute(&plan),
             Err(HelperInstallError::SourceInspector(
-                HelperInstallSourceError::Symlink,
+                HelperInstallSourceError::symlink_component(&symlink_path),
             ))
         );
         assert!(executor.records().is_empty());
@@ -1281,13 +1302,30 @@ mod tests {
         assert_eq!(
             executor.execute(&plan),
             Err(HelperInstallError::SourceInspector(
-                HelperInstallSourceError::Symlink,
+                HelperInstallSourceError::symlink_component(&symlink_dir),
             ))
         );
         assert!(executor.records().is_empty());
         assert!(executor.verified_helper_source().is_none());
 
         fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn file_source_inspector_reports_macos_tmp_symlink_component() {
+        let plan = HelperInstallPlan::install("/tmp/novaray-platform-helper", VALID_HELPER_SHA256)
+            .expect("install plan");
+        let mut executor = HelperInstallPreflightExecutor::new(HelperInstallFileSourceInspector);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::SourceInspector(
+                HelperInstallSourceError::symlink_component("/tmp"),
+            ))
+        );
+        assert!(executor.records().is_empty());
+        assert!(executor.verified_helper_source().is_none());
     }
 
     #[cfg(unix)]

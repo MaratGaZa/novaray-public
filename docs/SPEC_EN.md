@@ -154,6 +154,12 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   beginning for the future copy step. This does not perform copy, filesystem writes, `sudo`,
   Authorization Services prompts, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS,
   firewall, system proxy, or packet-flow evidence.
+- [x] macOS helper source symlink diagnostics contract: core returns a typed source error with the
+  symlink component path that caused the helper source opener to fail closed. On macOS this
+  explicitly covers paths through `/tmp` and `/var`; source paths must be canonicalized beforehand or
+  placed under a real path without symlink components. This is a diagnostic-only contract and does
+  not perform copy, filesystem writes, Authorization Services prompts, `sudo`, `launchctl`, root
+  execution, or helper lifecycle work.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -356,6 +362,9 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   SHA-256 only through that handle, rewind the handle to the beginning after a successful hash, and
   return typed source errors without reflecting helper artifact contents. This is still a
   preflight/open contract, not privileged copy/install.
+- Helper source symlink diagnostics must identify the path component that was a symbolic link
+  without reading or reflecting helper artifact contents. The message must explain why macOS paths
+  through `/tmp` or `/var` fail closed: those components are symlink prefixes.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,
