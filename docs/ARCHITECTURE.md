@@ -127,6 +127,8 @@ Commands используют allowlist и idempotency/correlation IDs. Unknown 
 
 Helper install/deinstall реализуется как отдельный Gate I перед helper runtime: этот gate может
 работать с LaunchDaemon lifecycle, но не запускает `utun` и не мутирует routes, DNS или firewall.
+Gate I executor использует typed platform adapter для authorization, opened-handle copy, plist write,
+launchd load/unload и file removal; shell strings через boundary не передаются.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

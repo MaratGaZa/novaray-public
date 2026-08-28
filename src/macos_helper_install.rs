@@ -1,21 +1,23 @@
-//! Side-effect-free install/uninstall plan contract for the macOS privileged helper.
+//! Install/uninstall plan, preflight and execution contract for the macOS privileged helper.
 //!
-//! The contract models the future administrative step as typed operations. It does not prompt for
-//! authorization, write to `/Library`, call `launchctl`, run as root, open IPC sockets, create
-//! `utun`, or mutate routes, DNS, firewall, system proxy or packet-flow state.
+//! The concrete execution path remains a narrow Gate I lifecycle boundary: it can copy the helper,
+//! write the LaunchDaemon plist and call `launchctl` through a typed adapter, but it does not open
+//! IPC sockets, create `utun`, or mutate routes, DNS, firewall, system proxy or packet-flow state.
 
 use std::fmt;
-use std::fs::File;
-#[cfg(not(unix))]
-use std::fs::OpenOptions;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 #[cfg(unix)]
 use std::path::{Component, PathBuf};
+#[cfg(target_os = "macos")]
+use std::process::Command;
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -587,6 +589,474 @@ pub enum HelperInstallPreflightRecord {
     },
 }
 
+pub struct HelperInstallExecutor<I, P>
+where
+    I: HelperInstallSourceInspector,
+    P: HelperInstallPlatform<I::Source>,
+{
+    preflight: HelperInstallPreflightExecutor<I>,
+    platform: P,
+    records: Vec<HelperInstallExecutionRecord>,
+}
+
+impl<I, P> HelperInstallExecutor<I, P>
+where
+    I: HelperInstallSourceInspector,
+    P: HelperInstallPlatform<I::Source>,
+{
+    pub fn new(inspector: I, platform: P) -> Self {
+        Self {
+            preflight: HelperInstallPreflightExecutor::new(inspector),
+            platform,
+            records: Vec::new(),
+        }
+    }
+
+    pub fn execute(&mut self, plan: &HelperInstallPlan) -> Result<(), HelperInstallError> {
+        plan.validate()?;
+        self.records.clear();
+        self.preflight.execute(plan)?;
+
+        self.platform
+            .ensure_authorized(&plan.authorization)
+            .map_err(|failure| HelperInstallError::Execution {
+                step: HelperInstallExecutionStep::Authorize,
+                failure,
+            })?;
+        self.records.push(HelperInstallExecutionRecord::Authorized {
+            method: plan.authorization.method,
+        });
+
+        match plan.operations.as_slice() {
+            [HelperInstallOperation::CopyHelper { .. }, HelperInstallOperation::WriteLaunchDaemonPlist { .. }, HelperInstallOperation::LoadLaunchDaemon { .. }] => {
+                self.execute_install(plan.operations.as_slice())
+            }
+            [HelperInstallOperation::UnloadLaunchDaemon { .. }, HelperInstallOperation::RemoveFile { .. }, HelperInstallOperation::RemoveFile { .. }] => {
+                self.execute_uninstall(plan.operations.as_slice())
+            }
+            _ => Err(HelperInstallError::MissingOperation),
+        }
+    }
+
+    pub fn records(&self) -> &[HelperInstallExecutionRecord] {
+        &self.records
+    }
+
+    pub fn preflight_records(&self) -> &[HelperInstallPreflightRecord] {
+        self.preflight.records()
+    }
+
+    pub fn into_parts(self) -> (I, P) {
+        (self.preflight.into_inner(), self.platform)
+    }
+
+    fn execute_install(
+        &mut self,
+        operations: &[HelperInstallOperation],
+    ) -> Result<(), HelperInstallError> {
+        let mut applied = Vec::new();
+        let mut verified_source = self
+            .preflight
+            .take_verified_helper_source()
+            .ok_or(HelperInstallError::MissingVerifiedHelperSource)?;
+
+        for operation in operations {
+            let step = execution_step_for_operation(operation);
+            let result = match operation {
+                HelperInstallOperation::CopyHelper {
+                    destination_path,
+                    owner,
+                    group,
+                    mode,
+                    ..
+                } => self.platform.copy_helper(
+                    &mut verified_source,
+                    destination_path,
+                    owner,
+                    group,
+                    *mode,
+                ),
+                HelperInstallOperation::WriteLaunchDaemonPlist {
+                    path,
+                    label,
+                    plist_xml,
+                    owner,
+                    group,
+                    mode,
+                } => self
+                    .platform
+                    .write_launchd_plist(path, label, plist_xml, owner, group, *mode),
+                HelperInstallOperation::LoadLaunchDaemon { path, label } => {
+                    self.platform.load_launch_daemon(path, label)
+                }
+                _ => unreachable!("install plan order was validated"),
+            };
+
+            match result {
+                Ok(()) => {
+                    self.records
+                        .push(HelperInstallExecutionRecord::OperationApplied { step });
+                    applied.push(operation.clone());
+                }
+                Err(failure) => {
+                    self.records
+                        .push(HelperInstallExecutionRecord::OperationFailed {
+                            step,
+                            failure: failure.clone(),
+                        });
+                    self.rollback_install(step, &applied)?;
+                    return Err(HelperInstallError::Execution { step, failure });
+                }
+            }
+        }
+
+        self.records
+            .push(HelperInstallExecutionRecord::InstallCompleted);
+        Ok(())
+    }
+
+    fn execute_uninstall(
+        &mut self,
+        operations: &[HelperInstallOperation],
+    ) -> Result<(), HelperInstallError> {
+        let mut completed = Vec::new();
+
+        for (index, operation) in operations.iter().enumerate() {
+            let step = execution_step_for_operation(operation);
+            let result = match operation {
+                HelperInstallOperation::UnloadLaunchDaemon { label } => {
+                    self.platform.unload_launch_daemon(label)
+                }
+                HelperInstallOperation::RemoveFile { path } => self.platform.remove_file(path),
+                _ => unreachable!("uninstall plan order was validated"),
+            };
+
+            match result {
+                Ok(()) => {
+                    self.records
+                        .push(HelperInstallExecutionRecord::OperationApplied { step });
+                    completed.push(step);
+                }
+                Err(failure) => {
+                    let remaining = operations[index..]
+                        .iter()
+                        .map(execution_step_for_operation)
+                        .collect::<Vec<_>>();
+                    self.records
+                        .push(HelperInstallExecutionRecord::OperationFailed {
+                            step,
+                            failure: failure.clone(),
+                        });
+                    self.records
+                        .push(HelperInstallExecutionRecord::UninstallStopped {
+                            completed,
+                            remaining,
+                        });
+                    return Err(HelperInstallError::Execution { step, failure });
+                }
+            }
+        }
+
+        self.records
+            .push(HelperInstallExecutionRecord::UninstallCompleted);
+        Ok(())
+    }
+
+    fn rollback_install(
+        &mut self,
+        failed_step: HelperInstallExecutionStep,
+        applied: &[HelperInstallOperation],
+    ) -> Result<(), HelperInstallError> {
+        if applied.is_empty() {
+            self.records
+                .push(HelperInstallExecutionRecord::InstallRollbackSkipped { failed_step });
+            return Ok(());
+        }
+
+        self.records
+            .push(HelperInstallExecutionRecord::InstallRollbackStarted { failed_step });
+
+        for operation in applied.iter().rev() {
+            let rollback = match operation {
+                HelperInstallOperation::LoadLaunchDaemon { label, .. } => {
+                    HelperInstallRollbackStep::UnloadLaunchDaemon {
+                        label: label.clone(),
+                    }
+                }
+                HelperInstallOperation::WriteLaunchDaemonPlist { path, .. } => {
+                    HelperInstallRollbackStep::RemoveFile { path: path.clone() }
+                }
+                HelperInstallOperation::CopyHelper {
+                    destination_path, ..
+                } => HelperInstallRollbackStep::RemoveFile {
+                    path: destination_path.clone(),
+                },
+                _ => unreachable!("install applied list contains only install operations"),
+            };
+
+            let result = match &rollback {
+                HelperInstallRollbackStep::UnloadLaunchDaemon { label } => {
+                    self.platform.unload_launch_daemon(label)
+                }
+                HelperInstallRollbackStep::RemoveFile { path } => self.platform.remove_file(path),
+            };
+
+            match result {
+                Ok(()) => self
+                    .records
+                    .push(HelperInstallExecutionRecord::RollbackApplied { step: rollback }),
+                Err(failure) => {
+                    self.records
+                        .push(HelperInstallExecutionRecord::RollbackFailed {
+                            step: rollback.clone(),
+                            failure: failure.clone(),
+                        });
+                    return Err(HelperInstallError::Rollback {
+                        failed_step,
+                        rollback_step: rollback,
+                        failure,
+                    });
+                }
+            }
+        }
+
+        self.records
+            .push(HelperInstallExecutionRecord::InstallRollbackCompleted { failed_step });
+        Ok(())
+    }
+}
+
+pub trait HelperInstallPlatform<S> {
+    fn ensure_authorized(
+        &mut self,
+        authorization: &AdminAuthorizationRequirement,
+    ) -> Result<(), HelperInstallExecutionFailure>;
+
+    fn copy_helper(
+        &mut self,
+        verified_source: &mut VerifiedHelperInstallSource<S>,
+        destination_path: &str,
+        owner: &str,
+        group: &str,
+        mode: u16,
+    ) -> Result<(), HelperInstallExecutionFailure>;
+
+    fn write_launchd_plist(
+        &mut self,
+        path: &str,
+        label: &str,
+        plist_xml: &str,
+        owner: &str,
+        group: &str,
+        mode: u16,
+    ) -> Result<(), HelperInstallExecutionFailure>;
+
+    fn load_launch_daemon(
+        &mut self,
+        path: &str,
+        label: &str,
+    ) -> Result<(), HelperInstallExecutionFailure>;
+
+    fn unload_launch_daemon(&mut self, label: &str) -> Result<(), HelperInstallExecutionFailure>;
+
+    fn remove_file(&mut self, path: &str) -> Result<(), HelperInstallExecutionFailure>;
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct HelperInstallFileSystemPlatform;
+
+impl HelperInstallPlatform<HelperInstallFileSource> for HelperInstallFileSystemPlatform {
+    fn ensure_authorized(
+        &mut self,
+        authorization: &AdminAuthorizationRequirement,
+    ) -> Result<(), HelperInstallExecutionFailure> {
+        match authorization.method {
+            AdminAuthorizationMethod::ManualSudo => {
+                #[cfg(unix)]
+                {
+                    if unsafe { libc::geteuid() } == 0 {
+                        Ok(())
+                    } else {
+                        Err(HelperInstallExecutionFailure::AuthorizationRejected)
+                    }
+                }
+
+                #[cfg(not(unix))]
+                {
+                    Err(HelperInstallExecutionFailure::AuthorizationRejected)
+                }
+            }
+        }
+    }
+
+    fn copy_helper(
+        &mut self,
+        verified_source: &mut VerifiedHelperInstallSource<HelperInstallFileSource>,
+        destination_path: &str,
+        owner: &str,
+        group: &str,
+        mode: u16,
+    ) -> Result<(), HelperInstallExecutionFailure> {
+        verified_source
+            .source
+            .file_mut()
+            .seek(SeekFrom::Start(0))
+            .map_err(HelperInstallExecutionFailure::from_io)?;
+
+        let mut destination = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(destination_path)
+            .map_err(HelperInstallExecutionFailure::from_io)?;
+        if let Err(error) = io::copy(verified_source.source.file_mut(), &mut destination) {
+            remove_partial_file(destination_path);
+            return Err(HelperInstallExecutionFailure::from_io(error));
+        }
+        if let Err(error) = destination.sync_all() {
+            remove_partial_file(destination_path);
+            return Err(HelperInstallExecutionFailure::from_io(error));
+        }
+        verified_source
+            .source
+            .file_mut()
+            .seek(SeekFrom::Start(0))
+            .map_err(HelperInstallExecutionFailure::from_io)?;
+
+        if let Err(failure) = set_file_owner_and_mode(destination_path, owner, group, mode) {
+            remove_partial_file(destination_path);
+            return Err(failure);
+        }
+        Ok(())
+    }
+
+    fn write_launchd_plist(
+        &mut self,
+        path: &str,
+        _label: &str,
+        plist_xml: &str,
+        owner: &str,
+        group: &str,
+        mode: u16,
+    ) -> Result<(), HelperInstallExecutionFailure> {
+        let mut plist = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(HelperInstallExecutionFailure::from_io)?;
+        if let Err(error) = plist.write_all(plist_xml.as_bytes()) {
+            remove_partial_file(path);
+            return Err(HelperInstallExecutionFailure::from_io(error));
+        }
+        if let Err(error) = plist.sync_all() {
+            remove_partial_file(path);
+            return Err(HelperInstallExecutionFailure::from_io(error));
+        }
+
+        if let Err(failure) = set_file_owner_and_mode(path, owner, group, mode) {
+            remove_partial_file(path);
+            return Err(failure);
+        }
+        Ok(())
+    }
+
+    fn load_launch_daemon(
+        &mut self,
+        path: &str,
+        _label: &str,
+    ) -> Result<(), HelperInstallExecutionFailure> {
+        run_launchctl(&["bootstrap", "system", path])
+    }
+
+    fn unload_launch_daemon(&mut self, label: &str) -> Result<(), HelperInstallExecutionFailure> {
+        let target = format!("system/{label}");
+        run_launchctl(&["bootout", &target])
+    }
+
+    fn remove_file(&mut self, path: &str) -> Result<(), HelperInstallExecutionFailure> {
+        match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(HelperInstallExecutionFailure::from_io(error)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelperInstallExecutionStep {
+    Authorize,
+    CopyHelper,
+    WriteLaunchDaemonPlist,
+    LoadLaunchDaemon,
+    UnloadLaunchDaemon,
+    RemoveLaunchDaemonPlist,
+    RemoveHelperBinary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HelperInstallRollbackStep {
+    UnloadLaunchDaemon { label: String },
+    RemoveFile { path: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HelperInstallExecutionRecord {
+    Authorized {
+        method: AdminAuthorizationMethod,
+    },
+    OperationApplied {
+        step: HelperInstallExecutionStep,
+    },
+    OperationFailed {
+        step: HelperInstallExecutionStep,
+        failure: HelperInstallExecutionFailure,
+    },
+    InstallRollbackStarted {
+        failed_step: HelperInstallExecutionStep,
+    },
+    InstallRollbackSkipped {
+        failed_step: HelperInstallExecutionStep,
+    },
+    RollbackApplied {
+        step: HelperInstallRollbackStep,
+    },
+    RollbackFailed {
+        step: HelperInstallRollbackStep,
+        failure: HelperInstallExecutionFailure,
+    },
+    InstallRollbackCompleted {
+        failed_step: HelperInstallExecutionStep,
+    },
+    UninstallStopped {
+        completed: Vec<HelperInstallExecutionStep>,
+        remaining: Vec<HelperInstallExecutionStep>,
+    },
+    InstallCompleted,
+    UninstallCompleted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum HelperInstallExecutionFailure {
+    #[error("helper install execution authorization was rejected")]
+    AuthorizationRejected,
+
+    #[error("helper install execution I/O failed: {kind:?}")]
+    Io { kind: io::ErrorKind },
+
+    #[error("helper install execution command failed with status {status:?}")]
+    CommandFailed { status: Option<i32> },
+
+    #[error("helper install execution platform rejected the typed operation")]
+    PlatformRejected,
+}
+
+impl HelperInstallExecutionFailure {
+    fn from_io(error: io::Error) -> Self {
+        Self::Io { kind: error.kind() }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum HelperInstallError {
     #[error("helper install plan requires an administrative authorization reason")]
@@ -654,6 +1124,24 @@ pub enum HelperInstallError {
 
     #[error("helper install plan must not mix install and uninstall operations")]
     MixedInstallAndUninstall,
+
+    #[error("helper install executor has no verified helper source after preflight")]
+    MissingVerifiedHelperSource,
+
+    #[error("helper install execution failed at {step:?}: {failure}")]
+    Execution {
+        step: HelperInstallExecutionStep,
+        failure: HelperInstallExecutionFailure,
+    },
+
+    #[error(
+        "helper install rollback failed after {failed_step:?} at {rollback_step:?}: {failure}"
+    )]
+    Rollback {
+        failed_step: HelperInstallExecutionStep,
+        rollback_step: HelperInstallRollbackStep,
+        failure: HelperInstallExecutionFailure,
+    },
 
     #[error("invalid launchd daemon descriptor: {0}")]
     Launchd(crate::macos_launchd::LaunchdDaemonError),
@@ -858,6 +1346,99 @@ fn validate_uninstall_operation_order(
     }
 }
 
+fn execution_step_for_operation(operation: &HelperInstallOperation) -> HelperInstallExecutionStep {
+    match operation {
+        HelperInstallOperation::CopyHelper { .. } => HelperInstallExecutionStep::CopyHelper,
+        HelperInstallOperation::WriteLaunchDaemonPlist { .. } => {
+            HelperInstallExecutionStep::WriteLaunchDaemonPlist
+        }
+        HelperInstallOperation::LoadLaunchDaemon { .. } => {
+            HelperInstallExecutionStep::LoadLaunchDaemon
+        }
+        HelperInstallOperation::UnloadLaunchDaemon { .. } => {
+            HelperInstallExecutionStep::UnloadLaunchDaemon
+        }
+        HelperInstallOperation::RemoveFile { path } if path == DEFAULT_LAUNCHD_PLIST_PATH => {
+            HelperInstallExecutionStep::RemoveLaunchDaemonPlist
+        }
+        HelperInstallOperation::RemoveFile { path } if path == DEFAULT_HELPER_PROGRAM_PATH => {
+            HelperInstallExecutionStep::RemoveHelperBinary
+        }
+        HelperInstallOperation::RemoveFile { .. } => HelperInstallExecutionStep::RemoveHelperBinary,
+    }
+}
+
+fn set_file_owner_and_mode(
+    path: &str,
+    owner: &str,
+    group: &str,
+    mode: u16,
+) -> Result<(), HelperInstallExecutionFailure> {
+    #[cfg(unix)]
+    {
+        let uid = resolve_user_id(owner)?;
+        let gid = resolve_group_id(group)?;
+        let c_path =
+            std::ffi::CString::new(path).map_err(|_| HelperInstallExecutionFailure::Io {
+                kind: io::ErrorKind::InvalidInput,
+            })?;
+        let changed = unsafe { libc::chown(c_path.as_ptr(), uid, gid) };
+        if changed != 0 {
+            return Err(HelperInstallExecutionFailure::from_io(
+                io::Error::last_os_error(),
+            ));
+        }
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode as u32))
+            .map_err(HelperInstallExecutionFailure::from_io)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = (path, owner, group, mode);
+        Err(HelperInstallExecutionFailure::PlatformRejected)
+    }
+}
+
+fn remove_partial_file(path: &str) {
+    let _ = std::fs::remove_file(path);
+}
+
+#[cfg(unix)]
+fn resolve_user_id(owner: &str) -> Result<libc::uid_t, HelperInstallExecutionFailure> {
+    if owner != ROOT_USER {
+        return Err(HelperInstallExecutionFailure::PlatformRejected);
+    }
+    Ok(0)
+}
+
+#[cfg(unix)]
+fn resolve_group_id(group: &str) -> Result<libc::gid_t, HelperInstallExecutionFailure> {
+    if group != WHEEL_GROUP {
+        return Err(HelperInstallExecutionFailure::PlatformRejected);
+    }
+    Ok(0)
+}
+
+#[cfg(target_os = "macos")]
+fn run_launchctl(args: &[&str]) -> Result<(), HelperInstallExecutionFailure> {
+    let status = Command::new("/bin/launchctl")
+        .args(args)
+        .status()
+        .map_err(HelperInstallExecutionFailure::from_io)?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(HelperInstallExecutionFailure::CommandFailed {
+            status: status.code(),
+        })
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run_launchctl(_args: &[&str]) -> Result<(), HelperInstallExecutionFailure> {
+    Err(HelperInstallExecutionFailure::PlatformRejected)
+}
+
 fn validate_label(label: &str) -> Result<(), HelperInstallError> {
     if label == DEFAULT_LAUNCHD_LABEL {
         Ok(())
@@ -974,6 +1555,152 @@ mod tests {
             self.sha256
                 .clone()
                 .map_err(|_| HelperInstallSourceError::InspectorRejected)
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum TestPlatformCall {
+        Authorize {
+            method: AdminAuthorizationMethod,
+        },
+        CopyHelper {
+            descriptor_id: u64,
+            destination_path: String,
+            owner: String,
+            group: String,
+            mode: u16,
+        },
+        WriteLaunchDaemonPlist {
+            path: String,
+            label: String,
+            owner: String,
+            group: String,
+            mode: u16,
+        },
+        LoadLaunchDaemon {
+            path: String,
+            label: String,
+        },
+        UnloadLaunchDaemon {
+            label: String,
+        },
+        RemoveFile {
+            path: String,
+        },
+    }
+
+    #[derive(Debug, Default, Clone, PartialEq, Eq)]
+    struct RecordingPlatform {
+        calls: Vec<TestPlatformCall>,
+        fail_step: Option<HelperInstallExecutionStep>,
+    }
+
+    impl RecordingPlatform {
+        fn failing(step: HelperInstallExecutionStep) -> Self {
+            Self {
+                calls: Vec::new(),
+                fail_step: Some(step),
+            }
+        }
+
+        fn maybe_fail(
+            &self,
+            step: HelperInstallExecutionStep,
+        ) -> Result<(), HelperInstallExecutionFailure> {
+            if self.fail_step == Some(step) {
+                Err(HelperInstallExecutionFailure::PlatformRejected)
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl HelperInstallPlatform<TestHelperSource> for RecordingPlatform {
+        fn ensure_authorized(
+            &mut self,
+            authorization: &AdminAuthorizationRequirement,
+        ) -> Result<(), HelperInstallExecutionFailure> {
+            self.maybe_fail(HelperInstallExecutionStep::Authorize)?;
+            self.calls.push(TestPlatformCall::Authorize {
+                method: authorization.method,
+            });
+            Ok(())
+        }
+
+        fn copy_helper(
+            &mut self,
+            verified_source: &mut VerifiedHelperInstallSource<TestHelperSource>,
+            destination_path: &str,
+            owner: &str,
+            group: &str,
+            mode: u16,
+        ) -> Result<(), HelperInstallExecutionFailure> {
+            self.maybe_fail(HelperInstallExecutionStep::CopyHelper)?;
+            self.calls.push(TestPlatformCall::CopyHelper {
+                descriptor_id: verified_source.source.descriptor_id,
+                destination_path: destination_path.to_string(),
+                owner: owner.to_string(),
+                group: group.to_string(),
+                mode,
+            });
+            Ok(())
+        }
+
+        fn write_launchd_plist(
+            &mut self,
+            path: &str,
+            label: &str,
+            _plist_xml: &str,
+            owner: &str,
+            group: &str,
+            mode: u16,
+        ) -> Result<(), HelperInstallExecutionFailure> {
+            self.maybe_fail(HelperInstallExecutionStep::WriteLaunchDaemonPlist)?;
+            self.calls.push(TestPlatformCall::WriteLaunchDaemonPlist {
+                path: path.to_string(),
+                label: label.to_string(),
+                owner: owner.to_string(),
+                group: group.to_string(),
+                mode,
+            });
+            Ok(())
+        }
+
+        fn load_launch_daemon(
+            &mut self,
+            path: &str,
+            label: &str,
+        ) -> Result<(), HelperInstallExecutionFailure> {
+            self.maybe_fail(HelperInstallExecutionStep::LoadLaunchDaemon)?;
+            self.calls.push(TestPlatformCall::LoadLaunchDaemon {
+                path: path.to_string(),
+                label: label.to_string(),
+            });
+            Ok(())
+        }
+
+        fn unload_launch_daemon(
+            &mut self,
+            label: &str,
+        ) -> Result<(), HelperInstallExecutionFailure> {
+            self.maybe_fail(HelperInstallExecutionStep::UnloadLaunchDaemon)?;
+            self.calls.push(TestPlatformCall::UnloadLaunchDaemon {
+                label: label.to_string(),
+            });
+            Ok(())
+        }
+
+        fn remove_file(&mut self, path: &str) -> Result<(), HelperInstallExecutionFailure> {
+            let step = if path == DEFAULT_LAUNCHD_PLIST_PATH {
+                HelperInstallExecutionStep::RemoveLaunchDaemonPlist
+            } else {
+                HelperInstallExecutionStep::RemoveHelperBinary
+            };
+            self.maybe_fail(step)?;
+            self.calls.push(TestPlatformCall::RemoveFile {
+                path: path.to_string(),
+            });
+            Ok(())
         }
     }
 
@@ -1134,6 +1861,315 @@ mod tests {
         assert_eq!(
             executor.into_inner().hashed_descriptor_ids,
             [verified_source.source.descriptor_id]
+        );
+    }
+
+    #[test]
+    fn install_executor_uses_verified_handle_and_canonical_order() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(VALID_HELPER_SHA256));
+        let platform = RecordingPlatform::default();
+        let mut executor = HelperInstallExecutor::new(inspector, platform);
+
+        assert_eq!(executor.execute(&plan), Ok(()));
+        assert_eq!(
+            executor.records(),
+            [
+                HelperInstallExecutionRecord::Authorized {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                HelperInstallExecutionRecord::OperationApplied {
+                    step: HelperInstallExecutionStep::CopyHelper,
+                },
+                HelperInstallExecutionRecord::OperationApplied {
+                    step: HelperInstallExecutionStep::WriteLaunchDaemonPlist,
+                },
+                HelperInstallExecutionRecord::OperationApplied {
+                    step: HelperInstallExecutionStep::LoadLaunchDaemon,
+                },
+                HelperInstallExecutionRecord::InstallCompleted,
+            ]
+        );
+
+        let (inspector, platform) = executor.into_parts();
+        assert_eq!(inspector.opened_paths, [HELPER_SOURCE_PATH.to_string()]);
+        assert_eq!(inspector.hashed_descriptor_ids, [1]);
+        assert_eq!(
+            platform.calls,
+            [
+                TestPlatformCall::Authorize {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                TestPlatformCall::CopyHelper {
+                    descriptor_id: 1,
+                    destination_path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                    owner: ROOT_USER.to_string(),
+                    group: WHEEL_GROUP.to_string(),
+                    mode: HELPER_MODE,
+                },
+                TestPlatformCall::WriteLaunchDaemonPlist {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                    label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                    owner: ROOT_USER.to_string(),
+                    group: WHEEL_GROUP.to_string(),
+                    mode: PLIST_MODE,
+                },
+                TestPlatformCall::LoadLaunchDaemon {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                    label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn install_executor_hash_mismatch_stops_before_authorization_and_platform_calls() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(OTHER_HELPER_SHA256));
+        let platform = RecordingPlatform::default();
+        let mut executor = HelperInstallExecutor::new(inspector, platform);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::HelperSourceSha256Mismatch {
+                expected: VALID_HELPER_SHA256.to_string(),
+                actual: OTHER_HELPER_SHA256.to_string(),
+            })
+        );
+        assert!(executor.records().is_empty());
+
+        let (inspector, platform) = executor.into_parts();
+        assert_eq!(inspector.opened_paths, [HELPER_SOURCE_PATH.to_string()]);
+        assert_eq!(inspector.hashed_descriptor_ids, [1]);
+        assert!(platform.calls.is_empty());
+    }
+
+    #[test]
+    fn install_executor_rolls_back_copied_helper_after_plist_failure() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(VALID_HELPER_SHA256));
+        let platform =
+            RecordingPlatform::failing(HelperInstallExecutionStep::WriteLaunchDaemonPlist);
+        let mut executor = HelperInstallExecutor::new(inspector, platform);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::Execution {
+                step: HelperInstallExecutionStep::WriteLaunchDaemonPlist,
+                failure: HelperInstallExecutionFailure::PlatformRejected,
+            })
+        );
+        assert_eq!(
+            executor.records(),
+            [
+                HelperInstallExecutionRecord::Authorized {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                HelperInstallExecutionRecord::OperationApplied {
+                    step: HelperInstallExecutionStep::CopyHelper,
+                },
+                HelperInstallExecutionRecord::OperationFailed {
+                    step: HelperInstallExecutionStep::WriteLaunchDaemonPlist,
+                    failure: HelperInstallExecutionFailure::PlatformRejected,
+                },
+                HelperInstallExecutionRecord::InstallRollbackStarted {
+                    failed_step: HelperInstallExecutionStep::WriteLaunchDaemonPlist,
+                },
+                HelperInstallExecutionRecord::RollbackApplied {
+                    step: HelperInstallRollbackStep::RemoveFile {
+                        path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                    },
+                },
+                HelperInstallExecutionRecord::InstallRollbackCompleted {
+                    failed_step: HelperInstallExecutionStep::WriteLaunchDaemonPlist,
+                },
+            ]
+        );
+
+        let (_inspector, platform) = executor.into_parts();
+        assert_eq!(
+            platform.calls,
+            [
+                TestPlatformCall::Authorize {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                TestPlatformCall::CopyHelper {
+                    descriptor_id: 1,
+                    destination_path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                    owner: ROOT_USER.to_string(),
+                    group: WHEEL_GROUP.to_string(),
+                    mode: HELPER_MODE,
+                },
+                TestPlatformCall::RemoveFile {
+                    path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn install_executor_rolls_back_plist_and_helper_after_load_failure() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(VALID_HELPER_SHA256));
+        let platform = RecordingPlatform::failing(HelperInstallExecutionStep::LoadLaunchDaemon);
+        let mut executor = HelperInstallExecutor::new(inspector, platform);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::Execution {
+                step: HelperInstallExecutionStep::LoadLaunchDaemon,
+                failure: HelperInstallExecutionFailure::PlatformRejected,
+            })
+        );
+        assert!(executor
+            .records()
+            .contains(&HelperInstallExecutionRecord::RollbackApplied {
+                step: HelperInstallRollbackStep::RemoveFile {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                },
+            },));
+        assert!(executor
+            .records()
+            .contains(&HelperInstallExecutionRecord::RollbackApplied {
+                step: HelperInstallRollbackStep::RemoveFile {
+                    path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                },
+            },));
+
+        let (_inspector, platform) = executor.into_parts();
+        assert_eq!(
+            platform.calls,
+            [
+                TestPlatformCall::Authorize {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                TestPlatformCall::CopyHelper {
+                    descriptor_id: 1,
+                    destination_path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                    owner: ROOT_USER.to_string(),
+                    group: WHEEL_GROUP.to_string(),
+                    mode: HELPER_MODE,
+                },
+                TestPlatformCall::WriteLaunchDaemonPlist {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                    label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                    owner: ROOT_USER.to_string(),
+                    group: WHEEL_GROUP.to_string(),
+                    mode: PLIST_MODE,
+                },
+                TestPlatformCall::RemoveFile {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                },
+                TestPlatformCall::RemoveFile {
+                    path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn uninstall_executor_unloads_then_removes_owned_files() {
+        let plan = HelperInstallPlan::uninstall().expect("uninstall plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Err("should not inspect"));
+        let platform = RecordingPlatform::default();
+        let mut executor = HelperInstallExecutor::new(inspector, platform);
+
+        assert_eq!(executor.execute(&plan), Ok(()));
+        assert_eq!(
+            executor.records(),
+            [
+                HelperInstallExecutionRecord::Authorized {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                HelperInstallExecutionRecord::OperationApplied {
+                    step: HelperInstallExecutionStep::UnloadLaunchDaemon,
+                },
+                HelperInstallExecutionRecord::OperationApplied {
+                    step: HelperInstallExecutionStep::RemoveLaunchDaemonPlist,
+                },
+                HelperInstallExecutionRecord::OperationApplied {
+                    step: HelperInstallExecutionStep::RemoveHelperBinary,
+                },
+                HelperInstallExecutionRecord::UninstallCompleted,
+            ]
+        );
+
+        let (inspector, platform) = executor.into_parts();
+        assert!(inspector.opened_paths.is_empty());
+        assert!(inspector.hashed_descriptor_ids.is_empty());
+        assert_eq!(
+            platform.calls,
+            [
+                TestPlatformCall::Authorize {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                TestPlatformCall::UnloadLaunchDaemon {
+                    label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                },
+                TestPlatformCall::RemoveFile {
+                    path: DEFAULT_LAUNCHD_PLIST_PATH.to_string(),
+                },
+                TestPlatformCall::RemoveFile {
+                    path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn uninstall_executor_reports_stop_state_after_removal_failure() {
+        let plan = HelperInstallPlan::uninstall().expect("uninstall plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Err("should not inspect"));
+        let platform =
+            RecordingPlatform::failing(HelperInstallExecutionStep::RemoveLaunchDaemonPlist);
+        let mut executor = HelperInstallExecutor::new(inspector, platform);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::Execution {
+                step: HelperInstallExecutionStep::RemoveLaunchDaemonPlist,
+                failure: HelperInstallExecutionFailure::PlatformRejected,
+            })
+        );
+        assert_eq!(
+            executor.records(),
+            [
+                HelperInstallExecutionRecord::Authorized {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                HelperInstallExecutionRecord::OperationApplied {
+                    step: HelperInstallExecutionStep::UnloadLaunchDaemon,
+                },
+                HelperInstallExecutionRecord::OperationFailed {
+                    step: HelperInstallExecutionStep::RemoveLaunchDaemonPlist,
+                    failure: HelperInstallExecutionFailure::PlatformRejected,
+                },
+                HelperInstallExecutionRecord::UninstallStopped {
+                    completed: vec![HelperInstallExecutionStep::UnloadLaunchDaemon],
+                    remaining: vec![
+                        HelperInstallExecutionStep::RemoveLaunchDaemonPlist,
+                        HelperInstallExecutionStep::RemoveHelperBinary,
+                    ],
+                },
+            ]
+        );
+
+        let (inspector, platform) = executor.into_parts();
+        assert!(inspector.opened_paths.is_empty());
+        assert_eq!(
+            platform.calls,
+            [
+                TestPlatformCall::Authorize {
+                    method: AdminAuthorizationMethod::ManualSudo,
+                },
+                TestPlatformCall::UnloadLaunchDaemon {
+                    label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                },
+            ]
         );
     }
 
