@@ -277,10 +277,11 @@ Android VpnService → Android UI → release
   writes/copy, `sudo`, Authorization Services, `launchctl`, root, IPC runtime, `utun`,
   routes/DNS/firewall или packet-flow evidence (issue #50).
 - [x] Добавить safe source opener для helper install preflight: file-backed inspector открывает
-  source artifact как regular file handle, на Unix/macOS запрещает final symlink component через
-  no-follow open policy, считает SHA-256 из открытого handle и перематывает handle к началу для
-  будущего copy executor; без real copy, filesystem writes, `sudo`, Authorization Services,
-  `launchctl`, root, IPC runtime, `utun`, routes/DNS/firewall или packet-flow evidence (issue #52).
+  source artifact как regular file handle, на Unix/macOS запрещает parent/final symlink components,
+  открывает final component неблокирующе, подтверждает regular file через metadata уже открытого
+  handle, считает SHA-256 из открытого handle и перематывает handle к началу для будущего copy
+  executor; без real copy, filesystem writes, `sudo`, Authorization Services, `launchctl`, root, IPC
+  runtime, `utun`, routes/DNS/firewall или packet-flow evidence (issue #52).
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.

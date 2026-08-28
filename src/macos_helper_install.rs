@@ -5,8 +5,16 @@
 //! `utun`, or mutate routes, DNS, firewall, system proxy or packet-flow state.
 
 use std::fmt;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+#[cfg(not(unix))]
+use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, SeekFrom};
+#[cfg(unix)]
+use std::os::fd::{AsRawFd, FromRawFd};
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
+#[cfg(unix)]
+use std::path::{Component, Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -290,16 +298,21 @@ impl HelperInstallSourceInspector for HelperInstallFileSourceInspector {
         &mut self,
         source_path: &str,
     ) -> Result<Self::Source, HelperInstallSourceError> {
-        let mut options = OpenOptions::new();
-        options.read(true);
-        set_no_follow_final_component(&mut options);
+        #[cfg(unix)]
+        let file = open_helper_source_file(source_path)?;
 
         #[cfg(not(unix))]
-        reject_symlink_before_open(source_path)?;
+        let file = {
+            reject_symlink_path_components_before_open(source_path)?;
+            reject_symlink_before_open(source_path)?;
 
-        let file = options
-            .open(source_path)
-            .map_err(HelperInstallSourceError::from_open_error)?;
+            let mut options = OpenOptions::new();
+            options.read(true);
+            options
+                .open(source_path)
+                .map_err(HelperInstallSourceError::from_open_error)?
+        };
+
         let metadata = file
             .metadata()
             .map_err(HelperInstallSourceError::from_open_metadata_error)?;
@@ -339,6 +352,87 @@ impl HelperInstallSourceInspector for HelperInstallFileSourceInspector {
 
         Ok(hex::encode(hasher.finalize()))
     }
+}
+
+#[cfg(unix)]
+fn open_helper_source_file(source_path: &str) -> Result<File, HelperInstallSourceError> {
+    reject_symlink_path_components_before_open(source_path)?;
+
+    let path = Path::new(source_path);
+    if !path.is_absolute() {
+        return Err(HelperInstallSourceError::OpenFailed {
+            kind: io::ErrorKind::InvalidInput,
+        });
+    }
+
+    let mut components = path
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(component) => Some(component.to_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let file_name = components
+        .pop()
+        .ok_or(HelperInstallSourceError::OpenFailed {
+            kind: io::ErrorKind::InvalidInput,
+        })?;
+
+    let root = component_c_string(Path::new("/").as_os_str())?;
+    let root_fd = unsafe {
+        libc::open(
+            root.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
+    if root_fd < 0 {
+        return Err(HelperInstallSourceError::from_open_error(
+            io::Error::last_os_error(),
+        ));
+    }
+    let mut current_dir = unsafe { File::from_raw_fd(root_fd) };
+
+    for component in components {
+        let component = component_c_string(&component)?;
+        let next_fd = unsafe {
+            libc::openat(
+                current_dir.as_raw_fd(),
+                component.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if next_fd < 0 {
+            return Err(HelperInstallSourceError::from_open_error(
+                io::Error::last_os_error(),
+            ));
+        }
+        current_dir = unsafe { File::from_raw_fd(next_fd) };
+    }
+
+    let file_name = component_c_string(&file_name)?;
+    let file_fd = unsafe {
+        libc::openat(
+            current_dir.as_raw_fd(),
+            file_name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
+    if file_fd < 0 {
+        return Err(HelperInstallSourceError::from_open_error(
+            io::Error::last_os_error(),
+        ));
+    }
+
+    Ok(unsafe { File::from_raw_fd(file_fd) })
+}
+
+#[cfg(unix)]
+fn component_c_string(
+    component: &std::ffi::OsStr,
+) -> Result<std::ffi::CString, HelperInstallSourceError> {
+    std::ffi::CString::new(component.as_bytes()).map_err(|_| HelperInstallSourceError::OpenFailed {
+        kind: io::ErrorKind::InvalidInput,
+    })
 }
 
 pub struct HelperInstallPreflightExecutor<I: HelperInstallSourceInspector> {
@@ -606,16 +700,6 @@ impl HelperInstallSourceError {
 }
 
 #[cfg(unix)]
-fn set_no_follow_final_component(options: &mut OpenOptions) {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    options.custom_flags(libc::O_NOFOLLOW);
-}
-
-#[cfg(not(unix))]
-fn set_no_follow_final_component(_options: &mut OpenOptions) {}
-
-#[cfg(unix)]
 fn is_symlink_open_error(error: &io::Error) -> bool {
     error.raw_os_error() == Some(libc::ELOOP)
 }
@@ -634,6 +718,38 @@ fn reject_symlink_before_open(source_path: &str) -> Result<(), HelperInstallSour
     } else {
         Ok(())
     }
+}
+
+#[cfg(unix)]
+fn reject_symlink_path_components_before_open(
+    source_path: &str,
+) -> Result<(), HelperInstallSourceError> {
+    let path = Path::new(source_path);
+    let mut current = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::Normal(component) => {
+                current.push(component);
+                let metadata = std::fs::symlink_metadata(&current)
+                    .map_err(HelperInstallSourceError::from_open_metadata_error)?;
+                if metadata.file_type().is_symlink() {
+                    return Err(HelperInstallSourceError::Symlink);
+                }
+            }
+            Component::CurDir | Component::ParentDir | Component::Prefix(_) => {}
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn reject_symlink_path_components_before_open(
+    _source_path: &str,
+) -> Result<(), HelperInstallSourceError> {
+    Ok(())
 }
 
 fn validate_authorization(
@@ -766,9 +882,13 @@ fn validate_mode(actual: u16, expected: u16) -> Result<(), HelperInstallError> {
 mod tests {
     use super::*;
     #[cfg(unix)]
+    use std::ffi::CString;
+    #[cfg(unix)]
     use std::fs;
     #[cfg(unix)]
     use std::io::{Read, Seek};
+    #[cfg(unix)]
+    use std::os::unix::ffi::OsStrExt;
     #[cfg(unix)]
     use std::path::PathBuf;
     #[cfg(unix)]
@@ -854,7 +974,7 @@ mod tests {
             std::process::id()
         ));
         fs::create_dir(&path).expect("create temp dir");
-        path
+        path.canonicalize().expect("canonical temp dir")
     }
 
     #[test]
@@ -1142,10 +1262,67 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn file_source_inspector_rejects_parent_symlink_component() {
+        let temp_dir = unique_temp_dir("parent-symlink");
+        let target_dir = temp_dir.join("real-dir");
+        let symlink_dir = temp_dir.join("dir-link");
+        fs::create_dir(&target_dir).expect("create target dir");
+        let target_path = target_dir.join("novaray-platform-helper");
+        fs::write(&target_path, b"target helper bytes").expect("write helper source");
+        std::os::unix::fs::symlink(&target_dir, &symlink_dir).expect("create parent symlink");
+        let source_path = symlink_dir.join("novaray-platform-helper");
+        let plan = HelperInstallPlan::install(
+            source_path.to_str().expect("utf-8 helper path"),
+            helper_sha256_hex(b"target helper bytes"),
+        )
+        .expect("install plan");
+        let mut executor = HelperInstallPreflightExecutor::new(HelperInstallFileSourceInspector);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::SourceInspector(
+                HelperInstallSourceError::Symlink,
+            ))
+        );
+        assert!(executor.records().is_empty());
+        assert!(executor.verified_helper_source().is_none());
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn file_source_inspector_rejects_non_regular_file() {
         let temp_dir = unique_temp_dir("directory");
         let helper_path = temp_dir.join("novaray-platform-helper-dir");
         fs::create_dir(&helper_path).expect("create source directory");
+        let plan = HelperInstallPlan::install(
+            helper_path.to_str().expect("utf-8 helper path"),
+            VALID_HELPER_SHA256,
+        )
+        .expect("install plan");
+        let mut executor = HelperInstallPreflightExecutor::new(HelperInstallFileSourceInspector);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::SourceInspector(
+                HelperInstallSourceError::NotRegularFile,
+            ))
+        );
+        assert!(executor.records().is_empty());
+        assert!(executor.verified_helper_source().is_none());
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_source_inspector_rejects_fifo_without_blocking() {
+        let temp_dir = unique_temp_dir("fifo");
+        let helper_path = temp_dir.join("novaray-platform-helper-fifo");
+        let fifo_path = CString::new(helper_path.as_os_str().as_bytes()).expect("fifo path");
+        let created = unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) };
+        assert_eq!(created, 0, "mkfifo failed");
         let plan = HelperInstallPlan::install(
             helper_path.to_str().expect("utf-8 helper path"),
             VALID_HELPER_SHA256,

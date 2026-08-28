@@ -148,9 +148,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   `launchctl`, root execution, IPC runtime, `utun`, routes, DNS, firewall, system proxy, or
   packet-flow evidence.
 - [x] macOS helper safe source opener contract: core provides a file-backed helper source inspector
-  that opens the source artifact as a `File`, rejects the final symlink component through a
-  no-follow open policy on Unix/macOS, hashes through the opened handle, and rewinds that handle to
-  the beginning for the future copy step. This does not perform copy, filesystem writes, `sudo`,
+  that opens the source artifact as a `File`, rejects symlinks in parent/final path components on
+  Unix/macOS, opens the final component in non-blocking mode, confirms a regular file through the
+  already-opened handle metadata, hashes through that handle, and rewinds the handle to the
+  beginning for the future copy step. This does not perform copy, filesystem writes, `sudo`,
   Authorization Services prompts, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS,
   firewall, system proxy, or packet-flow evidence.
 - [~] No-op RouteManager API.
@@ -349,11 +350,12 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   compute SHA-256 through that opened source handle, and retain the verified source handle for a
   future copy executor. A future executor must not reopen the path as proof of the same bytes; the
   verified file and copied file must match through the handle-bound contract.
-- The file-backed macOS helper source inspector must open the helper source as a regular file handle
-  without following the final symlink component on Unix/macOS, compute SHA-256 only through that
-  handle, rewind the handle to the beginning after a successful hash, and return typed source errors
-  without reflecting helper artifact contents. This is still a preflight/open contract, not
-  privileged copy/install.
+- The file-backed macOS helper source inspector must open the helper source as a regular file handle,
+  reject symlinks in parent/final path components on Unix/macOS, open the final component in
+  non-blocking mode, confirm a regular file through metadata from the already-opened handle, compute
+  SHA-256 only through that handle, rewind the handle to the beginning after a successful hash, and
+  return typed source errors without reflecting helper artifact contents. This is still a
+  preflight/open contract, not privileged copy/install.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,
