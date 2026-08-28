@@ -583,6 +583,13 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     real copy, filesystem writes, signature/Team ID verification, `sudo`, Authorization Services
     prompt, writes to `/Library`, `launchctl`, root execution, persistent IPC transport, `utun`,
     route/DNS/firewall mutation, system proxy, packet flow and real helper lifecycle.
+42. [x] macOS helper source symlink component diagnostics — issue #54: уточнить file-backed helper
+    source opener diagnostics так, чтобы typed source error указывал конкретный symlink component
+    path, включая macOS symlink prefixes вроде `/tmp` и `/var`. Scope intentionally preserves the
+    fail-closed opener and excludes real copy, filesystem writes, signature/Team ID verification,
+    `sudo`, Authorization Services prompt, writes to `/Library`, `launchctl`, root execution,
+    persistent IPC transport, `utun`, route/DNS/firewall mutation, system proxy, packet flow and real
+    helper lifecycle.
 
 ## 7. Зависимости
 

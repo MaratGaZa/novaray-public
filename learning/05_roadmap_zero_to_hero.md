@@ -282,6 +282,10 @@ Android VpnService → Android UI → release
   handle, считает SHA-256 из открытого handle и перематывает handle к началу для будущего copy
   executor; без real copy, filesystem writes, `sudo`, Authorization Services, `launchctl`, root, IPC
   runtime, `utun`, routes/DNS/firewall или packet-flow evidence (issue #52).
+- [x] Добавить diagnostics для symlink components в helper source opener: typed source error
+  указывает конкретный symlink component path, включая macOS prefixes `/tmp` и `/var`; без real copy,
+  filesystem writes, `sudo`, Authorization Services, `launchctl`, root, IPC runtime, `utun`,
+  routes/DNS/firewall или packet-flow evidence (issue #54).
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
