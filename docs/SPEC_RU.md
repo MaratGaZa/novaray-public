@@ -50,6 +50,8 @@ macOS release должен содержать `.app`, menu bar behavior, кор�
 Следствия: entitlement `com.apple.developer.networking.networkextension` недоступен, поэтому
 системный туннель реализуется через privileged helper + `utun` ([ADR-003](./ADR-003-NETWORK-TOPOLOGY.md)),
 а аудитория ограничена пользователями, готовыми собрать проект из исходников.
+ADR-003 остаётся `Proposed`; reversible helper install/deinstall выделен в pre-runtime Gate I и не
+доказывает `utun`, packet flow, DNS-leak, split tunneling или kill switch.
 
 [ADR-002](./ADR-002-MACOS-DISTRIBUTION.md) остаётся `Proposed` до прохождения Gate S
 (воспроизводимая сборка, установка/деинсталляция helper, legal review лицензии движка).
@@ -142,6 +144,10 @@ Direct Developer ID distribution сохраняется как целевая м
   размещены под real path без symlink components. Это diagnostic-only contract и не выполняет copy,
   filesystem writes, Authorization Services prompt, `sudo`, `launchctl`, root execution или helper
   lifecycle.
+- [x] ADR-003 helper install gate split: reversible helper install/deinstall выделен как
+  pre-runtime Gate I, который может быть реализован до helper runtime. Это docs-only gate contract:
+  реальная установка, `launchctl`, root execution, persistent IPC, `utun`, routes, DNS, firewall,
+  packet flow, DNS-leak, split tunneling и kill switch всё ещё отсутствуют.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -385,6 +391,10 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
 - Helper source symlink diagnostics обязаны указывать path component, который оказался symbolic link,
   без чтения или отражения helper artifact contents. Сообщение должно объяснять, почему macOS paths
   через `/tmp` или `/var` fail closed: эти компоненты сами являются symlink prefixes.
+- ADR-003 Gate I отделяет reversible helper install/deinstall от helper runtime. Будущая реализация
+  Gate I может выполнять только административную установку/деинсталляцию LaunchDaemon helper с
+  проверкой открытого source handle, корректным порядком unload/remove, rollback/stop-state evidence
+  и без `utun`, route/DNS/firewall mutation, persistent IPC runtime или packet-flow claims.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

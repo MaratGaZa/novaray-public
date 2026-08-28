@@ -590,6 +590,17 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     `sudo`, Authorization Services prompt, writes to `/Library`, `launchctl`, root execution,
     persistent IPC transport, `utun`, route/DNS/firewall mutation, system proxy, packet flow and real
     helper lifecycle.
+43. [x] ADR-003 helper install gate split — issue #56: выделить reversible helper install/deinstall
+    в pre-runtime Gate I, который можно реализовать до helper runtime, но который не утверждает
+    `utun`/data-plane topology. Scope is docs-only and intentionally excludes real install/copy,
+    filesystem writes, `sudo`, Authorization Services prompt, writes to `/Library`, `launchctl`,
+    root execution, persistent IPC transport, `utun`, route/DNS/firewall mutation, system proxy,
+    packet flow, DNS-leak, split tunneling, kill switch and real helper lifecycle.
+44. [ ] macOS helper install/deinstall executor: реализовать Gate I как явную административную
+    установку и полную деинсталляцию LaunchDaemon helper без ослабления SIP/Gatekeeper. Acceptance
+    must prove opened-handle integrity before copy, canonical operation order, rollback/stop-state
+    diagnostics for partial failures, no shell interpolation and no `utun`/route/DNS/firewall/system
+    proxy or packet-flow mutation.
 
 ## 7. Зависимости
 
