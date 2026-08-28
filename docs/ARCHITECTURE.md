@@ -31,7 +31,8 @@ controller, kill switch, platform UI, packaging и system tests. Matcher decisio
   notarization отложены.
 - [ADR-003](./ADR-003-NETWORK-TOPOLOGY.md): privileged helper (`launchd` + `utun`) предлагается
   (`Proposed`) как основная топология, поскольку entitlement NetworkExtension недоступен без платного
-  членства; NetworkExtension остаётся отложенной целевой топологией.
+  членства; NetworkExtension остаётся отложенной целевой топологией. Reversible helper
+  install/deinstall выделен в pre-runtime Gate I и не доказывает `utun`/data-plane готовность.
 - [ADR-004](./ADR-004-ENGINE-INTEGRATION.md): sing-box предлагается (`Proposed`) как production-движок,
   так как per-app routing (`process_name`/`package_name`) отсутствует в Xray-core; определены гейты
   до утверждения.
@@ -123,6 +124,9 @@ Commands используют allowlist и idempotency/correlation IDs. Unknown 
 - привилегированный helper (`launchd` + `utun`) с typed allowlist;
 - transactional routes, DNS, IPv4/IPv6, endpoint exclusion, kill switch и recovery journal;
 - воспроизводимая сборка из исходников; Developer ID signing/notarization — только при появлении платного аккаунта.
+
+Helper install/deinstall реализуется как отдельный Gate I перед helper runtime: этот gate может
+работать с LaunchDaemon lifecycle, но не запускает `utun` и не мутирует routes, DNS или firewall.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

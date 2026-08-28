@@ -3,6 +3,7 @@
 - Статус: Proposed
 - Дата: 2026-08-16
 - Ревизия: 2026-08-17 — основной путь пересмотрен в пользу privileged helper + utun после фиксации ограничения по Apple Developer Program
+- Ревизия: 2026-08-29 — установка/деинсталляция helper выделена в pre-runtime Gate I; это разрешает следующий reversible install-slice без утверждения `utun`/data-plane топологии
 - Решение требуется до: реализации системного туннеля и раздельного туннелирования по приложениям (M3)
 
 ## Контекст
@@ -58,13 +59,21 @@ NovaRay реализует системный VPN/туннель на macOS с �
 5. **Установка привилегированного компонента:**
    - Без платного аккаунта `SMJobBless` недоступен (факт 3), поэтому демон устанавливается явным административным шагом с запросом пароля и с обратимой деинсталляцией.
    - Ослабление SIP или Gatekeeper как штатный путь установки не допускается.
+   - Установка/деинсталляция helper является отдельным pre-runtime gate: её можно реализовать и проверить до запуска `utun`, IPC runtime и сетевых мутаций, но такой evidence не утверждает full-tunnel topology.
 
 ## Разделение по гейтам готовности (Gates)
 
 - **Gate A (Architecture & Prototype Baseline — Выполнено):**
   - Подтверждена сборка `.app` и встроенного `.systemextension` без ошибок подписи (`CODE_SIGNING_ALLOWED=NO`) на Apple Silicon; спайк остаётся валидным evidence для отложенного пути NetworkExtension.
   - Реализованы Swift 6 strict concurrency, ограниченный IPC, наблюдение за системным статусом `NEVPNStatusDidChange`.
+- **Gate I (Helper Install/Deinstall — pre-runtime prerequisite):**
+  - Должна быть реализована явная административная установка helper как `launchd`-демона без ослабления SIP/Gatekeeper и без использования `SMJobBless` до появления Developer ID signing.
+  - Перед копированием должна проверяться целостность именно открытого helper source handle; установка не должна повторно открывать путь как доказательство тех же байтов.
+  - Должна быть доказана обратимая деинсталляция: сначала выгрузить job, затем удалить plist и helper binary; частичные install/uninstall failures должны иметь диагностируемый rollback или stop-state.
+  - Scope gate намеренно исключает `utun`, route/DNS/firewall mutation, persistent IPC runtime, packet flow, DNS-leak, split tunneling и kill-switch evidence.
+  - Успешный Gate I разрешает переход к helper runtime work, но не переводит ADR-003 из `Proposed` в `Accepted`.
 - **Gate H (Helper Runtime — требуется для утверждения этого ADR):**
+  - Gate H начинается только после Gate I или эквивалентного documented install/deinstall evidence.
   - Демон создаёт `utun`, поднимает туннель и корректно его снимает.
   - Доказан откат маршрутов, DNS и firewall при штатной остановке, `SIGKILL` демона и перезагрузке.
   - Подтверждено отсутствие DNS-утечек и отсутствие остаточных процессов и правил.
@@ -79,6 +88,7 @@ NovaRay реализует системный VPN/туннель на macOS с �
 - Системный туннель и раздельное туннелирование становятся достижимы без платного Apple Developer Program.
 - Топология симметрична целевым платформам: macOS — `launchd`-демон, Windows — служба, Android — `VpnService`; Core и контракт остаются общими.
 - Отсутствие зависимости от Apple-специфичного жизненного цикла расширения упрощает переносимость.
+- Gate I снижает риск следующей реализации: install/deinstall можно доказать отдельно от `utun` и packet-flow, не выдавая подготовительный privileged lifecycle за готовую сетевую топологию.
 
 ### Отрицательные / Риски:
 - **`root`-демон — более широкая доверительная граница, чем изолированное системное расширение.** Требования раздела 2 (allowlist, снимки, откат) становятся обязательными, а не желательными.
@@ -96,5 +106,7 @@ NovaRay реализует системный VPN/туннель на macOS с �
 - Apple TN3134: Network Extension Provider Deployment: https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment
 - Apple NetworkExtension Framework: https://developer.apple.com/documentation/networkextension
 - Apple SystemExtensions Framework: https://developer.apple.com/documentation/systemextensions
-- Apple Entitlements for Network Extensions: https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_developer_networking_networkextension
+- Apple Entitlements for Network Extensions: https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.networkextension
+- Apple SMJobBless: https://developer.apple.com/documentation/servicemanagement/smjobbless(_:_:_:_:)
+- Apple TN3165: Packet Filter is not API: https://developer.apple.com/documentation/technotes/tn3165-packet-filter-is-not-api
 - Исходный код спайка: [spikes/macos-networkextension-spike/](../spikes/macos-networkextension-spike/)

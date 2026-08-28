@@ -286,6 +286,9 @@ Android VpnService → Android UI → release
   указывает конкретный symlink component path, включая macOS prefixes `/tmp` и `/var`; без real copy,
   filesystem writes, `sudo`, Authorization Services, `launchctl`, root, IPC runtime, `utun`,
   routes/DNS/firewall или packet-flow evidence (issue #54).
+- [x] Уточнить ADR-003 helper install gate split: reversible helper install/deinstall выделен как
+  pre-runtime Gate I, который можно реализовать до helper runtime, но который не доказывает `utun`,
+  packet flow, DNS-leak, split tunneling или kill switch (issue #56).
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
