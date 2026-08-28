@@ -559,6 +559,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     excludes hash computation, signature/Team ID verification, `sudo`, Authorization Services
     prompt, writes to `/Library`, `launchctl`, root execution, persistent IPC transport, `utun`,
     route/DNS/firewall mutation, system proxy, packet flow and real helper lifecycle.
+39. [x] macOS helper install integrity preflight executor contract — issue #48: добавить
+    side-effect-free executor contract, который при обработке typed `CopyHelper` step запрашивает
+    SHA-256 ровно для `source_path`, сравнивает его с `expected_sha256`, пишет typed preflight
+    records и fail-closed останавливается до plist/load records при mismatch или source inspector
+    failure. Scope intentionally excludes filesystem writes, real copy, signature/Team ID
+    verification, `sudo`, Authorization Services prompt, writes to `/Library`, `launchctl`, root
+    execution, persistent IPC transport, `utun`, route/DNS/firewall mutation, system proxy, packet
+    flow and real helper lifecycle.
 
 ## 7. Зависимости
 

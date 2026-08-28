@@ -266,6 +266,11 @@ Android VpnService → Android UI → release
   обязательный lowercase SHA-256, missing/invalid/tampered hash отклоняется fail-closed без
   вычисления hash, signature verification, `sudo`, filesystem writes, `launchctl`, root, IPC runtime,
   `utun`, routes/DNS/firewall или packet-flow evidence (issue #46).
+- [x] Добавить side-effect-free install integrity preflight executor contract: сверять expected
+  SHA-256 именно для `CopyHelper.source_path` во время copy-step, записывать typed preflight records и
+  останавливаться до plist/load records при mismatch или source inspector failure без filesystem
+  writes, `sudo`, Authorization Services, `launchctl`, root, IPC runtime, `utun`,
+  routes/DNS/firewall или packet-flow evidence (issue #48).
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.

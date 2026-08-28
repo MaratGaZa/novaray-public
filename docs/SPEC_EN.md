@@ -136,6 +136,11 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   validation. This is a plan contract without `sudo`, Authorization Services prompts, writes to
   `/Library`, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS, firewall, system proxy,
   or packet-flow evidence.
+- [x] macOS helper install integrity preflight executor contract: core verifies the expected SHA-256
+  for exactly the `CopyHelper.source_path` while processing the copy step and stops the install plan
+  before plist/load records on mismatch. This does not perform filesystem writes, `sudo`,
+  Authorization Services prompts, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS,
+  firewall, system proxy, or packet-flow evidence.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -324,6 +329,10 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   artifact for the copy operation and reject missing/invalid hashes before a future privileged
   executor. This does not compute the hash, verify a signature, or execute filesystem/launchd
   operations.
+- The macOS helper install preflight executor contract must compare the expected SHA-256 with the
+  actual SHA-256 of exactly the `CopyHelper.source_path` that would be copied, and must stop before
+  plist/load steps on mismatch or source-inspector failure. This is a side-effect-free executor
+  contract: it does not copy files, write plists, or load a launchd job.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,
