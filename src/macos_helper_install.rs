@@ -238,13 +238,16 @@ impl HelperInstallPlan {
 }
 
 pub trait HelperInstallSourceInspector {
-    fn helper_sha256(&mut self, source_path: &str) -> Result<String, String>;
+    type Source;
+
+    fn open_helper_source(&mut self, source_path: &str) -> Result<Self::Source, String>;
+    fn helper_sha256(&mut self, source: &mut Self::Source) -> Result<String, String>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HelperInstallPreflightExecutor<I> {
+pub struct HelperInstallPreflightExecutor<I: HelperInstallSourceInspector> {
     inspector: I,
     records: Vec<HelperInstallPreflightRecord>,
+    verified_helper_source: Option<VerifiedHelperInstallSource<I::Source>>,
 }
 
 impl<I> HelperInstallPreflightExecutor<I>
@@ -255,12 +258,14 @@ where
         Self {
             inspector,
             records: Vec::new(),
+            verified_helper_source: None,
         }
     }
 
     pub fn execute(&mut self, plan: &HelperInstallPlan) -> Result<(), HelperInstallError> {
         plan.validate()?;
         self.records.clear();
+        self.verified_helper_source = None;
 
         for operation in &plan.operations {
             match operation {
@@ -270,9 +275,13 @@ where
                     destination_path,
                     ..
                 } => {
+                    let mut source = self
+                        .inspector
+                        .open_helper_source(source_path)
+                        .map_err(|reason| HelperInstallError::SourceInspectorFailed { reason })?;
                     let actual_sha256 = self
                         .inspector
-                        .helper_sha256(source_path)
+                        .helper_sha256(&mut source)
                         .map_err(|reason| HelperInstallError::SourceInspectorFailed { reason })?;
                     validate_expected_sha256(&actual_sha256)?;
                     if actual_sha256 != *expected_sha256 {
@@ -285,9 +294,16 @@ where
                         .push(HelperInstallPreflightRecord::CopyHelperVerified {
                             source_path: source_path.clone(),
                             expected_sha256: expected_sha256.clone(),
-                            actual_sha256,
+                            actual_sha256: actual_sha256.clone(),
                             destination_path: destination_path.clone(),
                         });
+                    self.verified_helper_source = Some(VerifiedHelperInstallSource {
+                        source_path: source_path.clone(),
+                        expected_sha256: expected_sha256.clone(),
+                        actual_sha256,
+                        destination_path: destination_path.clone(),
+                        source,
+                    });
                 }
                 HelperInstallOperation::WriteLaunchDaemonPlist { path, label, .. } => {
                     self.records.push(
@@ -326,9 +342,28 @@ where
         &self.records
     }
 
+    pub fn verified_helper_source(&self) -> Option<&VerifiedHelperInstallSource<I::Source>> {
+        self.verified_helper_source.as_ref()
+    }
+
+    pub fn take_verified_helper_source(
+        &mut self,
+    ) -> Option<VerifiedHelperInstallSource<I::Source>> {
+        self.verified_helper_source.take()
+    }
+
     pub fn into_inner(self) -> I {
         self.inspector
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedHelperInstallSource<S> {
+    pub source_path: String,
+    pub expected_sha256: String,
+    pub actual_sha256: String,
+    pub destination_path: String,
+    pub source: S,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -564,10 +599,18 @@ mod tests {
     const HELPER_SOURCE_PATH: &str = "/Users/build/target/release/novaray-platform-helper";
 
     #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestHelperSource {
+        path: String,
+        descriptor_id: u64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
     struct TestInspector {
         expected_path: String,
         sha256: Result<String, String>,
-        requested_paths: Vec<String>,
+        opened_paths: Vec<String>,
+        hashed_descriptor_ids: Vec<u64>,
+        next_descriptor_id: u64,
     }
 
     impl TestInspector {
@@ -575,15 +618,30 @@ mod tests {
             Self {
                 expected_path: expected_path.to_string(),
                 sha256: sha256.map(String::from).map_err(String::from),
-                requested_paths: Vec::new(),
+                opened_paths: Vec::new(),
+                hashed_descriptor_ids: Vec::new(),
+                next_descriptor_id: 1,
             }
         }
     }
 
     impl HelperInstallSourceInspector for TestInspector {
-        fn helper_sha256(&mut self, source_path: &str) -> Result<String, String> {
+        type Source = TestHelperSource;
+
+        fn open_helper_source(&mut self, source_path: &str) -> Result<Self::Source, String> {
             assert_eq!(source_path, self.expected_path);
-            self.requested_paths.push(source_path.to_string());
+            self.opened_paths.push(source_path.to_string());
+            let descriptor_id = self.next_descriptor_id;
+            self.next_descriptor_id += 1;
+            Ok(TestHelperSource {
+                path: source_path.to_string(),
+                descriptor_id,
+            })
+        }
+
+        fn helper_sha256(&mut self, source: &mut Self::Source) -> Result<String, String> {
+            assert_eq!(source.path, self.expected_path);
+            self.hashed_descriptor_ids.push(source.descriptor_id);
             self.sha256.clone()
         }
     }
@@ -670,7 +728,20 @@ mod tests {
             ]
         );
         assert_eq!(
-            executor.into_inner().requested_paths,
+            executor.verified_helper_source(),
+            Some(&VerifiedHelperInstallSource {
+                source_path: HELPER_SOURCE_PATH.to_string(),
+                expected_sha256: VALID_HELPER_SHA256.to_string(),
+                actual_sha256: VALID_HELPER_SHA256.to_string(),
+                destination_path: DEFAULT_HELPER_PROGRAM_PATH.to_string(),
+                source: TestHelperSource {
+                    path: HELPER_SOURCE_PATH.to_string(),
+                    descriptor_id: 1,
+                },
+            })
+        );
+        assert_eq!(
+            executor.into_inner().opened_paths,
             [HELPER_SOURCE_PATH.to_string()]
         );
     }
@@ -690,8 +761,79 @@ mod tests {
             })
         );
         assert!(executor.records().is_empty());
+        assert!(executor.verified_helper_source().is_none());
+        assert_eq!(executor.into_inner().hashed_descriptor_ids, [1]);
+    }
+
+    #[test]
+    fn install_preflight_hashes_the_opened_source_handle_once() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(VALID_HELPER_SHA256));
+        let mut executor = HelperInstallPreflightExecutor::new(inspector);
+
+        assert_eq!(executor.execute(&plan), Ok(()));
+        let verified_source = executor
+            .take_verified_helper_source()
+            .expect("verified helper source");
+        assert_eq!(verified_source.source_path, HELPER_SOURCE_PATH);
+        assert_eq!(verified_source.source.descriptor_id, 1);
+        assert!(executor.verified_helper_source().is_none());
         assert_eq!(
-            executor.into_inner().requested_paths,
+            executor.into_inner().hashed_descriptor_ids,
+            [verified_source.source.descriptor_id]
+        );
+    }
+
+    #[test]
+    fn install_preflight_source_open_failure_stops_before_records() {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        struct FailingOpenInspector;
+
+        impl HelperInstallSourceInspector for FailingOpenInspector {
+            type Source = TestHelperSource;
+
+            fn open_helper_source(&mut self, _source_path: &str) -> Result<Self::Source, String> {
+                Err("open failed".to_string())
+            }
+
+            fn helper_sha256(&mut self, _source: &mut Self::Source) -> Result<String, String> {
+                panic!("hash should not run after open failure");
+            }
+        }
+
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let mut executor = HelperInstallPreflightExecutor::new(FailingOpenInspector);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::SourceInspectorFailed {
+                reason: "open failed".to_string(),
+            })
+        );
+        assert!(executor.records().is_empty());
+        assert!(executor.verified_helper_source().is_none());
+    }
+
+    #[test]
+    fn install_preflight_hash_mismatch_still_opens_only_copy_source() {
+        let plan = HelperInstallPlan::install(HELPER_SOURCE_PATH, VALID_HELPER_SHA256)
+            .expect("install plan");
+        let inspector = TestInspector::new(HELPER_SOURCE_PATH, Ok(OTHER_HELPER_SHA256));
+        let mut executor = HelperInstallPreflightExecutor::new(inspector);
+
+        assert_eq!(
+            executor.execute(&plan),
+            Err(HelperInstallError::HelperSourceSha256Mismatch {
+                expected: VALID_HELPER_SHA256.to_string(),
+                actual: OTHER_HELPER_SHA256.to_string(),
+            })
+        );
+        assert!(executor.records().is_empty());
+        assert!(executor.verified_helper_source().is_none());
+        assert_eq!(
+            executor.into_inner().opened_paths,
             [HELPER_SOURCE_PATH.to_string()]
         );
     }
@@ -714,6 +856,7 @@ mod tests {
             Err(HelperInstallError::InvalidInstallOperationOrder)
         );
         assert!(executor.records().is_empty());
+        assert!(executor.verified_helper_source().is_none());
     }
 
     #[test]
@@ -730,6 +873,7 @@ mod tests {
             })
         );
         assert!(executor.records().is_empty());
+        assert!(executor.verified_helper_source().is_none());
     }
 
     #[test]
@@ -753,7 +897,8 @@ mod tests {
                 },
             ]
         );
-        assert!(executor.into_inner().requested_paths.is_empty());
+        assert!(executor.verified_helper_source().is_none());
+        assert!(executor.into_inner().opened_paths.is_empty());
     }
 
     #[test]
@@ -773,7 +918,8 @@ mod tests {
             Err(HelperInstallError::InvalidUninstallOperationOrder)
         );
         assert!(executor.records().is_empty());
-        assert!(executor.into_inner().requested_paths.is_empty());
+        assert!(executor.verified_helper_source().is_none());
+        assert!(executor.into_inner().opened_paths.is_empty());
     }
 
     #[test]

@@ -567,6 +567,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     verification, `sudo`, Authorization Services prompt, writes to `/Library`, `launchctl`, root
     execution, persistent IPC transport, `utun`, route/DNS/firewall mutation, system proxy, packet
     flow and real helper lifecycle.
+40. [x] macOS helper descriptor-bound install source preflight — issue #50: уточнить preflight
+    contract так, чтобы helper source открывался один раз через typed source handle, SHA-256 считался
+    из этого handle, а verified source сохранялся для будущего copy executor. This prevents the
+    future privileged installer from treating path-only inspection as proof of the bytes copied.
+    Scope intentionally excludes filesystem writes, real copy, signature/Team ID verification,
+    `sudo`, Authorization Services prompt, writes to `/Library`, `launchctl`, root execution,
+    persistent IPC transport, `utun`, route/DNS/firewall mutation, system proxy, packet flow and real
+    helper lifecycle.
 
 ## 7. Зависимости
 
