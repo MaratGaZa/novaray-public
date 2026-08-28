@@ -141,6 +141,12 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   before plist/load records on mismatch. This does not perform filesystem writes, `sudo`,
   Authorization Services prompts, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS,
   firewall, system proxy, or packet-flow evidence.
+- [x] macOS helper descriptor-bound install source preflight contract: core opens the helper source
+  through a typed source handle, hashes bytes through that handle, and retains a verified source for
+  the future copy step so the verified file and copied file match by contract rather than only by a
+  path string. This does not perform filesystem writes/copy, `sudo`, Authorization Services prompts,
+  `launchctl`, root execution, IPC runtime, `utun`, routes, DNS, firewall, system proxy, or
+  packet-flow evidence.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -333,6 +339,10 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   actual SHA-256 of exactly the `CopyHelper.source_path` that would be copied, and must stop before
   plist/load steps on mismatch or source-inspector failure. This is a side-effect-free executor
   contract: it does not copy files, write plists, or load a launchd job.
+- The descriptor-bound macOS helper install preflight contract must open the helper source once,
+  compute SHA-256 through that opened source handle, and retain the verified source handle for a
+  future copy executor. A future executor must not reopen the path as proof of the same bytes; the
+  verified file and copied file must match through the handle-bound contract.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,

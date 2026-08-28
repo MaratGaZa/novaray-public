@@ -271,6 +271,11 @@ Android VpnService → Android UI → release
   останавливаться до plist/load records при mismatch или source inspector failure без filesystem
   writes, `sudo`, Authorization Services, `launchctl`, root, IPC runtime, `utun`,
   routes/DNS/firewall или packet-flow evidence (issue #48).
+- [x] Добавить descriptor-bound install source preflight contract: helper source открывается один раз
+  через typed source handle, SHA-256 считается из этого handle, а verified source сохраняется для
+  будущего copy-step без повторного открытия пути как доказательства тех же байтов; без filesystem
+  writes/copy, `sudo`, Authorization Services, `launchctl`, root, IPC runtime, `utun`,
+  routes/DNS/firewall или packet-flow evidence (issue #50).
 - [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.

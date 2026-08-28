@@ -124,6 +124,11 @@ Direct Developer ID distribution сохраняется как целевая м
   install plan до plist/load records при mismatch. Это не выполняет filesystem writes, `sudo`,
   Authorization Services prompt, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS,
   firewall, system proxy или packet-flow evidence.
+- [x] macOS helper descriptor-bound install source preflight contract: core открывает helper source
+  через typed source handle, считает SHA-256 из этого handle и сохраняет verified source для будущего
+  copy-step, чтобы проверенный и копируемый файл совпадали по контракту, а не только по строке пути.
+  Это не выполняет filesystem writes/copy, `sudo`, Authorization Services prompt, `launchctl`, root
+  execution, IPC runtime, `utun`, routes, DNS, firewall, system proxy или packet-flow evidence.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -354,6 +359,10 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   SHA-256 именно того `CopyHelper.source_path`, который будет копироваться, и обязан остановиться до
   plist/load steps при mismatch или ошибке source inspector. Это side-effect-free executor contract:
   он не копирует файлы, не пишет plist и не загружает launchd job.
+- Descriptor-bound macOS helper install preflight contract обязан открывать helper source один раз,
+  вычислять SHA-256 через открытый source handle и сохранять verified source handle для будущего
+  copy executor. Будущий executor не должен повторно открывать путь как доказательство тех же байтов;
+  проверенный файл и копируемый файл должны совпадать через handle-bound contract.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,
