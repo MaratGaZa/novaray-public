@@ -575,6 +575,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     `sudo`, Authorization Services prompt, writes to `/Library`, `launchctl`, root execution,
     persistent IPC transport, `utun`, route/DNS/firewall mutation, system proxy, packet flow and real
     helper lifecycle.
+41. [x] macOS helper safe source opener contract — issue #52: добавить file-backed source inspector
+    для helper install preflight, который открывает helper artifact как regular file handle, на
+    Unix/macOS запрещает parent/final symlink components, открывает final component неблокирующе,
+    подтверждает regular file через metadata уже открытого handle, считает SHA-256 из открытого
+    handle и перематывает handle к началу для будущего copy executor. Scope intentionally excludes
+    real copy, filesystem writes, signature/Team ID verification, `sudo`, Authorization Services
+    prompt, writes to `/Library`, `launchctl`, root execution, persistent IPC transport, `utun`,
+    route/DNS/firewall mutation, system proxy, packet flow and real helper lifecycle.
 
 ## 7. Зависимости
 

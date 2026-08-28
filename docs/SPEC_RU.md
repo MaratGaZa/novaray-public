@@ -129,6 +129,13 @@ Direct Developer ID distribution сохраняется как целевая м
   copy-step, чтобы проверенный и копируемый файл совпадали по контракту, а не только по строке пути.
   Это не выполняет filesystem writes/copy, `sudo`, Authorization Services prompt, `launchctl`, root
   execution, IPC runtime, `utun`, routes, DNS, firewall, system proxy или packet-flow evidence.
+- [x] macOS helper safe source opener contract: core предоставляет file-backed helper source
+  inspector, который открывает source artifact как `File`, на Unix/macOS запрещает symlink в
+  parent/final path components, открывает final component неблокирующе, проверяет regular file через
+  metadata уже открытого handle, считает SHA-256 из этого handle и перематывает handle обратно к
+  началу для будущего copy-step. Это не выполняет copy, filesystem writes, `sudo`, Authorization
+  Services prompt, `launchctl`, root execution, IPC runtime, `utun`, routes, DNS, firewall, system
+  proxy или packet-flow evidence.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -363,6 +370,12 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   вычислять SHA-256 через открытый source handle и сохранять verified source handle для будущего
   copy executor. Будущий executor не должен повторно открывать путь как доказательство тех же байтов;
   проверенный файл и копируемый файл должны совпадать через handle-bound contract.
+- File-backed macOS helper source inspector обязан открывать helper source как regular file handle,
+  на Unix/macOS запрещать symlink в parent/final path components, открывать final component
+  неблокирующе, подтверждать regular file через metadata уже открытого handle, вычислять SHA-256
+  только через этот handle, перематывать handle к началу после успешного hash и возвращать typed
+  source errors без отражения содержимого helper artifact. Это still preflight/open contract, а не
+  privileged copy/install.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,
