@@ -139,6 +139,12 @@ recovery gate, session-bound replay protection, snapshot/rollback/fail-closed co
 diagnostics. Этот документальный gate не реализует persistent IPC, `utun`, route/DNS/firewall
 mutation или packet-flow behavior.
 
+Core также содержит pure replay guard contract для будущих helper runtime commands: allowlisted
+command envelope привязывается к текущей handshake session и monotonic non-zero sequence/nonce, а
+команды без session, из другой/stale session или с повторной/устаревшей sequence отвергаются до
+side effects. Correlation ID остаётся диагностическим идентификатором, а не freshness proof; этот
+guard не запускает IPC runtime и не выполняет authentication/peer validation или network mutation.
+
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.
 

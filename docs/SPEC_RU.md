@@ -164,6 +164,13 @@ Direct Developer ID distribution сохраняется как целевая м
   rollback/fail-closed controls и redaction. Это не реализует persistent IPC, не запускает helper
   runtime, не создаёт `utun`, не мутирует routes/DNS/firewall/system proxy и не доказывает packet
   flow, DNS-leak, split tunneling или kill switch.
+- [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и
+  monotonic non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет
+  команды без session, из другой/stale session, с нулевой, повторной или устаревшей sequence до
+  side effects; correlation ID остаётся диагностическим идентификатором и не считается freshness
+  proof. Это pure Rust contract и не реализует persistent IPC, helper runtime startup,
+  authentication/peer validation, root execution, `utun`, routes, DNS, firewall, system proxy,
+  packet-flow, DNS-leak, split tunneling или kill switch.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -426,6 +433,12 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   fail-closed behavior и redacted diagnostics. Эта документация не считается evidence persistent
   IPC, `utun`, route/DNS/firewall mutation, packet flow, DNS-leak protection, split tunneling или
   kill switch.
+- MacOS helper runtime replay guard обязан проверять bounded session id, bounded correlation ID и
+  monotonic non-zero sequence/nonce до передачи allowlisted command будущему executor. Correlation ID
+  не является freshness proof: повтор той же или более старой sequence отвергается независимо от
+  correlation ID, а новая handshake session является единственным способом сбросить sequence scope.
+  Этот contract не является persistent IPC, runtime authentication/peer validation или evidence
+  сетевой мутации.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,
