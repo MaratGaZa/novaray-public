@@ -599,11 +599,12 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
 44. [x] macOS helper install/deinstall executor — issue #58: реализовать Gate I как явную административную
     установку и полную деинсталляцию LaunchDaemon helper без ослабления SIP/Gatekeeper. Acceptance
     must prove opened-handle integrity before copy, canonical operation order, rollback/stop-state
-    diagnostics for partial failures, no shell interpolation and no `utun`/route/DNS/firewall/system
-    proxy or packet-flow mutation. Implemented as a typed executor plus concrete file-system/
-    `/bin/launchctl` platform adapter; local/CI evidence uses recording adapters and does not mutate
-    `/Library`, run as root, start persistent IPC, create `utun`, mutate routes/DNS/firewall/system
-    proxy or prove packet flow.
+    diagnostics for partial failures, destination symlink rejection, fd-based owner/mode updates, no
+    `KeepAlive` before helper runtime IPC, no shell interpolation and no
+    `utun`/route/DNS/firewall/system proxy or packet-flow mutation. Implemented as a typed executor
+    plus concrete file-system/`/bin/launchctl` platform adapter; local/CI evidence uses recording
+    adapters and does not mutate `/Library`, run as root, start persistent IPC, create `utun`, mutate
+    routes/DNS/firewall/system proxy or prove packet flow.
 
 ## 7. Зависимости
 

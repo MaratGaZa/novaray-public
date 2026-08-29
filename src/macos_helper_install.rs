@@ -5,14 +5,14 @@
 //! IPC sockets, create `utun`, or mutate routes, DNS, firewall, system proxy or packet-flow state.
 
 use std::fmt;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+#[cfg(not(unix))]
+use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 #[cfg(unix)]
 use std::path::{Component, PathBuf};
@@ -112,7 +112,7 @@ impl HelperInstallPlan {
         let launchd = LaunchdDaemonSpec {
             disabled: false,
             run_at_load: false,
-            keep_alive: true,
+            keep_alive: false,
             ..LaunchdDaemonSpec::disabled_default()
         };
         let plist_xml = launchd
@@ -903,12 +903,7 @@ impl HelperInstallPlatform<HelperInstallFileSource> for HelperInstallFileSystemP
             .seek(SeekFrom::Start(0))
             .map_err(HelperInstallExecutionFailure::from_io)?;
 
-        let mut destination = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(destination_path)
-            .map_err(HelperInstallExecutionFailure::from_io)?;
+        let mut destination = open_destination_file_no_follow(destination_path)?;
         if let Err(error) = io::copy(verified_source.source.file_mut(), &mut destination) {
             remove_partial_file(destination_path);
             return Err(HelperInstallExecutionFailure::from_io(error));
@@ -923,7 +918,7 @@ impl HelperInstallPlatform<HelperInstallFileSource> for HelperInstallFileSystemP
             .seek(SeekFrom::Start(0))
             .map_err(HelperInstallExecutionFailure::from_io)?;
 
-        if let Err(failure) = set_file_owner_and_mode(destination_path, owner, group, mode) {
+        if let Err(failure) = set_file_owner_and_mode(&destination, owner, group, mode) {
             remove_partial_file(destination_path);
             return Err(failure);
         }
@@ -939,12 +934,7 @@ impl HelperInstallPlatform<HelperInstallFileSource> for HelperInstallFileSystemP
         group: &str,
         mode: u16,
     ) -> Result<(), HelperInstallExecutionFailure> {
-        let mut plist = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .map_err(HelperInstallExecutionFailure::from_io)?;
+        let mut plist = open_destination_file_no_follow(path)?;
         if let Err(error) = plist.write_all(plist_xml.as_bytes()) {
             remove_partial_file(path);
             return Err(HelperInstallExecutionFailure::from_io(error));
@@ -954,7 +944,7 @@ impl HelperInstallPlatform<HelperInstallFileSource> for HelperInstallFileSystemP
             return Err(HelperInstallExecutionFailure::from_io(error));
         }
 
-        if let Err(failure) = set_file_owner_and_mode(path, owner, group, mode) {
+        if let Err(failure) = set_file_owner_and_mode(&plist, owner, group, mode) {
             remove_partial_file(path);
             return Err(failure);
         }
@@ -1047,6 +1037,11 @@ pub enum HelperInstallExecutionFailure {
     #[error("helper install execution command failed with status {status:?}")]
     CommandFailed { status: Option<i32> },
 
+    #[error(
+        "helper install destination path component must not be a symbolic link: {component_path}"
+    )]
+    DestinationSymlink { component_path: String },
+
     #[error("helper install execution platform rejected the typed operation")]
     PlatformRejected,
 }
@@ -1054,6 +1049,17 @@ pub enum HelperInstallExecutionFailure {
 impl HelperInstallExecutionFailure {
     fn from_io(error: io::Error) -> Self {
         Self::Io { kind: error.kind() }
+    }
+
+    #[cfg(unix)]
+    fn from_destination_open_error(error: io::Error, component_path: impl AsRef<Path>) -> Self {
+        if is_destination_symlink_open_error(&error) {
+            Self::DestinationSymlink {
+                component_path: component_path.as_ref().to_string_lossy().into_owned(),
+            }
+        } else {
+            Self::from_io(error)
+        }
     }
 }
 
@@ -1213,6 +1219,11 @@ fn is_symlink_open_error(error: &io::Error) -> bool {
     error.raw_os_error() == Some(libc::ELOOP)
 }
 
+#[cfg(unix)]
+fn is_destination_symlink_open_error(error: &io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR))
+}
+
 #[cfg(not(unix))]
 fn is_symlink_open_error(_error: &io::Error) -> bool {
     false
@@ -1368,8 +1379,98 @@ fn execution_step_for_operation(operation: &HelperInstallOperation) -> HelperIns
     }
 }
 
+fn open_destination_file_no_follow(path: &str) -> Result<File, HelperInstallExecutionFailure> {
+    #[cfg(unix)]
+    {
+        let path_ref = Path::new(path);
+        if !path_ref.is_absolute() {
+            return Err(HelperInstallExecutionFailure::Io {
+                kind: io::ErrorKind::InvalidInput,
+            });
+        }
+
+        let mut components = path_ref
+            .components()
+            .filter_map(|component| match component {
+                Component::Normal(component) => Some(component.to_owned()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let file_name = components.pop().ok_or(HelperInstallExecutionFailure::Io {
+            kind: io::ErrorKind::InvalidInput,
+        })?;
+
+        let root = component_c_string(Path::new("/").as_os_str())
+            .map_err(source_error_to_execution_failure)?;
+        let root_fd = unsafe {
+            libc::open(
+                root.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        if root_fd < 0 {
+            return Err(HelperInstallExecutionFailure::from_io(
+                io::Error::last_os_error(),
+            ));
+        }
+
+        let mut current_dir = unsafe { File::from_raw_fd(root_fd) };
+        let mut current_path = PathBuf::from("/");
+
+        for component in components {
+            let next_path = current_path.join(&component);
+            let component =
+                component_c_string(&component).map_err(source_error_to_execution_failure)?;
+            let next_fd = unsafe {
+                libc::openat(
+                    current_dir.as_raw_fd(),
+                    component.as_ptr(),
+                    libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                )
+            };
+            if next_fd < 0 {
+                return Err(HelperInstallExecutionFailure::from_destination_open_error(
+                    io::Error::last_os_error(),
+                    &next_path,
+                ));
+            }
+            current_dir = unsafe { File::from_raw_fd(next_fd) };
+            current_path = next_path;
+        }
+
+        let file_name =
+            component_c_string(&file_name).map_err(source_error_to_execution_failure)?;
+        let destination_fd = unsafe {
+            libc::openat(
+                current_dir.as_raw_fd(),
+                file_name.as_ptr(),
+                libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o600,
+            )
+        };
+        if destination_fd < 0 {
+            return Err(HelperInstallExecutionFailure::from_destination_open_error(
+                io::Error::last_os_error(),
+                path_ref,
+            ));
+        }
+
+        Ok(unsafe { File::from_raw_fd(destination_fd) })
+    }
+
+    #[cfg(not(unix))]
+    {
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(HelperInstallExecutionFailure::from_io)
+    }
+}
+
 fn set_file_owner_and_mode(
-    path: &str,
+    file: &File,
     owner: &str,
     group: &str,
     mode: u16,
@@ -1378,24 +1479,44 @@ fn set_file_owner_and_mode(
     {
         let uid = resolve_user_id(owner)?;
         let gid = resolve_group_id(group)?;
-        let c_path =
-            std::ffi::CString::new(path).map_err(|_| HelperInstallExecutionFailure::Io {
-                kind: io::ErrorKind::InvalidInput,
-            })?;
-        let changed = unsafe { libc::chown(c_path.as_ptr(), uid, gid) };
+        let changed = unsafe { libc::fchown(file.as_raw_fd(), uid, gid) };
         if changed != 0 {
             return Err(HelperInstallExecutionFailure::from_io(
                 io::Error::last_os_error(),
             ));
         }
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode as u32))
-            .map_err(HelperInstallExecutionFailure::from_io)
+        let changed_mode = unsafe { libc::fchmod(file.as_raw_fd(), mode as libc::mode_t) };
+        if changed_mode != 0 {
+            return Err(HelperInstallExecutionFailure::from_io(
+                io::Error::last_os_error(),
+            ));
+        }
+        Ok(())
     }
 
     #[cfg(not(unix))]
     {
-        let _ = (path, owner, group, mode);
+        let _ = (file, owner, group, mode);
         Err(HelperInstallExecutionFailure::PlatformRejected)
+    }
+}
+
+fn source_error_to_execution_failure(
+    error: HelperInstallSourceError,
+) -> HelperInstallExecutionFailure {
+    match error {
+        HelperInstallSourceError::OpenFailed { kind }
+        | HelperInstallSourceError::OpenMetadataFailed { kind }
+        | HelperInstallSourceError::HashReadFailed { kind }
+        | HelperInstallSourceError::HashSeekFailed { kind } => {
+            HelperInstallExecutionFailure::Io { kind }
+        }
+        HelperInstallSourceError::Symlink { component_path } => {
+            HelperInstallExecutionFailure::DestinationSymlink { component_path }
+        }
+        HelperInstallSourceError::NotRegularFile | HelperInstallSourceError::InspectorRejected => {
+            HelperInstallExecutionFailure::PlatformRejected
+        }
     }
 }
 
@@ -1451,7 +1572,7 @@ fn validate_plist(plist_xml: &str) -> Result<(), HelperInstallError> {
     let expected = LaunchdDaemonSpec {
         disabled: false,
         run_at_load: false,
-        keep_alive: true,
+        keep_alive: false,
         ..LaunchdDaemonSpec::disabled_default()
     }
     .to_plist_xml()
@@ -1763,7 +1884,8 @@ mod tests {
             } if path == DEFAULT_LAUNCHD_PLIST_PATH
                 && label == DEFAULT_LAUNCHD_LABEL
                 && plist_xml.contains("<key>Disabled</key>\n  <false/>")
-                && plist_xml.contains("<key>KeepAlive</key>\n  <true/>")
+                && plist_xml.contains("<key>RunAtLoad</key>\n  <false/>")
+                && plist_xml.contains("<key>KeepAlive</key>\n  <false/>")
                 && owner == ROOT_USER
                 && group == WHEEL_GROUP
                 && *mode == PLIST_MODE
@@ -2412,6 +2534,56 @@ mod tests {
         );
         assert!(executor.records().is_empty());
         assert!(executor.verified_helper_source().is_none());
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn destination_open_rejects_final_symlink_component() {
+        let temp_dir = unique_temp_dir("destination-final-symlink");
+        let target_path = temp_dir.join("target");
+        let symlink_path = temp_dir.join("helper-link");
+        fs::write(&target_path, b"must not be truncated").expect("write target");
+        std::os::unix::fs::symlink(&target_path, &symlink_path)
+            .expect("create destination symlink");
+
+        assert_eq!(
+            open_destination_file_no_follow(symlink_path.to_str().expect("utf-8 path"))
+                .unwrap_err(),
+            HelperInstallExecutionFailure::DestinationSymlink {
+                component_path: symlink_path.to_string_lossy().into_owned(),
+            }
+        );
+        assert_eq!(
+            fs::read(&target_path).expect("read target"),
+            b"must not be truncated"
+        );
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn destination_open_rejects_parent_symlink_component() {
+        let temp_dir = unique_temp_dir("destination-parent-symlink");
+        let real_dir = temp_dir.join("real");
+        let symlink_dir = temp_dir.join("link");
+        fs::create_dir(&real_dir).expect("create real dir");
+        std::os::unix::fs::symlink(&real_dir, &symlink_dir).expect("create parent symlink");
+        let destination_path = symlink_dir.join("helper");
+
+        assert_eq!(
+            open_destination_file_no_follow(destination_path.to_str().expect("utf-8 path"))
+                .unwrap_err(),
+            HelperInstallExecutionFailure::DestinationSymlink {
+                component_path: symlink_dir.to_string_lossy().into_owned(),
+            }
+        );
+        assert!(
+            !real_dir.join("helper").exists(),
+            "destination must not be created through a parent symlink"
+        );
 
         fs::remove_dir_all(temp_dir).expect("remove temp dir");
     }

@@ -169,12 +169,14 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   absent.
 - [x] macOS helper install/deinstall executor: core executes validated Gate I plans through a typed
   platform adapter, runs preflight before authorization/system calls, copies the helper only from the
-  verified opened source handle, applies install order copy → plist → load, applies uninstall order
-  unload → remove plist → remove helper, and returns typed execution/rollback/stop-state
-  diagnostics. The concrete file-system adapter writes files and invokes `/bin/launchctl` through
-  argv without shell interpolation, but CI evidence uses recording adapters and does not execute
-  `sudo`, mutate `/Library`, run as root, start persistent IPC, create `utun`, mutate routes/DNS/
-  firewall, or prove packet flow.
+  verified opened source handle, opens destination files without symlinks in parent/final
+  components, sets owner/mode through the opened descriptor, applies install order copy → plist →
+  load, applies uninstall order unload → remove plist → remove helper, and returns typed
+  execution/rollback/stop-state diagnostics. The installed plist does not enable `KeepAlive` before
+  helper runtime IPC exists. The concrete file-system adapter invokes `/bin/launchctl` through argv
+  without shell interpolation, but CI evidence uses recording adapters and does not execute `sudo`,
+  mutate `/Library`, run as root, start persistent IPC, create `utun`, mutate routes/DNS/firewall, or
+  prove packet flow.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -388,7 +390,9 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   authorization, copy from verified handle, plist write, launchd load/unload, and file removal are
   separate typed calls. An install error after partial application must run reverse-order rollback;
   an uninstall error must return completed/remaining stop-state. The executor does not accept shell
-  strings and does not prove helper runtime or network behavior.
+  strings and does not prove helper runtime or network behavior. The concrete file-system adapter
+  must reject symlinks in parent/final destination path components, set owner/mode through the opened
+  file descriptor, and avoid installing `KeepAlive=true` before helper runtime IPC exists.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,
