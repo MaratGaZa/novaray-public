@@ -612,6 +612,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     controls, redacted diagnostics and revisit conditions. Scope intentionally excludes persistent
     IPC implementation, helper runtime startup, `utun`, route/DNS/firewall/system proxy mutation,
     packet flow, DNS-leak evidence, split tunneling and kill switch.
+46. [x] macOS helper runtime replay guard contract — issue #62: реализовать pure Rust guard для
+    текущей handshake session и monotonic non-zero sequence/nonce в allowlisted runtime command
+    envelope. Acceptance proves no-session, wrong/stale-session, zero-sequence and repeated/stale
+    sequence rejection before side effects, shows correlation ID is diagnostic rather than freshness
+    proof, redacts session/correlation values in `Debug`, and keeps sequence reset scoped to a new
+    handshake session. Scope intentionally excludes persistent IPC implementation, helper runtime
+    startup, authentication/peer validation, root execution, `utun`, route/DNS/firewall/system proxy
+    mutation, packet flow, DNS-leak evidence, split tunneling and kill switch.
 
 ## 7. Зависимости
 
