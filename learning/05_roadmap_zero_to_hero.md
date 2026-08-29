@@ -67,7 +67,9 @@ Android VpnService → Android UI → release
 - [ ] Пройти Gate H: демон создаёт `utun`, поднимает и снимает туннель.
 - [ ] Пройти Gate H: доказанный откат маршрутов, DNS и firewall при остановке, `SIGKILL` и перезагрузке.
 - [ ] Пройти Gate H: отсутствие DNS-утечек и остаточных процессов/правил.
-- [ ] Описать threat model root-демона, typed allowlist и авторизацию установки.
+- [x] Описать threat model root-демона, typed allowlist, runtime authentication boundary,
+  session-bound replay protection, rollback/fail-closed controls и redacted diagnostics без
+  реализации helper runtime или `utun` (issue #60).
 - [ ] Отложено до платного аккаунта: NetworkExtension как предпочтительная топология (Gate B).
 
 ### 0.4. Gate: engine integration
@@ -295,6 +297,11 @@ Android VpnService → Android UI → release
   interpolation; plist не включает `KeepAlive` до helper runtime IPC, а проверки не выполняют host
   `/Library` mutation, root execution, `utun`, routes/DNS/firewall или packet-flow evidence
   (issue #58).
+- [x] Зафиксировать macOS root-helper runtime threat model перед Gate H: assets, trust boundaries,
+  attacker capabilities, typed allowlist, runtime authentication/peer validation, session-bound
+  replay protection, serialized recovery gate, rollback/fail-closed controls, redaction и revisit
+  conditions без persistent IPC, helper runtime startup, `utun`, routes/DNS/firewall или packet-flow
+  evidence (issue #60).
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.

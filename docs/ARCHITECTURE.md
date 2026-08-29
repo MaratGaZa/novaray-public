@@ -33,6 +33,7 @@ controller, kill switch, platform UI, packaging и system tests. Matcher decisio
   (`Proposed`) как основная топология, поскольку entitlement NetworkExtension недоступен без платного
   членства; NetworkExtension остаётся отложенной целевой топологией. Reversible helper
   install/deinstall выделен в pre-runtime Gate I и не доказывает `utun`/data-plane готовность.
+  Root-helper runtime threat model зафиксирован как docs-only prerequisite перед Gate H.
 - [ADR-004](./ADR-004-ENGINE-INTEGRATION.md): sing-box предлагается (`Proposed`) как production-движок,
   так как per-app routing (`process_name`/`package_name`) отсутствует в Xray-core; определены гейты
   до утверждения.
@@ -131,6 +132,12 @@ Gate I executor использует typed platform adapter для authorization
 launchd load/unload и file removal; concrete file-system adapter отвергает symlink-компоненты в
 destination paths, выставляет owner/mode через открытый descriptor и не включает `KeepAlive` до
 появления helper runtime IPC. Shell strings через boundary не передаются.
+
+Перед Gate H для root-helper runtime зафиксирован threat model: privileged assets, trust boundaries,
+локальный attacker model, typed allowlist, runtime authentication/peer validation, serialized
+recovery gate, session-bound replay protection, snapshot/rollback/fail-closed controls и redacted
+diagnostics. Этот документальный gate не реализует persistent IPC, `utun`, route/DNS/firewall
+mutation или packet-flow behavior.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

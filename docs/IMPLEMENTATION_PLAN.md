@@ -605,6 +605,13 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     plus concrete file-system/`/bin/launchctl` platform adapter; local/CI evidence uses recording
     adapters and does not mutate `/Library`, run as root, start persistent IPC, create `utun`, mutate
     routes/DNS/firewall/system proxy or prove packet flow.
+45. [x] macOS root-helper runtime threat model — issue #60: зафиксировать docs-only prerequisite
+    перед Gate H для privileged helper runtime. Acceptance must document root-helper assets, trust
+    boundaries, local attacker capabilities, typed allowlist, runtime authentication/peer validation,
+    session-bound replay protection, serialized recovery gate, snapshot/rollback/fail-closed
+    controls, redacted diagnostics and revisit conditions. Scope intentionally excludes persistent
+    IPC implementation, helper runtime startup, `utun`, route/DNS/firewall/system proxy mutation,
+    packet flow, DNS-leak evidence, split tunneling and kill switch.
 
 ## 7. Зависимости
 

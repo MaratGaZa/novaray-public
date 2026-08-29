@@ -4,6 +4,7 @@
 - Дата: 2026-08-16
 - Ревизия: 2026-08-17 — основной путь пересмотрен в пользу privileged helper + utun после фиксации ограничения по Apple Developer Program
 - Ревизия: 2026-08-29 — установка/деинсталляция helper выделена в pre-runtime Gate I; это разрешает следующий reversible install-slice без утверждения `utun`/data-plane топологии
+- Ревизия: 2026-08-29 — threat model root-helper runtime зафиксирован как docs-only prerequisite перед Gate H
 - Решение требуется до: реализации системного туннеля и раздельного туннелирования по приложениям (M3)
 
 ## Контекст
@@ -60,6 +61,69 @@ NovaRay реализует системный VPN/туннель на macOS с �
    - Без платного аккаунта `SMJobBless` недоступен (факт 3), поэтому демон устанавливается явным административным шагом с запросом пароля и с обратимой деинсталляцией.
    - Ослабление SIP или Gatekeeper как штатный путь установки не допускается.
    - Установка/деинсталляция helper является отдельным pre-runtime gate: её можно реализовать и проверить до запуска `utun`, IPC runtime и сетевых мутаций, но такой evidence не утверждает full-tunnel topology.
+
+## Threat Model Root Helper Runtime
+
+Этот раздел является docs-only prerequisite для Gate H. Он не переводит ADR-003 в `Accepted` и не
+доказывает, что persistent IPC, `utun`, маршруты, DNS, firewall, packet flow, DNS-leak protection,
+split tunneling или kill switch реализованы.
+
+### Активы
+
+- root-процесс `novaray-platform-helper`;
+- LaunchDaemon plist и helper binary в `/Library`;
+- IPC endpoint будущего runtime;
+- engine configuration, recovery journal и applied-state records;
+- route table, DNS settings, firewall/PF rules, system proxy state и `utun` interface;
+- пользовательские profile secrets, endpoint addresses, UUID/correlation IDs и diagnostic bundle.
+
+### Trust Boundaries
+
+- UI и обычный Rust core остаются unprivileged и не получают shell/root capability.
+- Helper runtime является единственным компонентом, которому разрешены typed privileged operations.
+- IPC boundary обязан выполнять handshake по protocol version/capabilities до любой мутации.
+- Установочный Gate I boundary отделён от runtime boundary: успешная установка helper не разрешает
+  сетевые команды без отдельного Gate H runtime contract.
+- External engine process получает только already-validated runtime config и не становится
+  источником policy decisions.
+
+### Предполагаемые атакующие возможности
+
+- локальный unprivileged пользователь может посылать malformed/oversized IPC payloads, повторять
+  старые сообщения, пытаться угадать correlation IDs и менять файлы в доступных ему каталогах;
+- profile/config input может быть злонамеренным, но уже проходит core validation до privileged call;
+- helper source/destination paths могут содержать symlink или race attempts до открытия descriptor;
+- engine может завершиться, зависнуть или вернуть ошибку после частичного применения network state;
+- attacker не считается уже root: при root-компрометации этот boundary не является защитой.
+
+### Обязательные Controls
+
+- IPC принимает только typed allowlisted commands; raw shell strings, arbitrary executable paths и
+  произвольные `route`/`scutil`/`pfctl` commands через boundary запрещены.
+- Каждая команда несёт bounded payload, protocol version, capability expectations и correlation ID;
+  unknown version/command/field/capability отклоняются до side effects.
+- Freshness/replay protection не полагается только на correlation ID: runtime commands должны быть
+  привязаны к текущей handshake session и иметь монотонную sequence/nonce; сообщения вне текущей
+  session или с повторной/устаревшей sequence отвергаются до side effects.
+- Authorization decision для установки не переносится на runtime commands: runtime обязан иметь
+  отдельную authentication/peer-validation модель для локального клиента.
+- Любая network mutation начинается только после serialized lifecycle/start gate и pending recovery
+  check; параллельные conflicting commands отклоняются.
+- Route/DNS/firewall/system proxy changes требуют snapshot, explicit rollback metadata,
+  idempotency scope и recovery journal write до применения операции.
+- Failure handling обязан быть fail-closed: first error останавливает последующие операции,
+  запускает reverse-order rollback или сохраняет диагностируемый recovery work.
+- Diagnostics must redact secrets, user IPs, endpoint identifiers and UUID-like correlation values
+  unless an explicit debug artifact policy permits disclosure.
+
+### Revisit Conditions
+
+- Gate H failure по rollback, DNS-leak, residual route/firewall state или IPC authentication
+  переводит helper runtime implementation обратно в redesign.
+- Появление Apple Developer Program заново открывает NetworkExtension path и требует пересмотра
+  root-helper threat boundary до acceptance ADR-003.
+- Любое расширение allowlist privileged commands требует отдельного SPEC/ADR update и evidence tests
+  до реализации.
 
 ## Разделение по гейтам готовности (Gates)
 
