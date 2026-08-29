@@ -164,9 +164,9 @@ Direct Developer ID distribution сохраняется как целевая м
   rollback/fail-closed controls и redaction. Это не реализует persistent IPC, не запускает helper
   runtime, не создаёт `utun`, не мутирует routes/DNS/firewall/system proxy и не доказывает packet
   flow, DNS-leak, split tunneling или kill switch.
-- [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и
-  monotonic non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет
-  команды без session, из другой/stale session, с нулевой, повторной или устаревшей sequence до
+- [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
+  next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
+  session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до
   side effects; correlation ID остаётся диагностическим идентификатором и не считается freshness
   proof. Это pure Rust contract и не реализует persistent IPC, helper runtime startup,
   authentication/peer validation, root execution, `utun`, routes, DNS, firewall, system proxy,
@@ -441,11 +441,11 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   IPC, `utun`, route/DNS/firewall mutation, packet flow, DNS-leak protection, split tunneling или
   kill switch.
 - MacOS helper runtime replay guard обязан проверять bounded session id, bounded correlation ID и
-  monotonic non-zero sequence/nonce до передачи allowlisted command будущему executor. Correlation ID
-  не является freshness proof: повтор той же или более старой sequence отвергается независимо от
-  correlation ID, а новая handshake session является единственным способом сбросить sequence scope.
-  Этот contract не является persistent IPC, runtime authentication/peer validation или evidence
-  сетевой мутации.
+  exact next non-zero sequence/nonce до передачи allowlisted command будущему executor. Correlation
+  ID не является freshness proof: повтор той же или более старой sequence и forward jump
+  отвергаются независимо от correlation ID, а новая handshake session является единственным способом
+  сбросить sequence scope. Этот contract не является persistent IPC, runtime authentication/peer
+  validation или evidence сетевой мутации.
 - Состояние macOS helper runtime replay guard должно храниться per authenticated IPC
   session/connection, а не как общий process-wide counter. Независимые session не должны блокировать
   друг друга sequence values, и envelope старой session должен отвергаться даже если его sequence

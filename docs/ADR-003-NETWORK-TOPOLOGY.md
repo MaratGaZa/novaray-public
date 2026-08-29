@@ -6,6 +6,7 @@
 - Ревизия: 2026-08-29 — установка/деинсталляция helper выделена в pre-runtime Gate I; это разрешает следующий reversible install-slice без утверждения `utun`/data-plane топологии
 - Ревизия: 2026-08-29 — threat model root-helper runtime зафиксирован как docs-only prerequisite перед Gate H
 - Ревизия: 2026-08-29 — runtime replay guard scope зафиксирован per authenticated session/connection
+- Ревизия: 2026-08-29 — runtime sequence contract ужесточён до exact next sequence
 - Решение требуется до: реализации системного туннеля и раздельного туннелирования по приложениям (M3)
 
 ## Контекст
@@ -104,8 +105,8 @@ split tunneling или kill switch реализованы.
 - Каждая команда несёт bounded payload, protocol version, capability expectations и correlation ID;
   unknown version/command/field/capability отклоняются до side effects.
 - Freshness/replay protection не полагается только на correlation ID: runtime commands должны быть
-  привязаны к текущей handshake session и иметь монотонную sequence/nonce; сообщения вне текущей
-  session или с повторной/устаревшей sequence отвергаются до side effects.
+  привязаны к текущей handshake session и иметь exact next sequence/nonce; сообщения вне текущей
+  session, с повторной/устаревшей sequence или с forward jump отвергаются до side effects.
 - Replay guard state должен быть scoped per authenticated IPC session/connection. Один process-wide
   sequence counter для нескольких клиентов запрещён: независимые session не должны конкурировать за
   sequence, а envelope прошлой session не должен становиться валидным после нового handshake.
