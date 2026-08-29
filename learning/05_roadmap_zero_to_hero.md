@@ -289,7 +289,12 @@ Android VpnService → Android UI → release
 - [x] Уточнить ADR-003 helper install gate split: reversible helper install/deinstall выделен как
   pre-runtime Gate I, который можно реализовать до helper runtime, но который не доказывает `utun`,
   packet flow, DNS-leak, split tunneling или kill switch (issue #56).
-- [ ] Реализовать установку и полную деинсталляцию с административной авторизацией, без ослабления SIP/Gatekeeper.
+- [x] Реализовать typed executor установки и полной деинсталляции helper с административной
+  авторизацией, opened-handle copy, destination symlink rejection, fd-based owner/mode updates,
+  rollback/stop-state diagnostics и concrete file-system/`/bin/launchctl` adapter без shell
+  interpolation; plist не включает `KeepAlive` до helper runtime IPC, а проверки не выполняют host
+  `/Library` mutation, root execution, `utun`, routes/DNS/firewall или packet-flow evidence
+  (issue #58).
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.

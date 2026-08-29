@@ -148,6 +148,16 @@ Direct Developer ID distribution сохраняется как целевая м
   pre-runtime Gate I, который может быть реализован до helper runtime. Это docs-only gate contract:
   реальная установка, `launchctl`, root execution, persistent IPC, `utun`, routes, DNS, firewall,
   packet flow, DNS-leak, split tunneling и kill switch всё ещё отсутствуют.
+- [x] macOS helper install/deinstall executor: core выполняет validated Gate I plans через typed
+  platform adapter, запускает preflight до authorization/system calls, копирует helper только из
+  verified opened source handle, открывает destination files без symlink в parent/final components,
+  выставляет owner/mode по открытому descriptor, применяет install order copy → plist → load,
+  применяет uninstall order unload → remove plist → remove helper, возвращает typed
+  execution/rollback/stop-state diagnostics. Устанавливаемый plist не включает `KeepAlive` до
+  появления helper runtime IPC. Concrete file-system adapter invokes `/bin/launchctl` через argv
+  without shell interpolation, but CI evidence uses recording adapters and does not execute `sudo`,
+  mutate `/Library`, run as root, start persistent IPC, create `utun`, mutate routes/DNS/firewall or
+  prove packet flow.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -395,6 +405,14 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   Gate I может выполнять только административную установку/деинсталляцию LaunchDaemon helper с
   проверкой открытого source handle, корректным порядком unload/remove, rollback/stop-state evidence
   и без `utun`, route/DNS/firewall mutation, persistent IPC runtime или packet-flow claims.
+- macOS helper install/deinstall executor обязан использовать только typed platform adapter:
+  authorization, copy from verified handle, plist write, launchd load/unload и file removal являются
+  отдельными typed calls. Ошибка install после частичного применения должна запускать rollback в
+  обратном порядке; ошибка uninstall должна возвращать completed/remaining stop-state. Executor не
+  принимает shell string и не доказывает helper runtime или network behavior. Concrete file-system
+  adapter обязан отвергать symlink в parent/final components destination paths, выставлять
+  owner/mode через opened file descriptor и не устанавливать `KeepAlive=true` до появления helper
+  runtime IPC.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,
