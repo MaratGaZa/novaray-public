@@ -171,6 +171,13 @@ Direct Developer ID distribution сохраняется как целевая м
   proof. Это pure Rust contract и не реализует persistent IPC, helper runtime startup,
   authentication/peer validation, root execution, `utun`, routes, DNS, firewall, system proxy,
   packet-flow, DNS-leak, split tunneling или kill switch.
+- [x] macOS helper runtime session-scope contract: core предоставляет session object, который
+  владеет replay guard для одной будущей authenticated IPC session/connection. Две независимые
+  session имеют независимые sequence scopes, envelope прежней session отвергается после нового
+  handshake, а process-wide shared sequence counter не является целевым runtime contract. Это не
+  реализует persistent IPC, socket/XPC transport, live authentication/peer validation, helper
+  runtime startup, root execution, `utun`, routes, DNS, firewall, system proxy или packet-flow
+  evidence.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -439,6 +446,11 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   correlation ID, а новая handshake session является единственным способом сбросить sequence scope.
   Этот contract не является persistent IPC, runtime authentication/peer validation или evidence
   сетевой мутации.
+- Состояние macOS helper runtime replay guard должно храниться per authenticated IPC
+  session/connection, а не как общий process-wide counter. Независимые session не должны блокировать
+  друг друга sequence values, и envelope старой session должен отвергаться даже если его sequence
+  больше текущего локального счётчика новой session. Реальная peer validation остаётся отдельным
+  Gate H contract перед live IPC.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

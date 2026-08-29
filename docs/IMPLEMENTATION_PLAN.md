@@ -620,6 +620,15 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     handshake session. Scope intentionally excludes persistent IPC implementation, helper runtime
     startup, authentication/peer validation, root execution, `utun`, route/DNS/firewall/system proxy
     mutation, packet flow, DNS-leak evidence, split tunneling and kill switch.
+47. [x] macOS helper runtime session-scope contract — issue #64: зафиксировать pure Rust session
+    object как owner replay guard для одной будущей authenticated IPC session/connection.
+    Acceptance proves independent sequence state across two sessions, rejection of stale envelopes
+    from prior sessions after a new handshake, reuse of allowlisted command validation before
+    sequence consumption, redacted session/correlation diagnostics, and no process-wide shared
+    sequence counter as the target runtime contract. Scope intentionally excludes persistent IPC
+    implementation, socket/XPC transport, live authentication/peer validation, helper runtime
+    startup, root execution, `utun`, route/DNS/firewall/system proxy mutation, packet flow,
+    DNS-leak evidence, split tunneling and kill switch.
 
 ## 7. Зависимости
 

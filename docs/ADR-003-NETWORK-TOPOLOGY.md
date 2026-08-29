@@ -5,6 +5,7 @@
 - Ревизия: 2026-08-17 — основной путь пересмотрен в пользу privileged helper + utun после фиксации ограничения по Apple Developer Program
 - Ревизия: 2026-08-29 — установка/деинсталляция helper выделена в pre-runtime Gate I; это разрешает следующий reversible install-slice без утверждения `utun`/data-plane топологии
 - Ревизия: 2026-08-29 — threat model root-helper runtime зафиксирован как docs-only prerequisite перед Gate H
+- Ревизия: 2026-08-29 — runtime replay guard scope зафиксирован per authenticated session/connection
 - Решение требуется до: реализации системного туннеля и раздельного туннелирования по приложениям (M3)
 
 ## Контекст
@@ -105,6 +106,9 @@ split tunneling или kill switch реализованы.
 - Freshness/replay protection не полагается только на correlation ID: runtime commands должны быть
   привязаны к текущей handshake session и иметь монотонную sequence/nonce; сообщения вне текущей
   session или с повторной/устаревшей sequence отвергаются до side effects.
+- Replay guard state должен быть scoped per authenticated IPC session/connection. Один process-wide
+  sequence counter для нескольких клиентов запрещён: независимые session не должны конкурировать за
+  sequence, а envelope прошлой session не должен становиться валидным после нового handshake.
 - Authorization decision для установки не переносится на runtime commands: runtime обязан иметь
   отдельную authentication/peer-validation модель для локального клиента.
 - Любая network mutation начинается только после serialized lifecycle/start gate и pending recovery

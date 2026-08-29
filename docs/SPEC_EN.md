@@ -190,6 +190,12 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   proof. This is a pure Rust contract and does not implement persistent IPC, helper runtime startup,
   authentication/peer validation, root execution, `utun`, routes, DNS, firewall, system proxy,
   packet flow, DNS-leak behavior, split tunneling, or kill switch behavior.
+- [x] macOS helper runtime session-scope contract: core provides a session object that owns the
+  replay guard for one future authenticated IPC session/connection. Two independent sessions have
+  independent sequence scopes, an envelope from a prior session is rejected after a new handshake,
+  and a process-wide shared sequence counter is not the target runtime contract. This does not
+  implement persistent IPC, socket/XPC transport, live authentication/peer validation, helper runtime
+  startup, root execution, `utun`, routes, DNS, firewall, system proxy, or packet-flow evidence.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -419,6 +425,11 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   of correlation ID, and a new handshake session is the only way to reset the sequence scope. This
   contract is not persistent IPC, runtime authentication/peer validation, or network mutation
   evidence.
+- The macOS helper runtime replay guard state must be stored per authenticated IPC
+  session/connection, not as one process-wide counter. Independent sessions must not block each
+  other by sequence value, and an old-session envelope must be rejected even when its sequence is
+  greater than the new session's local counter. Real peer validation remains a separate Gate H
+  contract before live IPC.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,
