@@ -1501,6 +1501,7 @@ fn set_file_owner_and_mode(
     }
 }
 
+#[cfg(unix)]
 fn source_error_to_execution_failure(
     error: HelperInstallSourceError,
 ) -> HelperInstallExecutionFailure {
