@@ -158,6 +158,12 @@ Direct Developer ID distribution сохраняется как целевая м
   without shell interpolation, but CI evidence uses recording adapters and does not execute `sudo`,
   mutate `/Library`, run as root, start persistent IPC, create `utun`, mutate routes/DNS/firewall or
   prove packet flow.
+- [x] macOS root-helper runtime threat model: ADR-003 фиксирует docs-only prerequisite перед Gate H
+  для root helper assets, trust boundaries, attacker capabilities, typed allowlist, runtime
+  authentication requirement, serialized recovery gate, rollback/fail-closed controls и redaction.
+  Это не реализует persistent IPC, не запускает helper runtime, не создаёт `utun`, не мутирует
+  routes/DNS/firewall/system proxy и не доказывает packet flow, DNS-leak, split tunneling или kill
+  switch.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -413,6 +419,12 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   adapter обязан отвергать symlink в parent/final components destination paths, выставлять
   owner/mode через opened file descriptor и не устанавливать `KeepAlive=true` до появления helper
   runtime IPC.
+- MacOS root-helper runtime threat model обязан быть зафиксирован до Gate H implementation. Он
+  должен перечислять privileged assets, trust boundaries, локальные attacker capabilities, typed
+  allowlist, runtime authentication/peer validation, serialized recovery gate, snapshot/rollback
+  controls, fail-closed behavior и redacted diagnostics. Эта документация не считается evidence
+  persistent IPC, `utun`, route/DNS/firewall mutation, packet flow, DNS-leak protection, split
+  tunneling или kill switch.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,
