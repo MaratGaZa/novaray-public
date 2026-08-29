@@ -629,6 +629,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     implementation, socket/XPC transport, live authentication/peer validation, helper runtime
     startup, root execution, `utun`, route/DNS/firewall/system proxy mutation, packet flow,
     DNS-leak evidence, split tunneling and kill switch.
+48. [x] macOS helper runtime exact-sequence contract — issue #66: ужесточить replay/session guard
+    до exact next non-zero sequence вместо accepting any larger monotonic value. Acceptance proves
+    `1 -> 2` acceptance, `1 -> 10` forward-jump rejection without state advance, valid
+    `u64::MAX` jump rejection without pinning the session, fail-closed behavior after sequence
+    exhaustion, repeated/stale rejection and per-session independence. Scope intentionally excludes
+    persistent IPC implementation, socket/XPC transport, live authentication/peer validation, helper
+    runtime startup, root execution, `utun`, route/DNS/firewall/system proxy mutation, packet flow,
+    DNS-leak evidence, split tunneling and kill switch.
 
 ## 7. Зависимости
 

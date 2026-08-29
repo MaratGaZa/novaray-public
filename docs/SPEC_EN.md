@@ -183,11 +183,11 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   rollback/fail-closed controls, and redaction. This does not implement persistent IPC, start helper
   runtime, create `utun`, mutate routes/DNS/firewall/system proxy, or prove packet flow, DNS-leak
   behavior, split tunneling, or kill switch behavior.
-- [x] macOS helper runtime replay guard contract: core models the current handshake session and a
-  monotonic non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects
-  commands with no session, another/stale session, zero sequence, repeated sequence, or stale
-  sequence before side effects; correlation ID remains a diagnostic identifier and is not freshness
-  proof. This is a pure Rust contract and does not implement persistent IPC, helper runtime startup,
+- [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
+  next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
+  with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
+  forward jump before side effects; correlation ID remains a diagnostic identifier and is not
+  freshness proof. This is a pure Rust contract and does not implement persistent IPC, helper runtime startup,
   authentication/peer validation, root execution, `utun`, routes, DNS, firewall, system proxy,
   packet flow, DNS-leak behavior, split tunneling, or kill switch behavior.
 - [x] macOS helper runtime session-scope contract: core provides a session object that owns the
@@ -420,11 +420,11 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   IPC, `utun`, route/DNS/firewall mutation, packet flow, DNS-leak protection, split tunneling, or
   kill switch behavior.
 - The macOS helper runtime replay guard must validate a bounded session id, bounded correlation ID
-  and monotonic non-zero sequence/nonce before passing an allowlisted command to a future executor.
-  Correlation ID is not freshness proof: replay of the same or older sequence is rejected regardless
-  of correlation ID, and a new handshake session is the only way to reset the sequence scope. This
-  contract is not persistent IPC, runtime authentication/peer validation, or network mutation
-  evidence.
+  and exact next non-zero sequence/nonce before passing an allowlisted command to a future executor.
+  Correlation ID is not freshness proof: replay of the same or older sequence and forward jumps are
+  rejected regardless of correlation ID, and a new handshake session is the only way to reset the
+  sequence scope. This contract is not persistent IPC, runtime authentication/peer validation, or
+  network mutation evidence.
 - The macOS helper runtime replay guard state must be stored per authenticated IPC
   session/connection, not as one process-wide counter. Independent sessions must not block each
   other by sequence value, and an old-session envelope must be rejected even when its sequence is

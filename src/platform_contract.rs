@@ -232,9 +232,22 @@ impl HelperRuntimeReplayGuard {
             return Err(PlatformContractError::RuntimeSessionMismatch);
         }
 
-        if envelope.sequence <= session.last_sequence {
+        let Some(expected_sequence) = session.last_sequence.checked_add(1) else {
+            return Err(PlatformContractError::RuntimeSequenceExhausted {
+                last_seen: session.last_sequence,
+            });
+        };
+
+        if envelope.sequence < expected_sequence {
             return Err(PlatformContractError::StaleRuntimeSequence {
                 last_seen: session.last_sequence,
+                received: envelope.sequence,
+            });
+        }
+
+        if envelope.sequence > expected_sequence {
+            return Err(PlatformContractError::UnexpectedRuntimeSequence {
+                expected: expected_sequence,
                 received: envelope.sequence,
             });
         }
@@ -327,6 +340,12 @@ pub enum PlatformContractError {
 
     #[error("Platform helper runtime sequence повторён или устарел: last_seen={last_seen}, received={received}")]
     StaleRuntimeSequence { last_seen: u64, received: u64 },
+
+    #[error("Platform helper runtime sequence нарушает порядок: expected={expected}, received={received}")]
+    UnexpectedRuntimeSequence { expected: u64, received: u64 },
+
+    #[error("Platform helper runtime sequence исчерпан: last_seen={last_seen}")]
+    RuntimeSequenceExhausted { last_seen: u64 },
 
     #[error("Platform helper runtime command не должен повторять handshake")]
     RuntimeHandshakeCommand,
@@ -753,24 +772,94 @@ mod tests {
         guard.begin_session("session-1").unwrap();
 
         guard
-            .accept_command(&runtime_envelope("session-1", 7, "cmd-1"), &helper)
+            .accept_command(&runtime_envelope("session-1", 1, "cmd-1"), &helper)
+            .unwrap();
+        guard
+            .accept_command(&runtime_envelope("session-1", 2, "cmd-2"), &helper)
             .unwrap();
 
         assert_eq!(
             guard
-                .accept_command(&runtime_envelope("session-1", 7, "cmd-1-replay"), &helper)
+                .accept_command(&runtime_envelope("session-1", 2, "cmd-2-replay"), &helper)
                 .unwrap_err()
                 .to_string(),
-            "Platform helper runtime sequence повторён или устарел: last_seen=7, received=7"
+            "Platform helper runtime sequence повторён или устарел: last_seen=2, received=2"
         );
         assert_eq!(
             guard
-                .accept_command(&runtime_envelope("session-1", 6, "cmd-older"), &helper)
+                .accept_command(&runtime_envelope("session-1", 1, "cmd-older"), &helper)
                 .unwrap_err()
                 .to_string(),
-            "Platform helper runtime sequence повторён или устарел: last_seen=7, received=6"
+            "Platform helper runtime sequence повторён или устарел: last_seen=2, received=1"
         );
-        assert_eq!(guard.current_session_last_sequence(), Some(7));
+        assert_eq!(guard.current_session_last_sequence(), Some(2));
+    }
+
+    #[test]
+    fn helper_runtime_replay_guard_rejects_forward_sequence_jumps_without_consuming_sequence() {
+        let helper = helper(vec![PlatformCapability::Tun]);
+        let mut guard = HelperRuntimeReplayGuard::new();
+        guard.begin_session("session-1").unwrap();
+
+        guard
+            .accept_command(&runtime_envelope("session-1", 1, "cmd-1"), &helper)
+            .unwrap();
+
+        assert_eq!(
+            guard
+                .accept_command(&runtime_envelope("session-1", 10, "cmd-jump"), &helper)
+                .unwrap_err()
+                .to_string(),
+            "Platform helper runtime sequence нарушает порядок: expected=2, received=10"
+        );
+        assert_eq!(guard.current_session_last_sequence(), Some(1));
+        assert_eq!(
+            guard.accept_command(&runtime_envelope("session-1", 2, "cmd-2"), &helper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn helper_runtime_replay_guard_rejects_u64_max_jump_without_pinning_session() {
+        let helper = helper(vec![PlatformCapability::Tun]);
+        let mut guard = HelperRuntimeReplayGuard::new();
+        guard.begin_session("session-1").unwrap();
+
+        assert_eq!(
+            guard
+                .accept_command(&runtime_envelope("session-1", u64::MAX, "cmd-max"), &helper)
+                .unwrap_err()
+                .to_string(),
+            "Platform helper runtime sequence нарушает порядок: expected=1, received=18446744073709551615"
+        );
+        assert_eq!(guard.current_session_last_sequence(), Some(0));
+        assert_eq!(
+            guard.accept_command(&runtime_envelope("session-1", 1, "cmd-1"), &helper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn helper_runtime_replay_guard_fails_closed_after_sequence_exhaustion() {
+        let helper = helper(vec![PlatformCapability::Tun]);
+        let mut guard = HelperRuntimeReplayGuard::new();
+        guard.begin_session("session-1").unwrap();
+        guard.session.as_mut().unwrap().last_sequence = u64::MAX - 1;
+
+        assert_eq!(
+            guard.accept_command(&runtime_envelope("session-1", u64::MAX, "cmd-max"), &helper),
+            Ok(())
+        );
+        assert_eq!(
+            guard
+                .accept_command(
+                    &runtime_envelope("session-1", u64::MAX, "cmd-after-max"),
+                    &helper
+                )
+                .unwrap_err()
+                .to_string(),
+            "Platform helper runtime sequence исчерпан: last_seen=18446744073709551615"
+        );
     }
 
     #[test]
@@ -779,7 +868,7 @@ mod tests {
         let mut guard = HelperRuntimeReplayGuard::new();
         guard.begin_session("session-1").unwrap();
         guard
-            .accept_command(&runtime_envelope("session-1", 3, "cmd-3"), &helper)
+            .accept_command(&runtime_envelope("session-1", 1, "cmd-1"), &helper)
             .unwrap();
 
         guard.begin_session("session-2").unwrap();
@@ -791,7 +880,7 @@ mod tests {
         assert_eq!(
             guard
                 .accept_command(
-                    &runtime_envelope("session-1", 4, "cmd-old-session"),
+                    &runtime_envelope("session-1", 2, "cmd-old-session"),
                     &helper
                 )
                 .unwrap_err()
@@ -912,10 +1001,14 @@ mod tests {
             Ok(())
         );
         assert_eq!(
+            first.accept_command(&runtime_envelope("session-a", 2, "cmd-a-2")),
+            Ok(())
+        );
+        assert_eq!(
             second.accept_command(&runtime_envelope("session-b", 1, "cmd-b-1")),
             Ok(())
         );
-        assert_eq!(first.last_sequence(), 1);
+        assert_eq!(first.last_sequence(), 2);
         assert_eq!(second.last_sequence(), 1);
     }
 
@@ -924,7 +1017,10 @@ mod tests {
         let helper = helper(vec![PlatformCapability::Tun]);
         let mut prior = HelperRuntimeConnectionSession::new(helper.clone(), "session-a").unwrap();
         prior
-            .accept_command(&runtime_envelope("session-a", 10, "cmd-a-10"))
+            .accept_command(&runtime_envelope("session-a", 1, "cmd-a-1"))
+            .unwrap();
+        prior
+            .accept_command(&runtime_envelope("session-a", 2, "cmd-a-2"))
             .unwrap();
 
         let mut current = HelperRuntimeConnectionSession::new(helper, "session-b").unwrap();
@@ -965,9 +1061,11 @@ mod tests {
     fn helper_runtime_connection_session_debug_redacts_replay_scope() {
         let helper = helper(vec![PlatformCapability::Tun]);
         let mut session = HelperRuntimeConnectionSession::new(helper, "session-secret").unwrap();
-        session
-            .accept_command(&runtime_envelope("session-secret", 5, "cmd-secret"))
-            .unwrap();
+        for sequence in 1..=5 {
+            session
+                .accept_command(&runtime_envelope("session-secret", sequence, "cmd-secret"))
+                .unwrap();
+        }
 
         let debug = format!("{session:?}");
         assert!(debug.contains("helper_platform"));
