@@ -608,10 +608,10 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
 45. [x] macOS root-helper runtime threat model — issue #60: зафиксировать docs-only prerequisite
     перед Gate H для privileged helper runtime. Acceptance must document root-helper assets, trust
     boundaries, local attacker capabilities, typed allowlist, runtime authentication/peer validation,
-    serialized recovery gate, snapshot/rollback/fail-closed controls, redacted diagnostics and
-    revisit conditions. Scope intentionally excludes persistent IPC implementation, helper runtime
-    startup, `utun`, route/DNS/firewall/system proxy mutation, packet flow, DNS-leak evidence, split
-    tunneling and kill switch.
+    session-bound replay protection, serialized recovery gate, snapshot/rollback/fail-closed
+    controls, redacted diagnostics and revisit conditions. Scope intentionally excludes persistent
+    IPC implementation, helper runtime startup, `utun`, route/DNS/firewall/system proxy mutation,
+    packet flow, DNS-leak evidence, split tunneling and kill switch.
 
 ## 7. Зависимости
 

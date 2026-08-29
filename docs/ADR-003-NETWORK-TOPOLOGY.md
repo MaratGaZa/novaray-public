@@ -102,6 +102,9 @@ split tunneling или kill switch реализованы.
   произвольные `route`/`scutil`/`pfctl` commands через boundary запрещены.
 - Каждая команда несёт bounded payload, protocol version, capability expectations и correlation ID;
   unknown version/command/field/capability отклоняются до side effects.
+- Freshness/replay protection не полагается только на correlation ID: runtime commands должны быть
+  привязаны к текущей handshake session и иметь монотонную sequence/nonce; сообщения вне текущей
+  session или с повторной/устаревшей sequence отвергаются до side effects.
 - Authorization decision для установки не переносится на runtime commands: runtime обязан иметь
   отдельную authentication/peer-validation модель для локального клиента.
 - Любая network mutation начинается только после serialized lifecycle/start gate и pending recovery

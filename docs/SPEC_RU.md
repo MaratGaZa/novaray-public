@@ -160,10 +160,10 @@ Direct Developer ID distribution сохраняется как целевая м
   prove packet flow.
 - [x] macOS root-helper runtime threat model: ADR-003 фиксирует docs-only prerequisite перед Gate H
   для root helper assets, trust boundaries, attacker capabilities, typed allowlist, runtime
-  authentication requirement, serialized recovery gate, rollback/fail-closed controls и redaction.
-  Это не реализует persistent IPC, не запускает helper runtime, не создаёт `utun`, не мутирует
-  routes/DNS/firewall/system proxy и не доказывает packet flow, DNS-leak, split tunneling или kill
-  switch.
+  authentication requirement, session-bound replay protection, serialized recovery gate,
+  rollback/fail-closed controls и redaction. Это не реализует persistent IPC, не запускает helper
+  runtime, не создаёт `utun`, не мутирует routes/DNS/firewall/system proxy и не доказывает packet
+  flow, DNS-leak, split tunneling или kill switch.
 - [~] Route manager: публичный API является no-op заглушкой.
 - [ ] TUN data plane через privileged helper (`utun`).
 - [ ] Реальный DNS controller и leak prevention.
@@ -421,10 +421,11 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   runtime IPC.
 - MacOS root-helper runtime threat model обязан быть зафиксирован до Gate H implementation. Он
   должен перечислять privileged assets, trust boundaries, локальные attacker capabilities, typed
-  allowlist, runtime authentication/peer validation, serialized recovery gate, snapshot/rollback
-  controls, fail-closed behavior и redacted diagnostics. Эта документация не считается evidence
-  persistent IPC, `utun`, route/DNS/firewall mutation, packet flow, DNS-leak protection, split
-  tunneling или kill switch.
+  allowlist, runtime authentication/peer validation, session-bound replay protection через текущую
+  handshake session и monotonic sequence/nonce, serialized recovery gate, snapshot/rollback controls,
+  fail-closed behavior и redacted diagnostics. Эта документация не считается evidence persistent
+  IPC, `utun`, route/DNS/firewall mutation, packet flow, DNS-leak protection, split tunneling или
+  kill switch.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

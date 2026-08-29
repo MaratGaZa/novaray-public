@@ -135,8 +135,9 @@ destination paths, выставляет owner/mode через открытый d
 
 Перед Gate H для root-helper runtime зафиксирован threat model: privileged assets, trust boundaries,
 локальный attacker model, typed allowlist, runtime authentication/peer validation, serialized
-recovery gate, snapshot/rollback/fail-closed controls и redacted diagnostics. Этот документальный
-gate не реализует persistent IPC, `utun`, route/DNS/firewall mutation или packet-flow behavior.
+recovery gate, session-bound replay protection, snapshot/rollback/fail-closed controls и redacted
+diagnostics. Этот документальный gate не реализует persistent IPC, `utun`, route/DNS/firewall
+mutation или packet-flow behavior.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

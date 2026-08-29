@@ -179,10 +179,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   prove packet flow.
 - [x] macOS root-helper runtime threat model: ADR-003 records a docs-only prerequisite before Gate H
   covering root helper assets, trust boundaries, attacker capabilities, typed allowlist, runtime
-  authentication requirement, serialized recovery gate, rollback/fail-closed controls, and
-  redaction. This does not implement persistent IPC, start helper runtime, create `utun`, mutate
-  routes/DNS/firewall/system proxy, or prove packet flow, DNS-leak behavior, split tunneling, or kill
-  switch behavior.
+  authentication requirement, session-bound replay protection, serialized recovery gate,
+  rollback/fail-closed controls, and redaction. This does not implement persistent IPC, start helper
+  runtime, create `utun`, mutate routes/DNS/firewall/system proxy, or prove packet flow, DNS-leak
+  behavior, split tunneling, or kill switch behavior.
 - [~] No-op RouteManager API.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
@@ -401,10 +401,11 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   file descriptor, and avoid installing `KeepAlive=true` before helper runtime IPC exists.
 - The macOS root-helper runtime threat model must be recorded before Gate H implementation. It must
   list privileged assets, trust boundaries, local attacker capabilities, typed allowlist, runtime
-  authentication/peer validation, serialized recovery gate, snapshot/rollback controls, fail-closed
-  behavior, and redacted diagnostics. This documentation is not evidence for persistent IPC, `utun`,
-  route/DNS/firewall mutation, packet flow, DNS-leak protection, split tunneling, or kill switch
-  behavior.
+  authentication/peer validation, session-bound replay protection through the current handshake
+  session and monotonic sequence/nonce, serialized recovery gate, snapshot/rollback controls,
+  fail-closed behavior, and redacted diagnostics. This documentation is not evidence for persistent
+  IPC, `utun`, route/DNS/firewall mutation, packet flow, DNS-leak protection, split tunneling, or
+  kill switch behavior.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,
