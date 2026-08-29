@@ -144,6 +144,9 @@ command envelope привязывается к текущей handshake session 
 команды без session, из другой/stale session или с повторной/устаревшей sequence отвергаются до
 side effects. Correlation ID остаётся диагностическим идентификатором, а не freshness proof; этот
 guard не запускает IPC runtime и не выполняет authentication/peer validation или network mutation.
+Целевой scope replay state — per authenticated IPC session/connection: session object владеет guard,
+две session имеют независимые sequence counters, а envelope прежней session отвергается после нового
+handshake. Process-wide shared sequence counter не является целевым helper runtime contract.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

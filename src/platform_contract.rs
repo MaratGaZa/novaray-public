@@ -149,6 +149,50 @@ impl fmt::Debug for HelperRuntimeReplayGuard {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct HelperRuntimeConnectionSession {
+    helper: HelperHello,
+    replay_guard: HelperRuntimeReplayGuard,
+}
+
+impl fmt::Debug for HelperRuntimeConnectionSession {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HelperRuntimeConnectionSession")
+            .field("helper_platform", &self.helper.platform)
+            .field("helper_protocol_version", &self.helper.protocol_version)
+            .field("replay_guard", &self.replay_guard)
+            .finish()
+    }
+}
+
+impl HelperRuntimeConnectionSession {
+    pub fn new(
+        helper: HelperHello,
+        session_id: impl Into<String>,
+    ) -> Result<Self, PlatformContractError> {
+        let mut replay_guard = HelperRuntimeReplayGuard::new();
+        replay_guard.begin_session(session_id)?;
+        Ok(Self {
+            helper,
+            replay_guard,
+        })
+    }
+
+    pub fn accept_command(
+        &mut self,
+        envelope: &HelperRuntimeCommandEnvelope,
+    ) -> Result<(), PlatformContractError> {
+        self.replay_guard.accept_command(envelope, &self.helper)
+    }
+
+    pub fn last_sequence(&self) -> u64 {
+        self.replay_guard
+            .current_session_last_sequence()
+            .unwrap_or(0)
+    }
+}
+
 impl Default for HelperRuntimeReplayGuard {
     fn default() -> Self {
         Self::new()
@@ -855,5 +899,80 @@ mod tests {
         let debug = format!("{guard:?}");
         assert!(debug.contains("has_session: true"));
         assert!(!debug.contains("session-secret"));
+    }
+
+    #[test]
+    fn helper_runtime_connection_session_owns_replay_scope() {
+        let helper = helper(vec![PlatformCapability::Tun]);
+        let mut first = HelperRuntimeConnectionSession::new(helper.clone(), "session-a").unwrap();
+        let mut second = HelperRuntimeConnectionSession::new(helper, "session-b").unwrap();
+
+        assert_eq!(
+            first.accept_command(&runtime_envelope("session-a", 1, "cmd-a-1")),
+            Ok(())
+        );
+        assert_eq!(
+            second.accept_command(&runtime_envelope("session-b", 1, "cmd-b-1")),
+            Ok(())
+        );
+        assert_eq!(first.last_sequence(), 1);
+        assert_eq!(second.last_sequence(), 1);
+    }
+
+    #[test]
+    fn helper_runtime_connection_session_rejects_stale_envelope_from_prior_session() {
+        let helper = helper(vec![PlatformCapability::Tun]);
+        let mut prior = HelperRuntimeConnectionSession::new(helper.clone(), "session-a").unwrap();
+        prior
+            .accept_command(&runtime_envelope("session-a", 10, "cmd-a-10"))
+            .unwrap();
+
+        let mut current = HelperRuntimeConnectionSession::new(helper, "session-b").unwrap();
+
+        assert_eq!(
+            current
+                .accept_command(&runtime_envelope("session-a", 11, "old-session"))
+                .unwrap_err()
+                .to_string(),
+            "Platform helper runtime command относится не к текущей handshake session"
+        );
+        assert_eq!(current.last_sequence(), 0);
+    }
+
+    #[test]
+    fn helper_runtime_connection_session_reuses_runtime_command_validation() {
+        let helper = helper(vec![PlatformCapability::Tun]);
+        let mut session = HelperRuntimeConnectionSession::new(helper, "session-a").unwrap();
+        let envelope = HelperRuntimeCommandEnvelope {
+            session_id: "session-a".to_string(),
+            sequence: 1,
+            correlation_id: "cmd-1".to_string(),
+            command: PlatformHelperCommand::PrepareTunnel(TunnelCommandPayload {
+                correlation_id: "prepare-1".to_string(),
+                required_capabilities: vec![PlatformCapability::Firewall],
+                engine_config_json: br#"{"inbounds":[],"outbounds":[]}"#.to_vec(),
+            }),
+        };
+
+        assert_eq!(
+            session.accept_command(&envelope).unwrap_err().to_string(),
+            "Platform helper не объявил обязательную capability: Firewall"
+        );
+        assert_eq!(session.last_sequence(), 0);
+    }
+
+    #[test]
+    fn helper_runtime_connection_session_debug_redacts_replay_scope() {
+        let helper = helper(vec![PlatformCapability::Tun]);
+        let mut session = HelperRuntimeConnectionSession::new(helper, "session-secret").unwrap();
+        session
+            .accept_command(&runtime_envelope("session-secret", 5, "cmd-secret"))
+            .unwrap();
+
+        let debug = format!("{session:?}");
+        assert!(debug.contains("helper_platform"));
+        assert!(debug.contains("last_sequence: Some(5)"));
+        assert!(!debug.contains("session-secret"));
+        assert!(!debug.contains("cmd-secret"));
     }
 }
