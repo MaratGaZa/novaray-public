@@ -33,7 +33,8 @@ rollback.
    принимают только типизированные allowlisted commands и возвращают наблюдаемые typed events.
 3. Версионировать command/event contract и требовать handshake до сетевой мутации. Несовместимость
    должна приводить к безопасному отказу до connect transaction.
-4. Выпустить macOS первым по ADR-001—ADR-005 и macOS milestones M0—M8.
+4. Выпустить macOS первым по ADR-001—ADR-004, ADR-006 Cross-platform boundaries и macOS
+   milestones M0—M8.
 5. После первого macOS production release выполнить Windows milestones M9—M13:
    - topology/distribution/signing spike и отдельный ADR;
    - proposed native WinUI 3 shell;

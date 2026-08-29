@@ -37,11 +37,11 @@ controller, kill switch, platform UI, packaging и system tests. Matcher decisio
 - [ADR-004](./ADR-004-ENGINE-INTEGRATION.md): sing-box предлагается (`Proposed`) как production-движок,
   так как per-app routing (`process_name`/`package_name`) отсутствует в Xray-core; определены гейты
   до утверждения.
-- ADR-005 должен решить доказуемый scope per-app routing (выполняется в M7).
+- Доказуемый scope per-app routing решается отдельным будущим ADR/decision в M7.
 
 ### 2.2. Cross-platform gate
 
-[ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md): общий versioned Rust core и отдельные platform
+[ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md): общий versioned Rust core и отдельные platform
 adapters предлагается (`Proposed`, Issue #5). Windows implementation начинается после macOS MVP
 release.
 
@@ -172,7 +172,7 @@ CI runner.
 Android входит в целевой scope третьим по порядку выпуска. Он использует тот же versioned Rust core,
 тот же формат конфигурации и тот же движок; привилегированная граница — системный `VpnService` с
 собственным Kotlin-слоем. Размещение Android-кода и UI-стек определяются отдельным ADR после первого
-macOS-релиза ([ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md), пункт 7).
+macOS-релиза ([ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md), пункт 7).
 
 ## 9. Connection transaction
 

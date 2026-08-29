@@ -38,7 +38,7 @@ a narrow privileged helper; Windows may use a narrow native shell and a separate
 Service/network boundary after an architecture spike.
 
 [ADR-001](./ADR-001-MACOS-UI.md) selects a SwiftUI/AppKit shell with a Rust core for macOS; a second UI stack for macOS is not supported. The Windows and Android UI stack is an open decision with Tauri v2 as the candidate (HTML/CSS/TypeScript in the system WebView), taken by a separate ADR after the first macOS release.
-[ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md) defines the proposed shared-core/platform boundary.
+[ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md) defines the proposed shared-core/platform boundary.
 
 ### 2.2. Meaning of “native desktop application”
 
@@ -52,7 +52,7 @@ packaging choices remain `Proposed` until their ADR/spikes.
 
 1. Complete the macOS milestones and first production release.
 2. Then complete the mandatory Windows 11 milestones while reusing versioned Rust crates, schemas, and fixtures.
-3. Then complete the Android milestones on the same core, configuration format, and engine; the privileged boundary is `VpnService`. Android code placement and UI stack are decided by a separate ADR ([ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md), item 7).
+3. Then complete the Android milestones on the same core, configuration format, and engine; the privileged boundary is `VpnService`. Android code placement and UI stack are decided by a separate ADR ([ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md), item 7).
 
 ### 2.4. macOS distribution decision
 
@@ -361,7 +361,7 @@ snapshot.
 Provide a truthful connection state machine, profile management, URI import preview, policy editor,
 tray/menu-bar control, redacted diagnostics, settings, keyboard navigation, localization,
 accessibility, and light/dark mode. The UI never executes privileged networking operations directly.
-macOS follows ADR-001. WinUI 3 is recommended for Windows, but remains `Proposed` under ADR-006
+macOS follows ADR-001. WinUI 3 is recommended for Windows, but remains `Proposed` under ADR-006 Cross-platform boundaries
 until a spike; a web UI or custom renderer is not the default.
 
 ### FR-010 — Updates and diagnostics
@@ -505,5 +505,5 @@ Per-app routing may remain post-release if its spike does not prove safe consume
 - Distribution channel: [ADR-002-MACOS-DISTRIBUTION.md](./ADR-002-MACOS-DISTRIBUTION.md).
 - Network topology: [ADR-003-NETWORK-TOPOLOGY.md](./ADR-003-NETWORK-TOPOLOGY.md).
 - Engine integration: [ADR-004-ENGINE-INTEGRATION.md](./ADR-004-ENGINE-INTEGRATION.md).
-- Cross-platform boundaries: [ADR-006-CROSS-PLATFORM-BOUNDARIES.md](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md).
+- Cross-platform boundaries: [ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md).
 - Quality gates: [TESTING.md](./TESTING.md).

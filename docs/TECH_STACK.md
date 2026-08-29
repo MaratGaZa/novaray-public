@@ -52,19 +52,22 @@ Rust-native `egui`/`wgpu` и Slint допустимы для экспериме�
   resource gates.
 
 Это proposal, не реализованный stack. Выбор фиксируется Windows ADR после macOS release. Общие
-границы описаны в [ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md).
+границы описаны в [ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md).
 
 ## 3. macOS network stack: [ADR-003](./ADR-003-NETWORK-TOPOLOGY.md)
 
-### Предлагается (Proposed): Network System Extension (`NEPacketTunnelProvider`)
-Целевая топология для прямой дистрибуции Developer ID по Apple TN3134:
-- `NEPacketTunnelProvider` в формате `.systemextension` через `OSSystemExtensionManager`;
-- `NEPacketTunnelNetworkSettings` (IPv4/IPv6, DNS, MTU, scoped test routes);
-- типизированный bounded IPC (до 4 KB) с allowlist команд;
-- наблюдение за статусом через `NEVPNStatusDidChange`.
+### Предлагается (Proposed): privileged helper + `utun`
 
-### Резервный / Dev-only: Privileged helper
-- Rust daemon/helper с изолированным типизированным API для локальных тестов до Gate B.
+- Rust LaunchDaemon helper с изолированным типизированным API и отдельным runtime IPC boundary.
+- Helper install/deinstall Gate I реализован как типизированный executor с recording-adapter
+  evidence; реальная привилегированная установка, root execution и mutation `/Library` не доказаны.
+- Gate H (helper runtime IPC, peer validation и authenticated commands) не начат.
+
+### Отложено: Network System Extension (`NEPacketTunnelProvider`)
+
+NetworkExtension остаётся предпочтительной более узкой trust boundary, если появится платный Apple
+Developer Program, подходящие entitlements/provisioning и отдельное distribution decision. Gate B
+для этого пути остаётся отложенным.
 
 ## 4. Windows network stack: отдельный architecture spike
 
@@ -81,11 +84,12 @@ signing, install/update/reboot и recovery. Hosted `windows-latest` годитс
 
 ## 5. Protocol engine: [ADR-004](./ADR-004-ENGINE-INTEGRATION.md)
 
-- **Базовый кандидат для M1/M2:** Xray-core (`v26.3.27`), MPL 2.0. Базовый генератор конфигураций в Core (`xray_generator.rs`), валидация через `xray run -test -c`.
-- **Перспективный кандидат для Gate B embedding:** sing-box (`v1.13.18`), `experimental/libbox`.
+- **Current local-proxy/generator evidence path:** Xray-core (`v26.3.27`), MPL 2.0. Базовый генератор конфигураций в Core (`xray_generator.rs`), валидация через `xray run -test -c`.
+- **Proposed production engine direction:** sing-box (`v1.13.18`) по ADR-004; catalog/version-selector contracts приняты отдельно, но production packet-level integration не доказана.
 - **Управление:** `ProcessSupervisor` в Rust Core (PID, bounded redacted logging, graceful stop `SIGTERM`/`SIGKILL`, zero residue).
 - **8 гейтов Gate B** зафиксированы в `engine-evidence.json` и `ADR-004`.
-service-owned process или Rust-native protocol implementation после отдельного review.
+- **Отложенные альтернативы:** service-owned process или Rust-native protocol implementation после
+  отдельного review.
 
 Evidence-only spike issue development task #12 зафиксировал snapshot
 Xray-core `v26.3.27` и sing-box `v1.13.18`: оба upstream публикуют macOS arm64 CLI artifacts и
