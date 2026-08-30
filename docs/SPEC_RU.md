@@ -38,7 +38,7 @@ macOS release должен содержать `.app`, menu bar behavior, кор�
 
 1. Сначала завершаются macOS milestones и первый production-релиз.
 2. Затем выполняются обязательные Windows 11 milestones с повторным использованием versioned Rust crates, schemas и fixtures.
-3. Затем выполняются Android milestones поверх того же core, того же формата конфигурации и того же движка; привилегированная граница — `VpnService`. Размещение Android-кода и UI-стек определяются отдельным ADR ([ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md), пункт 7).
+3. Затем выполняются Android milestones поверх того же core, того же формата конфигурации и того же движка; привилегированная граница — `VpnService`. Размещение Android-кода и UI-стек определяются отдельным ADR ([ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md), пункт 7).
 
 ### 2.4. Модель распространения macOS
 
@@ -381,7 +381,7 @@ Per-app routing является одной из двух главных фун�
 
 UI не должен напрямую выполнять privileged network operations. Он вызывает ограниченный application service API.
 
-macOS UI следует ADR-001. Для Windows рекомендуется WinUI 3 shell, но окончательный выбор остаётся `Proposed` до spike по ADR-006; web UI или собственный renderer не являются default.
+macOS UI следует ADR-001. Для Windows рекомендуется WinUI 3 shell, но окончательный выбор остаётся `Proposed` до spike по ADR-006 Cross-platform boundaries; web UI или собственный renderer не являются default.
 
 ### FR-010. Обновления и диагностика
 
@@ -565,5 +565,5 @@ Windows release готов только когда:
 - Distribution channel: [ADR-002-MACOS-DISTRIBUTION.md](./ADR-002-MACOS-DISTRIBUTION.md).
 - Network topology: [ADR-003-NETWORK-TOPOLOGY.md](./ADR-003-NETWORK-TOPOLOGY.md).
 - Engine integration: [ADR-004-ENGINE-INTEGRATION.md](./ADR-004-ENGINE-INTEGRATION.md).
-- Cross-platform boundaries: [ADR-006-CROSS-PLATFORM-BOUNDARIES.md](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md).
+- Cross-platform boundaries: [ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md).
 - Тестовые уровни и quality gates: [TESTING.md](./TESTING.md).

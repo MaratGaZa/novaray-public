@@ -213,7 +213,7 @@ Acceptance: все функции MVP доступны без CLI; UI automation
 1. Проверить MDM/per-app VPN constraints.
 2. Прототипировать TCP/UDP process attribution.
 3. Собрать failure/race measurements.
-4. Принять ADR-005.
+4. Принять отдельный ADR/decision для per-app routing scope.
 5. При положительном решении реализовать AppIdentity, flow attribution, policy enforcement и packet tests.
 6. При отрицательном решении убрать feature из MVP UI и явно документировать ограничение.
 
@@ -363,15 +363,17 @@ Acceptance: два новых протокола проходят end-to-end loc
 protocol имеет отдельные leak/MTU/DNS observations, WireGuard имеет утверждённую model/spec до кода,
 а UI/helper boundaries остаются protocol-agnostic и не требуют переписывания существующего VLESS path.
 
-## 6. Первые 12 исполнимых задач
+## 6. Execution task log
 
-Это рекомендуемая ближайшая очередь для первого macOS release. Windows product work не подменяет её:
+Этот раздел больше не является списком "первых 12 задач". Он ведётся как плоский append-only журнал
+одобренных execution tasks. Нумерация пунктов сохраняется сквозной, потому что session artifacts
+ссылаются на конкретные item N.
 
 1. Создать issue/ADR для distribution channel — issue
    development task #1, [ADR-002](./ADR-002-MACOS-DISTRIBUTION.md)
    зафиксирован со статусом `Proposed`.
 2. Зафиксировать platform scope и boundaries — issue
-   development task #5, [ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md)
+   development task #5, [ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md)
    зафиксирован со статусом `Proposed`.
 3. Создать Xcode SwiftUI + NetworkExtension spike вне production path — issue
    development task #7, спайк реализован в
@@ -385,7 +387,7 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
 6. Оформить пакет решений ADR-001—004 — issue development task #14:
    [ADR-001](./ADR-001-MACOS-UI.md), [ADR-002](./ADR-002-MACOS-DISTRIBUTION.md),
    [ADR-003](./ADR-003-NETWORK-TOPOLOGY.md), [ADR-004](./ADR-004-ENGINE-INTEGRATION.md) и
-   [ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md) оформлены со статусом `Proposed`. M0 (Decision
+   [ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md) оформлены со статусом `Proposed`. M0 (Decision
    Package) зафиксирован на уровне архитектурного бейзлайна Gate A (runtime-активация требует Gate B).
 7. Добавить JSON schemas и typed enums — issue development task #16:
    добавлены `schema/config.schema.json`, `schema/settings.schema.json`, типизированные перечисления
@@ -411,9 +413,9 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     добавлены опции запуска `ProxyServiceOptions` и метод `start_with_options` с предварительной проверкой свободных портов (`PortInUse`),
     реализован сквозной E2E integration test с полноценным протокольным SOCKS5 (RFC 1928 handshake + CONNECT + bidirectional relay)
 12. Ревизия архитектуры 2026-08-17 — issue development task #27, PR
-    change review #28: пересмотрены ADR-001—004 и ADR-006 (движок sing-box
+    change review #28: пересмотрены ADR-001—004 и ADR-006 Cross-platform boundaries (движок sing-box
     вместо Xray-core для per-app split tunneling по ADR-004, privileged helper + `utun` по ADR-003,
-    source-first distribution по ADR-002, scope macOS/Windows/Android по ADR-006, UI macOS —
+    source-first distribution по ADR-002, scope macOS/Windows/Android по ADR-006 Cross-platform boundaries, UI macOS —
     SwiftUI без второго стека по ADR-001), синхронизированы `SPEC_RU.md`, `SPEC_EN.md`, `ARCHITECTURE.md` и roadmap.
 13. [~] Реализовать CLI foreground-интерфейс `start`/`connect`/`status`/`validate` поверх `ProxyService` — issue
     development task #29, PR change review #31:
@@ -637,6 +639,13 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     persistent IPC implementation, socket/XPC transport, live authentication/peer validation, helper
     runtime startup, root execution, `utun`, route/DNS/firewall/system proxy mutation, packet flow,
     DNS-leak evidence, split tunneling and kill switch.
+49. [x] Docs plan/status refresh — issue #68: обновить устаревшие documentation claims после helper
+    install/runtime contract sequence. Acceptance preserves flat execution-task numbering, removes
+    stale "first 12 tasks" wording, detaches per-app routing from ADR-005, clarifies helper + `utun`
+    versus deferred NetworkExtension status without claiming real Gate I root evidence, disambiguates
+    bare ADR-006 references by title and records that the external capsule roadmap copy remains a
+    separate follow-up because it has pre-existing uncommitted user changes. Scope is docs-only and
+    excludes ADR file renumbering, historical session artifact edits, code changes and Rust behavior.
 
 ## 7. Зависимости
 
@@ -703,3 +712,7 @@ flowchart LR
 - платформу, OS version и architecture.
 
 Зелёный unit test без реального network evidence не закрывает задачи tunnel, split routing, DNS или recovery.
+
+Follow-up: внешняя capsule-копия `learning/05_roadmap_zero_to_hero.md` содержит несохранённые
+пользовательские изменения и не синхронизируется этой docs-only задачей. После сохранения этих
+изменений нужно отдельно сверить её с canonical roadmap внутри `project/`.

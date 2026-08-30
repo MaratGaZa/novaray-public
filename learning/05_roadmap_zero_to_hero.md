@@ -43,7 +43,7 @@ Android VpnService → Android UI → release
 - [x] Зафиксировать Apple Silicon как обязательную первую цель.
 - [x] Вынести Windows/Linux и дополнительные протоколы из первого MVP.
 - [x] Зафиксировать порядок: macOS первым, Windows 11 вторым, Android в отдельном проекте (issue #5).
-- [x] Описать proposed shared-core/platform boundaries в ADR-006.
+- [x] Описать proposed shared-core/platform boundaries в ADR-006 Cross-platform boundaries.
 - [x] Определить минимальный MVP: VLESS Reality, domain/IP split, recovery, native UI, signed `.app`.
 - [x] Добавить отдельный implementation plan и UI ADR.
 - [ ] Добавить владельца и дату следующего review для каждого архитектурного решения.
@@ -433,7 +433,7 @@ Android VpnService → Android UI → release
 
 ### 5.2. Gate: решение о scope
 
-- [ ] Если механизм надёжен — принять ADR-005 и перейти к реализации.
+- [ ] Если механизм надёжен — принять отдельный ADR/decision для per-app routing и перейти к реализации.
 - [ ] Если механизм ограничен MDM или ненадёжен — перенести per-app routing после MVP.
 - [ ] Обновить UI так, чтобы он не показывал неподдерживаемую возможность.
 
