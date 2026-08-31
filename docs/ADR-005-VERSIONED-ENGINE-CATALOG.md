@@ -2,7 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-08-20
+- Decision owner: MaratGaZa
 - Decision owner confirmation: explicit implementation approval after review of the sing-box 1.13 compatibility regressions
+- Next review: before adding catalog download/update automation, yanking policy changes, or uncatalogued engine selection
 
 ## Context
 

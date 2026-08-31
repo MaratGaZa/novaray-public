@@ -46,7 +46,7 @@ Android VpnService → Android UI → release
 - [x] Описать proposed shared-core/platform boundaries в ADR-006 Cross-platform boundaries.
 - [x] Определить минимальный MVP: VLESS Reality, domain/IP split, recovery, native UI, signed `.app`.
 - [x] Добавить отдельный implementation plan и UI ADR.
-- [ ] Добавить владельца и дату следующего review для каждого архитектурного решения.
+- [x] Добавить владельца и дату следующего review для каждого архитектурного решения.
 - [ ] Ввести requirements traceability: `FR/NFR → задача → тест → evidence`.
 
 ### 0.2. Gate: модель распространения

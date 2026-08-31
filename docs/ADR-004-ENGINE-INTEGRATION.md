@@ -3,7 +3,9 @@
 - Статус: Proposed
 - Дата: 2026-08-16
 - Ревизия: 2026-08-17 — движок пересмотрен в пользу sing-box после проверки поддержки per-app routing
+- Владелец решения: MaratGaZa
 - Решение требуется до: реализации раздельного туннелирования по приложениям (M3) и выбора production engine
+- Следующий review: перед production engine selection, Gate H data-plane work или добавлением нового protocol family
 
 ## Контекст
 

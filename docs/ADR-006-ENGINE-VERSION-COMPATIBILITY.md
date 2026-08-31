@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-21
+- Decision owner: MaratGaZa
+- Next review: before adding a new engine release/dialect pair, uncatalogued binary override, or runtime update channel
 
 ## Decision
 

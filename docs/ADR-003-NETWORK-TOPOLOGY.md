@@ -7,7 +7,9 @@
 - Ревизия: 2026-08-29 — threat model root-helper runtime зафиксирован как docs-only prerequisite перед Gate H
 - Ревизия: 2026-08-29 — runtime replay guard scope зафиксирован per authenticated session/connection
 - Ревизия: 2026-08-29 — runtime sequence contract ужесточён до exact next sequence
+- Владелец решения: MaratGaZa
 - Решение требуется до: реализации системного туннеля и раздельного туннелирования по приложениям (M3)
+- Следующий review: перед Gate H helper runtime implementation, при появлении Apple Developer Program или перед утверждением ADR-003
 
 ## Контекст
 

@@ -655,6 +655,11 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     authenticity consequences for source-first distribution and leaves existing completed status
     markers unchanged. Scope is docs-only and excludes code changes, actual source-first build
     evidence, Developer ID setup, notarization and ADR-002 status promotion.
+51. [x] ADR owner/review metadata — issue #72: добавить явного decision owner и next-review trigger
+    ко всем текущим ADR без изменения статусов, номеров или архитектурных решений. Acceptance proves
+    every `docs/ADR-*.md` file has owner/review metadata, preserves the duplicate ADR-006 numbering
+    debt for a separate task, marks only the corresponding roadmap documentation item complete and
+    excludes code changes, ADR promotion, ADR renumbering and historical session artifact edits.
 
 ## 7. Зависимости
 
