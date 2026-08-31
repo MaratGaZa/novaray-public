@@ -42,11 +42,12 @@ Service/network boundary after an architecture spike.
 
 ### 2.2. Meaning of “native desktop application”
 
-The macOS release must provide a `.app`, menu-bar behavior, accessibility, lifecycle integration,
-code signing, notarization, and an approved macOS network boundary. The Windows release must provide
-a native desktop shell, tray/lifecycle integration, accessibility, a signed installer/update path,
-and a separately privileged network service boundary. Exact Windows UI, WFP/Wintun/TUN, and
-packaging choices remain `Proposed` until their ADR/spikes.
+The macOS source-first release must provide a `.app`, menu-bar behavior, accessibility, lifecycle
+integration, and an approved macOS network boundary. Code signing/notarization belong to the
+deferred Developer ID path if a paid Apple Developer Program membership becomes available. The
+Windows release must provide a native desktop shell, tray/lifecycle integration, accessibility, a
+signed installer/update path, and a separately privileged network service boundary. Exact Windows
+UI, WFP/Wintun/TUN, and packaging choices remain `Proposed` until their ADR/spikes.
 
 ### 2.3. Platform order
 
@@ -200,7 +201,7 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 - [ ] TUN data plane through a privileged helper (`utun`).
 - [ ] DNS protection and kill switch.
 - [ ] GUI and macOS application bundle.
-- [ ] Signing, notarization, updater, and release pipeline.
+- [ ] Source-first release pipeline; Developer ID signing/notarization are deferred until a paid account exists.
 - [ ] Windows 11 UI, service/network adapter, and signed package.
 - [ ] Windows 11 system-test environment.
 
@@ -464,14 +465,17 @@ retired. Canonical schemas `schema/config.schema.json` and `schema/settings.sche
 
 ## 8. First working macOS release acceptance criteria
 
-1. A signed arm64 `.app` installs on a clean Mac.
+1. The source-first release proof in ADR-002 Gate S passes; SPEC does not define Gate S a second
+   time. Evidence separately shows a reproducible build with documented prerequisites and clean-Mac
+   `.app` launch/install/uninstall without Gatekeeper-bypass instructions.
 2. A valid VLESS Reality profile connects to a controlled test server.
 3. IPv4, IPv6, and DNS match the declared policy.
 4. Domain/IP split tunneling passes packet-level tests.
 5. Disconnect, engine crash, and forced termination leave no route or DNS residue.
 6. Kill-switch negative scenarios pass.
 7. The UI displays observed state rather than merely requested state.
-8. The release is signed and notarized with documented rollback.
+8. Rollback procedures are documented for the source-first path; Developer ID signing/notarization
+   remain a deferred release path if a paid account becomes available.
 
 Per-app routing may remain post-release if its spike does not prove safe consumer-grade behavior.
 

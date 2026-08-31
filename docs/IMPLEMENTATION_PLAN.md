@@ -227,14 +227,15 @@ Acceptance: либо есть доказанный per-app egress test, либо
 
 1. Threat-model review и закрытие high findings.
 2. SBOM, license и vulnerability audit.
-3. Cargo + Xcode release orchestration.
-4. Hardened Runtime и минимальные entitlements.
-5. Sign nested components, `.app` и installer image.
-6. Notarize и staple.
-7. Clean-machine install/upgrade/uninstall tests.
-8. Leak/fault/performance regression suite.
-9. User/recovery/privacy documentation.
-10. Staged rollout с rollback artifact.
+3. Cargo + Xcode source-build orchestration.
+4. ADR-002 Gate S source-first release proof: reproducible clean-clone build on Apple Silicon with
+   documented prerequisites, plus clean-Mac launch/install/uninstall verification.
+5. SBOM, pinned engine versions/checksums and sing-box legal/naming review.
+6. Leak/fault/performance regression suite.
+7. User/recovery/privacy documentation, including no Gatekeeper-bypass install path.
+8. Source-first rollback artifact: previous tag/source revision and rebuild/reinstall procedure.
+9. Developer ID signing, Hardened Runtime, notarization and staple only if paid Apple Developer
+   Program becomes available.
 
 Acceptance: все восемь критериев MVP из `SPEC_RU.md` подтверждены evidence bundle.
 
@@ -646,6 +647,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     bare ADR-006 references by title and records that the external capsule roadmap copy remains a
     separate follow-up because it has pre-existing uncommitted user changes. Scope is docs-only and
     excludes ADR file renumbering, historical session artifact edits, code changes and Rust behavior.
+50. [x] Source-first release docs alignment — issue #70: синхронизировать первый macOS release path
+    с ADR-002 Gate S после отказа от платного Apple Developer Program. Acceptance removes mandatory
+    Developer ID signing/notarization from first-release product requirements and release criteria,
+    references Gate S as the single source-first proof definition, separates clean-clone build from
+    clean-Mac launch/install verification, keeps rollback documentation required, records helper
+    authenticity consequences for source-first distribution and leaves existing completed status
+    markers unchanged. Scope is docs-only and excludes code changes, actual source-first build
+    evidence, Developer ID setup, notarization and ADR-002 status promotion.
 
 ## 7. Зависимости
 
