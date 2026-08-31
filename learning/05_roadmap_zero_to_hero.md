@@ -637,13 +637,25 @@ Android VpnService → Android UI → release
 - [ ] Добавить deterministic versioning.
 - [ ] Архивировать symbols для crash diagnosis.
 
-### 10.2. Signing и notarization
+### 10.2a. Source-first release proof
 
-- [ ] Hardened Runtime.
+- [ ] Пройти ADR-002 Gate S: воспроизводимая сборка из clean clone на Apple Silicon с
+  задокументированными prerequisites.
+- [ ] Проверить запуск получившегося `.app`, установку и полную деинсталляцию helper на clean Mac без
+  инструкций обхода Gatekeeper.
+- [ ] Зафиксировать версии и контрольные суммы engine artifacts.
+- [ ] Завершить legal review GPL-3.0-or-later и naming restriction sing-box для source-first модели.
+- [ ] Документировать rollback для source-first пути: возврат на предыдущий tag/source revision и
+  пересборка или переустановка предыдущей package-manager formula, если она будет выбрана отдельно.
+
+### 10.2b. Developer ID signing и notarization (deferred)
+
+- [ ] Активируется только при появлении платного Apple Developer Program.
 - [ ] Developer ID certificates в защищённом CI.
+- [ ] Hardened Runtime и минимальные entitlements.
 - [ ] Подписать nested code в правильном порядке.
 - [ ] Notarize и staple ticket.
-- [ ] Проверить `codesign`, `spctl` и установку на чистом Mac.
+- [ ] Проверить `codesign`, `spctl` и установку на clean Mac.
 
 ### 10.3. Release readiness
 
@@ -654,7 +666,8 @@ Android VpnService → Android UI → release
 - [ ] Rollback release.
 - [ ] Staged rollout и stop conditions.
 
-Критерий завершения фазы: подписанное и notarized приложение проходит MVP acceptance criteria из `SPEC_RU.md` на чистом Apple Silicon Mac.
+Критерий завершения фазы: source-first release проходит ADR-002 Gate S и MVP acceptance criteria из
+`SPEC_RU.md`; Developer ID signing/notarization не требуются до появления платного аккаунта.
 
 ---
 

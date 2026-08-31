@@ -20,6 +20,11 @@ Developer ID signing или notarization.
 
 Факты ниже проверены 2026-08-16 по первичной документации Apple.
 
+Ревизия 2026-08-31: текущие primary Apple pages по membership, Developer ID certificates и
+notarization подтверждают, что Apple Developer Program остаётся границей для distribution,
+advanced capabilities и Developer ID path; Developer ID signing + notarization остаются механизмом
+trust для Mac software outside Mac App Store. TN3134 не передатируется этой ревизией.
+
 1. Бесплатный Apple Account даёт Xcode, документацию и локальное тестирование. Distribution,
    advanced capabilities, Developer ID и notarization входят в Apple Developer Program.
 2. `NETunnelProvider`, `NETunnelProviderManager` и `NEPacketTunnelProvider` требуют entitlement
@@ -47,6 +52,10 @@ Developer ID signing или notarization.
   tunnel на macOS требует system-extension topology и всё равно требует платного membership.
 - App Store снимает отдельную notarization submission, но добавляет обязательный sandbox и App
   Review; совместимость выбранного engine должна доказываться отдельно.
+- Без Developer ID у локально собранного helper/app нет проверяемого Team ID. Поэтому install-time
+  подлинность helper для source-first пути не может опираться на signature/Team ID check и должна
+  держаться на `expected_sha256` из install-плана, opened-handle hashing/copy и documented
+  source-build provenance. Signature/Team ID verification остаётся отложенной до Developer ID path.
 
 ## Предлагаемое решение
 
@@ -57,6 +66,10 @@ Developer ID signing или notarization.
 Выбрать для первого релиза **распространение исходным кодом (source-first)**: пользователь собирает
 приложение локально либо устанавливает его через формулу пакетного менеджера, выполняющую сборку из
 исходников.
+
+Source-first путь разрешает личное локальное использование собранного GUI/helper без платного Apple
+Developer Program. Он не является раздачей готового подписанного binary artifact другим
+пользователям. Документация не должна требовать обход Gatekeeper как штатный install path.
 
 Основание: локально скомпилированный бинарник не помечается атрибутом карантина, поэтому Gatekeeper
 не требует нотаризации. Раздача готового `.app`/`.dmg` без Developer ID и нотаризации потребовала бы

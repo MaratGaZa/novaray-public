@@ -32,7 +32,12 @@ Windows 11 не входит в первый macOS production milestone, но я
 
 ### 2.2. Что означает «нативное desktop-приложение»
 
-macOS release должен содержать `.app`, menu bar behavior, корректный lifecycle, accessibility, code signing, notarization и одобренную macOS network boundary. Windows release должен содержать нативный desktop shell, tray/lifecycle integration, accessibility, подписанный installer/update path и отдельно привилегированную network service boundary. Точные Windows UI, WFP/Wintun/TUN и packaging choices остаются `Proposed` до ADR/spikes.
+macOS source-first release должен содержать `.app`, menu bar behavior, корректный lifecycle,
+accessibility и одобренную macOS network boundary. Code signing/notarization относятся к
+отложенному Developer ID path при появлении платного Apple Developer Program. Windows release
+должен содержать нативный desktop shell, tray/lifecycle integration, accessibility, подписанный
+installer/update path и отдельно привилегированную network service boundary. Точные Windows UI,
+WFP/Wintun/TUN и packaging choices остаются `Proposed` до ADR/spikes.
 
 ### 2.3. Порядок платформ
 
@@ -183,7 +188,7 @@ Direct Developer ID distribution сохраняется как целевая м
 - [ ] Реальный DNS controller и leak prevention.
 - [ ] Kill switch.
 - [ ] GUI и macOS application bundle.
-- [ ] Signing, notarization, updater и release pipeline.
+- [ ] Source-first release pipeline; Developer ID signing/notarization отложены до платного аккаунта.
 - [ ] Windows 11 UI, service/network adapter и signed package.
 - [ ] Windows 11 system-test environment.
 
@@ -522,14 +527,17 @@ Windows Service/Network Boundary ◄──────────────�
 
 Первый macOS release считается готовым только когда одновременно выполнено следующее:
 
-1. Подписанное arm64 `.app` устанавливается на чистый Mac.
+1. Source-first release proof из ADR-002 Gate S пройден; SPEC не задаёт второе определение Gate S.
+   Evidence отдельно показывает воспроизводимую сборку с задокументированными prerequisites и
+   clean-Mac запуск `.app`/install/uninstall без инструкций обхода Gatekeeper.
 2. Валидный VLESS Reality профиль подключается к тестовому серверу.
 3. IPv4/IPv6 и DNS поведение соответствует заявленной policy.
 4. Domain/IP split tunneling подтверждён packet-level тестом.
 5. Disconnect, engine crash и принудительное завершение не оставляют маршруты/DNS.
 6. Kill switch проходит негативные сценарии.
 7. UI корректно отображает фактическое состояние, а не только отправленную команду.
-8. Release подписан и notarized; rollback процедуры документированы.
+8. Rollback процедуры документированы для source-first пути; Developer ID signing/notarization
+   остаются отложенным release path при появлении платного аккаунта.
 
 Per-app routing может быть вынесен из MVP, если spike не докажет безопасную consumer-grade реализацию.
 

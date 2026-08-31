@@ -119,11 +119,12 @@ NetworkExtension runtime и process residue не проверены. Сравн�
 ## 7. Сборка и поставка
 
 - Rust target: `aarch64-apple-darwin`;
-- Xcode project/workspace для SwiftUI и NetworkExtension;
-- reproducible release profile;
-- Developer ID signing и notarization для direct distribution;
-- Hardened Runtime и минимальные entitlements;
-- signed updater только после threat model;
+- Xcode project/workspace для SwiftUI и helper/network boundary;
+- reproducible source-build profile для ADR-002 Gate S;
+- package-manager formula только как кандидат source-build wrapper, не выбранный канал;
+- Developer ID signing, Hardened Runtime, минимальные entitlements и notarization только как
+  отложенный path при появлении платного Apple Developer Program;
+- signed updater только после threat model и отдельного distribution decision;
 - SBOM, dependency audit и artifact checksums;
 - CI на macOS ARM runner или контролируемом Apple Silicon build host.
 

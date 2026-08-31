@@ -194,9 +194,9 @@ cargo test --all-targets
 
 - Swift/macOS и Windows native unit/UI tests;
 - keyboard navigation и VoiceOver checklist;
-- clean-machine install;
-- signed `.app`/`.dmg` и Windows installer/binaries verification;
-- macOS notarization/Gatekeeper и Windows package trust/installer verification;
+- ADR-002 Gate S source-first proof: reproducible clean-clone build with documented prerequisites;
+- clean-machine `.app` launch, helper install/uninstall and no Gatekeeper-bypass instructions;
+- Windows installer/binaries signing and package trust verification;
 - upgrade/downgrade/rollback;
 - uninstall cleanup;
 - redacted diagnostic export.
