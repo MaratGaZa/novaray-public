@@ -7,10 +7,11 @@
 
 ## Context
 
-ADR-005 introduced the versioned engine catalog. ADR-006 Engine version compatibility bound configuration dialects to exact
-catalogued engine releases and kept `--expected-sha256` as a byte override, not a version selector.
-NovaRay now needs a CLI selector for catalogued versions without allowing uncatalogued binaries to
-opt out of compatibility checks.
+ADR-005 introduced the versioned engine catalog.
+[ADR-008 Engine version compatibility](./ADR-008-ENGINE-VERSION-COMPATIBILITY.md) bound configuration
+dialects to exact catalogued engine releases and kept `--expected-sha256` as a byte override, not a
+version selector. NovaRay now needs a CLI selector for catalogued versions without allowing
+uncatalogued binaries to opt out of compatibility checks.
 
 ## Decision
 
@@ -31,8 +32,8 @@ It does not prove the binary's version and does not enable truly uncatalogued ve
 
 - Trust the engine's own `version` output: rejected because the binary is not trusted until after
   checksum verification.
-- Let `--expected-sha256` imply an uncatalogued version: rejected because it would bypass ADR-006 Engine version compatibility's
-  compatibility contract.
+- Let `--expected-sha256` imply an uncatalogued version: rejected because it would bypass
+  [ADR-008 Engine version compatibility](./ADR-008-ENGINE-VERSION-COMPATIBILITY.md).
 - Add an unsafe uncatalogued override now: deferred; it needs a separate explicit security contract.
 
 ## Consequences
@@ -45,5 +46,5 @@ preflight evidence. Future update/download work remains outside this ADR.
 
 The first selector implementation exposes only the already catalogued Xray `v26.3.27`/`XrayV26` and
 sing-box `v1.13.18`/`SingBoxV1_13` pairs. Both had real macOS arm64 generated-config preflight
-evidence in ADR-006 Engine version compatibility. Revisit this ADR before adding uncatalogued/unsafe binary selection or runtime
-download/update.
+evidence in [ADR-008 Engine version compatibility](./ADR-008-ENGINE-VERSION-COMPATIBILITY.md). Revisit
+this ADR before adding uncatalogued/unsafe binary selection or runtime download/update.

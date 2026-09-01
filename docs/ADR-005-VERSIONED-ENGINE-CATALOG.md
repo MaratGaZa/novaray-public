@@ -36,8 +36,8 @@ catalog plus evidence. It never runs at application runtime or in ordinary CI.
   artifact identity stays coupled to configuration strategy.
 - Runtime latest-release lookup: rejected because remote metadata cannot replace reviewed binary
   extraction, reproducibility, or fail-closed trust.
-- Add `--engine-version` before compatibility is modeled: rejected until ADR-006 Engine version
-  compatibility is in place.
+- Add `--engine-version` before compatibility is modeled: rejected until
+  [ADR-008 Engine version compatibility](./ADR-008-ENGINE-VERSION-COMPATIBILITY.md) is in place.
 
 ## Consequences and validation
 
