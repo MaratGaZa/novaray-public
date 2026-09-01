@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-22
+- Decision owner: MaratGaZa
+- Next review: before adding uncatalogued/unsafe binary selection, runtime download/update, or user-facing deprecated-version override UX
 
 ## Context
 
