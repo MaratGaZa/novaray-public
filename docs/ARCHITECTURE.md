@@ -149,6 +149,14 @@ freshness proof; этот guard не запускает IPC runtime и не вы
 две session имеют независимые sequence counters, а envelope прежней session отвергается после нового
 handshake. Process-wide shared sequence counter не является целевым helper runtime contract.
 
+Proposed runtime admission описан в
+[ADR-009](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md). Для source-first path helper сначала
+проверяет kernel-derived Unix peer UID/GID, затем отдельный Authorization Services right и только
+после этого version/capability handshake создаёт server-generated session. Socket mode/UID защищает
+от других аккаунтов, но не считается authentication процесса того же UID; external authorization
+form является redacted connection-local bearer secret. Live adapter и validation spike ещё
+отсутствуют, поэтому этот порядок не является evidence persistent IPC.
+
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.
 

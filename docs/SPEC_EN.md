@@ -184,6 +184,11 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   rollback/fail-closed controls, and redaction. This does not implement persistent IPC, start helper
   runtime, create `utun`, mutate routes/DNS/firewall/system proxy, or prove packet flow, DNS-leak
   behavior, split tunneling, or kill switch behavior.
+- [x] macOS helper runtime authentication boundary proposal: ADR-009 describes docs-only layered
+  admission through kernel-derived Unix peer credentials and a separate Authorization Services right.
+  UID/socket permissions are not sufficient same-UID authentication, and a runtime session cannot be
+  created before the helper-side authorization check. ADR-009 remains `Proposed`; live IPC, the
+  authorization adapter, root helper runtime, and network mutation are not implemented.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
@@ -431,6 +436,14 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   other by sequence value, and an old-session envelope must be rejected even when its sequence is
   greater than the new session's local counter. Real peer validation remains a separate Gate H
   contract before live IPC.
+- Source-first macOS helper runtime admission must follow
+  [ADR-009](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md): obtain peer UID/GID only from the
+  connected Unix socket, reject mismatch before parsing privileged commands, and require a separate
+  bounded `AuthorizationExternalForm` for a fixed runtime right. Socket permissions/UID, correlation
+  ID, session ID, and sequence are not authentication factors. The helper creates a session only
+  after peer/right/version/capability checks, rechecks the right immediately before mutation without
+  interactive UI, and never logs or persists the external form. A live adapter and validation spike
+  remain mandatory before persistent IPC.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,

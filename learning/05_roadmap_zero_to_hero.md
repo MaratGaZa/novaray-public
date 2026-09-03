@@ -302,6 +302,10 @@ Android VpnService → Android UI → release
   replay protection, serialized recovery gate, rollback/fail-closed controls, redaction и revisit
   conditions без persistent IPC, helper runtime startup, `utun`, routes/DNS/firewall или packet-flow
   evidence (issue #60).
+- [x] Зафиксировать Proposed macOS helper runtime authentication boundary: kernel-derived Unix peer
+  credentials как первый фильтр, отдельный Authorization Services runtime right, helper-side checks
+  до session/mutation, server-generated session ID и redacted connection-local bearer form; без live
+  IPC, authorization adapter, root runtime или network mutation (issue #78, ADR-009).
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.

@@ -169,6 +169,11 @@ Direct Developer ID distribution сохраняется как целевая м
   rollback/fail-closed controls и redaction. Это не реализует persistent IPC, не запускает helper
   runtime, не создаёт `utun`, не мутирует routes/DNS/firewall/system proxy и не доказывает packet
   flow, DNS-leak, split tunneling или kill switch.
+- [x] macOS helper runtime authentication boundary proposal: ADR-009 описывает docs-only layered
+  admission через kernel-derived Unix peer credentials и отдельный Authorization Services right.
+  UID/socket permissions не считаются достаточной same-UID authentication, а runtime session нельзя
+  создавать до helper-side authorization check. ADR-009 остаётся `Proposed`; live IPC, authorization
+  adapter, root helper runtime и network mutation не реализованы.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до
@@ -456,6 +461,14 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   друг друга sequence values, и envelope старой session должен отвергаться даже если его sequence
   больше текущего локального счётчика новой session. Реальная peer validation остаётся отдельным
   Gate H contract перед live IPC.
+- Source-first macOS helper runtime admission должен следовать
+  [ADR-009](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md): получать peer UID/GID только из
+  connected Unix socket, отклонять mismatch до parsing privileged commands и требовать отдельный
+  bounded `AuthorizationExternalForm` для fixed runtime right. Socket permissions/UID, correlation
+  ID, session ID и sequence не являются authentication factors. Helper создаёт session только после
+  peer/right/version/capability checks, повторно проверяет right непосредственно перед mutation без
+  interactive UI и никогда не логирует/сохраняет external form. Live adapter и validation spike
+  остаются обязательными до persistent IPC.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,
