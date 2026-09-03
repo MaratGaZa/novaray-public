@@ -83,6 +83,7 @@ development task #3. Windows hosted x64 portability job впервые
 - [Текущая и целевая архитектура](./docs/ARCHITECTURE.md)
 - [Фактический и планируемый стек](./docs/TECH_STACK.md)
 - [Стратегия тестирования](./docs/TESTING.md)
+- [Трассировка требований](./docs/TRACEABILITY.md)
 - [План реализации](./docs/IMPLEMENTATION_PLAN.md)
 - [ADR-001: выбор macOS UI](./docs/ADR-001-MACOS-UI.md)
 - [ADR-002: распространение macOS](./docs/ADR-002-MACOS-DISTRIBUTION.md)

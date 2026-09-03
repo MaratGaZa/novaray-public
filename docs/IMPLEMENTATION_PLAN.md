@@ -667,6 +667,13 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     `ADR-006`, preserves decision content/status/owner/review metadata, and passes Markdown link
     validation. Scope is docs-only and excludes architecture decision changes and historical session
     artifact rewrites.
+53. [x] Requirements traceability baseline — issue #76: связать все `FR-001`—`FR-011` и
+    `NFR-001`—`NFR-005` из синхронных SPEC с execution work, representative tests/checks, текущим
+    evidence и честно указанными gaps в канонической ненормативной матрице. Acceptance proves stable
+    RU/EN identifier parity, exactly one complete row per requirement, validator rejection of
+    missing/duplicate/unknown/incomplete mappings and execution of that validator in documentation
+    CI. Scope excludes requirement semantic/status changes, architecture decisions, Rust behavior,
+    historical session artifacts and claims that the matrix itself proves runtime implementation.
 
 ## 7. Зависимости
 

@@ -567,6 +567,9 @@ Windows release готов только когда:
 
 ## 10. Трассировка реализации
 
+- Каноническая матрица `FR/NFR → задача → тест/проверка → evidence/gap`:
+  [TRACEABILITY.md](./TRACEABILITY.md). Матрица ссылается на требования этой SPEC, не переопределяет
+  их и сама по себе не является evidence реализации.
 - Полный список задач: [roadmap](../learning/05_roadmap_zero_to_hero.md).
 - Порядок исполнения: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
 - UI decision: [ADR-001-MACOS-UI.md](./ADR-001-MACOS-UI.md).
