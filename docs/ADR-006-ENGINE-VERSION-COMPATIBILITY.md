@@ -1,31 +1,12 @@
-# ADR-006: Engine release and configuration-dialect compatibility
+# Compatibility pointer: Engine version compatibility moved to ADR-008
 
-- Status: Accepted
-- Date: 2026-08-21
-- Decision owner: MaratGaZa
-- Next review: before adding a new engine release/dialect pair, uncatalogued binary override, or runtime update channel
+- Pointer owner: MaratGaZa
+- Next review: retain while external or historical references can use this path
 
-## Decision
+This path previously contained the Engine release and configuration-dialect compatibility decision
+under a duplicate `ADR-006` identifier. The canonical decision is now
+[ADR-008: Engine release and configuration-dialect compatibility](./ADR-008-ENGINE-VERSION-COMPATIBILITY.md).
 
-`EngineConfigStrategy` owns a typed configuration dialect, while the catalog owns artifact versions.
-Each catalog release records the exact configuration dialect proven for that engine/version pair.
-Startup resolves the engine's single `recommended` catalog version, validates the strategy dialect
-against that catalog release, and only then chooses the checksum source or spawns a process.
-
-`--expected-sha256` overrides the expected binary bytes only. It does not select an engine version
-and does not bypass the configuration-dialect compatibility check. This keeps unsupported OS/arch
-targets usable with a trusted checksum while still binding them to the current recommended catalog
-version.
-
-## Consequences
-
-An incompatible release fails closed with a typed error. Catalog validation rejects unknown dialect
-strings and rejects engine/version rows that disagree on dialect across targets. ADR-007 exposes
-only proven `recommended`/`supported` pairs, warns for `deprecated`, and rejects `yanked`. Runtime
-update remains out of scope. Real preflight evidence is required when adding a pair.
-
-## Evidence and revisit
-
-On 2026-08-21 the pinned macOS arm64 Xray `v26.3.27`/`XrayV26` and sing-box
-`v1.13.18`/`SingBoxV1_13` pairs passed generated-config preflight. Revisit this ADR before adding a
-new dialect or truly uncatalogued/unsafe binary overrides.
+This file is not an ADR and has no independent decision status. It remains only so external and
+historical links keep resolving. `ADR-006` refers exclusively to
+[Cross-platform boundaries](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md).
