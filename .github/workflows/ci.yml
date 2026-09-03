@@ -106,7 +106,7 @@ jobs:
                 macos=true ;;
               spikes/macos-engine-topology-spike/*)
                 docs=true ;;
-              scripts/check_markdown_links.py)
+              scripts/check_markdown_links.py|scripts/check_requirements_traceability.py)
                 docs=true ;;
               *.md)
                 docs=true ;;
@@ -289,6 +289,9 @@ jobs:
 
       - name: Check local Markdown links
         run: python3 scripts/check_markdown_links.py .
+
+      - name: Validate requirements traceability
+        run: python3 scripts/check_requirements_traceability.py
 
       - name: Validate macOS engine topology evidence
         run: python3 spikes/macos-engine-topology-spike/scripts/validate_manifest.py

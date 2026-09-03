@@ -452,11 +452,29 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for current and target component bounda
 
 ## 6. Non-functional requirements
 
-- **Security:** deny-by-default privileged APIs, minimal entitlements/service rights, no shell interpolation, artifact verification, no secret logging, and a pre-beta threat model.
-- **Reliability:** compensating actions for every network mutation, serialized lifecycle transitions, and automated residue checks after failure.
-- **Performance:** responsive native UI, no continuous high-frequency idle rendering, measured throughput/latency, and budgets after the first end-to-end prototype.
-- **Compatibility:** macOS 14+ and `aarch64-apple-darwin` first; Windows 11 x64 and `x86_64-pc-windows-msvc` second. Intel universal and Windows ARM64 are separate decisions; Android is not a target of this repository.
-- **Observability:** structured state transitions, correlation IDs, redacted diagnostics, and actionable platform errors.
+### NFR-001 — Security
+
+Deny-by-default privileged APIs, minimal entitlements/service rights, no shell interpolation,
+artifact verification, no secret logging, and a pre-beta threat model.
+
+### NFR-002 — Reliability
+
+Compensating actions for every network mutation, serialized lifecycle transitions, and automated
+residue checks after failure.
+
+### NFR-003 — Performance
+
+Responsive native UI, no continuous high-frequency idle rendering, measured throughput/latency, and
+budgets after the first end-to-end prototype.
+
+### NFR-004 — Compatibility
+
+macOS 14+ and `aarch64-apple-darwin` first; Windows 11 x64 and `x86_64-pc-windows-msvc` second. Intel
+universal and Windows ARM64 are separate decisions; Android is not a target of this repository.
+
+### NFR-005 — Observability
+
+Structured state transitions, correlation IDs, redacted diagnostics, and actionable platform errors.
 
 ## 7. Configuration contract
 
@@ -503,6 +521,9 @@ Per-app routing may remain post-release if its spike does not prove safe consume
 
 ## 10. Traceability
 
+- Canonical `FR/NFR → task → test/check → evidence/gap` matrix:
+  [TRACEABILITY.md](./TRACEABILITY.md). The matrix references this SPEC, does not redefine its
+  requirements, and is not implementation evidence by itself.
 - Work inventory: [roadmap](../learning/05_roadmap_zero_to_hero.md).
 - Execution order: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
 - macOS UI decision: [ADR-001-MACOS-UI.md](./ADR-001-MACOS-UI.md).

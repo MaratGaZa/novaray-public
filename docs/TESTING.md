@@ -343,6 +343,10 @@ External public services не являются единственным oracle: 
 - известные gaps;
 - ссылку на связанное требование и roadmap item.
 
+Каноническая связь `FR/NFR → задача → тест/проверка → evidence/gap` ведётся в
+[`TRACEABILITY.md`](./TRACEABILITY.md). Строка матрицы является индексом, а не доказательством:
+текущий status и gap должны обновляться вместе с нормативным требованием или новым evidence.
+
 Зелёные тесты чистой логики нельзя использовать как утверждение, что VPN, TUN, DNS protection, split tunneling или crash recovery уже работают.
 
 ## 12. CI baseline
@@ -355,8 +359,9 @@ Workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) запуск�
 - Windows hosted x64: strict Clippy и Rust tests с `--locked`; portability gate, не Windows 11 VPN evidence;
 - macOS arm64: отдельный Rust C ABI ↔ Swift roundtrip spike с warnings-as-errors;
 - Linux documentation job: локальные Markdown-ссылки через
-  [`scripts/check_markdown_links.py`](../scripts/check_markdown_links.py) и offline validation
-  macOS engine topology evidence manifest.
+  [`scripts/check_markdown_links.py`](../scripts/check_markdown_links.py), полнота FR/NFR mapping через
+  [`scripts/check_requirements_traceability.py`](../scripts/check_requirements_traceability.py) и
+  offline validation macOS engine topology evidence manifest.
 
 Workflow использует read-only `GITHUB_TOKEN`, pinned official checkout action, отмену устаревших
 runs и timeouts. Первый Linux/macOS arm64/documentation запуск успешно завершён:

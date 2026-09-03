@@ -47,7 +47,7 @@ Android VpnService → Android UI → release
 - [x] Определить минимальный MVP: VLESS Reality, domain/IP split, recovery, native UI, signed `.app`.
 - [x] Добавить отдельный implementation plan и UI ADR.
 - [x] Добавить владельца и дату следующего review для каждого архитектурного решения.
-- [ ] Ввести requirements traceability: `FR/NFR → задача → тест → evidence`.
+- [x] Ввести requirements traceability: `FR/NFR → задача → тест → evidence` (issue #76).
 
 ### 0.2. Gate: модель распространения
 
