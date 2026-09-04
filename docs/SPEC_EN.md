@@ -189,6 +189,14 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   UID/socket permissions are not sufficient same-UID authentication, and a runtime session cannot be
   created before the helper-side authorization check. ADR-009 remains `Proposed`; live IPC, the
   authorization adapter, root helper runtime, and network mutation are not implemented.
+- [x] macOS helper runtime admission contract: a pure Rust executor accepts only an exact-size
+  redacted authorization form and uses an injected adapter to enforce peer UID → runtime right →
+  handshake → helper-generated session ordering. The authenticated session owns the
+  connection/form/replay scope and rechecks the right before mutating-command sequence validation, so
+  denial does not consume a sequence number. Direct public runtime-session creation with a
+  client-selected ID is closed. This is recording-adapter evidence without a live socket, kernel
+  credentials, Security framework, authorization database, root runtime, or network mutation;
+  ADR-009 remains `Proposed`.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a

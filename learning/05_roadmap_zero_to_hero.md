@@ -306,6 +306,10 @@ Android VpnService → Android UI → release
   credentials как первый фильтр, отдельный Authorization Services runtime right, helper-side checks
   до session/mutation, server-generated session ID и redacted connection-local bearer form; без live
   IPC, authorization adapter, root runtime или network mutation (issue #78, ADR-009).
+- [x] Реализовать pure Rust helper runtime admission contract: exact-size redacted authorization
+  form, injected peer/right/session adapter, порядок peer → authorization → handshake → helper-
+  generated session, connection-local ownership и rights recheck до sequence consumption; без live
+  socket, Security framework, authorization database, root runtime или network mutation (issue #80).
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.

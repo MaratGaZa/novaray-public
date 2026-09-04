@@ -6,6 +6,8 @@
 - GitHub issue: #78
 - Следующий review: перед реализацией live Gate H IPC, при переходе к App Sandbox или при появлении
   Developer ID/стабильного Team ID
+- Ревизия: 2026-09-04 — issue #80 добавил pure Rust admission executor и recording-adapter
+  evidence; live macOS adapter и validation spike остаются открыты
 
 ## Контекст
 
@@ -127,6 +129,10 @@ authentication factors. Они остаются diagnostics, freshness и defens
   privileged command без действующего right выполнить не должен.
 
 ## Validation spike до принятия
+
+Pure Rust executor из issue #80 фиксирует порядок peer → authorization → handshake →
+helper-generated session, connection-local владение authorization form и повторную проверку права до
+потребления sequence mutating-командой. Это source-level evidence, а не выполнение live spike ниже.
 
 1. На реальном Apple Silicon Mac доказать, что helper adapter получает UID/GID connected client через
    kernel API и отклоняет другой expected UID независимо от полей payload.
