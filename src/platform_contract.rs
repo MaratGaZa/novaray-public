@@ -132,7 +132,7 @@ impl fmt::Debug for HelperRuntimeCommandEnvelope {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct HelperRuntimeReplayGuard {
+pub(crate) struct HelperRuntimeReplayGuard {
     session: Option<HelperRuntimeSession>,
 }
 
@@ -150,7 +150,7 @@ impl fmt::Debug for HelperRuntimeReplayGuard {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct HelperRuntimeConnectionSession {
+pub(crate) struct HelperRuntimeConnectionSession {
     helper: HelperHello,
     replay_guard: HelperRuntimeReplayGuard,
 }
@@ -167,7 +167,7 @@ impl fmt::Debug for HelperRuntimeConnectionSession {
 }
 
 impl HelperRuntimeConnectionSession {
-    pub fn new(
+    pub(crate) fn new(
         helper: HelperHello,
         session_id: impl Into<String>,
     ) -> Result<Self, PlatformContractError> {
@@ -179,17 +179,23 @@ impl HelperRuntimeConnectionSession {
         })
     }
 
-    pub fn accept_command(
+    pub(crate) fn accept_command(
         &mut self,
         envelope: &HelperRuntimeCommandEnvelope,
     ) -> Result<(), PlatformContractError> {
         self.replay_guard.accept_command(envelope, &self.helper)
     }
 
-    pub fn last_sequence(&self) -> u64 {
+    pub(crate) fn last_sequence(&self) -> u64 {
         self.replay_guard
             .current_session_last_sequence()
             .unwrap_or(0)
+    }
+
+    pub(crate) fn session_id(&self) -> &str {
+        self.replay_guard
+            .current_session_id()
+            .expect("connection session always owns an active replay session")
     }
 }
 
@@ -200,11 +206,11 @@ impl Default for HelperRuntimeReplayGuard {
 }
 
 impl HelperRuntimeReplayGuard {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { session: None }
     }
 
-    pub fn begin_session(
+    pub(crate) fn begin_session(
         &mut self,
         session_id: impl Into<String>,
     ) -> Result<(), PlatformContractError> {
@@ -212,11 +218,17 @@ impl HelperRuntimeReplayGuard {
         Ok(())
     }
 
-    pub fn current_session_last_sequence(&self) -> Option<u64> {
+    pub(crate) fn current_session_last_sequence(&self) -> Option<u64> {
         self.session.as_ref().map(|session| session.last_sequence)
     }
 
-    pub fn accept_command(
+    fn current_session_id(&self) -> Option<&str> {
+        self.session
+            .as_ref()
+            .map(|session| session.session_id.as_str())
+    }
+
+    pub(crate) fn accept_command(
         &mut self,
         envelope: &HelperRuntimeCommandEnvelope,
         helper: &HelperHello,
