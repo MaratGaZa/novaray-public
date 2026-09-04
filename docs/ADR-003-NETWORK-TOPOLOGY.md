@@ -7,6 +7,7 @@
 - Ревизия: 2026-08-29 — threat model root-helper runtime зафиксирован как docs-only prerequisite перед Gate H
 - Ревизия: 2026-08-29 — runtime replay guard scope зафиксирован per authenticated session/connection
 - Ревизия: 2026-08-29 — runtime sequence contract ужесточён до exact next sequence
+- Ревизия: 2026-09-04 — source-first runtime authentication boundary вынесен в Proposed ADR-009
 - Владелец решения: MaratGaZa
 - Решение требуется до: реализации системного туннеля и раздельного туннелирования по приложениям (M3)
 - Следующий review: перед Gate H helper runtime implementation, при появлении Apple Developer Program или перед утверждением ADR-003
@@ -55,6 +56,8 @@ NovaRay реализует системный VPN/туннель на macOS с �
 3. **Связь между приложением и демоном (IPC):**
    - Unix domain socket с проверкой прав доступа; сообщения строго типизированы и ограничены по размеру.
    - Контракт версионируется, handshake выполняется до любой сетевой мутации; несовместимость версий приводит к безопасному отказу до начала connect-транзакции.
+   - До live IPC требуется layered admission из kernel-derived peer credentials и отдельного
+     Authorization Services right по [ADR-009](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md).
 
 4. **Защита от сетевых сбоев (Failure Safety):**
    - Падение демона обязано приводить к восстановлению исходной сетевой конфигурации, а не к «зависшим» маршрутам.
@@ -113,7 +116,10 @@ split tunneling или kill switch реализованы.
   sequence counter для нескольких клиентов запрещён: независимые session не должны конкурировать за
   sequence, а envelope прошлой session не должен становиться валидным после нового handshake.
 - Authorization decision для установки не переносится на runtime commands: runtime обязан иметь
-  отдельную authentication/peer-validation модель для локального клиента.
+  отдельную authentication/peer-validation модель для локального клиента. Proposed source-first
+  модель зафиксирована в [ADR-009](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md): UID/socket
+  permissions являются только первым фильтром, а session создаётся лишь после helper-side проверки
+  отдельного Authorization Services right.
 - Любая network mutation начинается только после serialized lifecycle/start gate и pending recovery
   check; параллельные conflicting commands отклоняются.
 - Route/DNS/firewall/system proxy changes требуют snapshot, explicit rollback metadata,
@@ -145,6 +151,8 @@ split tunneling или kill switch реализованы.
   - Успешный Gate I разрешает переход к helper runtime work, но не переводит ADR-003 из `Proposed` в `Accepted`.
 - **Gate H (Helper Runtime — требуется для утверждения этого ADR):**
   - Gate H начинается только после Gate I или эквивалентного documented install/deinstall evidence.
+  - До live commands должен пройти validation spike ADR-009: kernel peer credentials, отдельный
+    runtime authorization right и fail-closed session admission без доверия к payload identity.
   - Демон создаёт `utun`, поднимает туннель и корректно его снимает.
   - Доказан откат маршрутов, DNS и firewall при штатной остановке, `SIGKILL` демона и перезагрузке.
   - Подтверждено отсутствие DNS-утечек и отсутствие остаточных процессов и правил.

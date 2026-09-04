@@ -674,6 +674,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     missing/duplicate/unknown/incomplete mappings and execution of that validator in documentation
     CI. Scope excludes requirement semantic/status changes, architecture decisions, Rust behavior,
     historical session artifacts and claims that the matrix itself proves runtime implementation.
+54. [x] macOS helper runtime authentication boundary — issue #78: зафиксировать Proposed ADR-009
+    для source-first Gate H admission. Acceptance separates kernel-derived Unix peer credentials from
+    same-UID process authentication, requires a bounded connection-local Authorization Services
+    external form and helper-side named-right checks before session creation and immediately before
+    privileged mutation, makes the helper the only session-ID issuer, treats authorization bytes as
+    redacted bearer secret and defines live macOS validation/negative cases. Scope is docs-only and
+    excludes live IPC/socket, authorization adapter, helper runtime/root execution, `/Library`,
+    `launchctl`, `utun`, route/DNS/firewall/system-proxy mutation, packet flow and ADR promotion.
 
 ## 7. Зависимости
 
