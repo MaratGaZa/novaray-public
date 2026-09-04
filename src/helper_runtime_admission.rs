@@ -249,6 +249,7 @@ pub enum HelperRuntimeAdmissionError {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::collections::VecDeque;
     use std::rc::Rc;
 
     use super::*;
@@ -268,7 +269,7 @@ mod tests {
     struct RecordingAdapter {
         steps: Rc<RefCell<Vec<RecordedStep>>>,
         peer: Result<HelperRuntimePeerCredentials, HelperRuntimeAdmissionAdapterError>,
-        authorization_results: Vec<Result<(), HelperRuntimeAdmissionAdapterError>>,
+        authorization_results: VecDeque<Result<(), HelperRuntimeAdmissionAdapterError>>,
         session_id: Result<String, HelperRuntimeAdmissionAdapterError>,
     }
 
@@ -281,7 +282,7 @@ mod tests {
                     effective_uid: expected_uid,
                     effective_gid: 20,
                 }),
-                authorization_results: vec![Ok(()), Ok(())],
+                authorization_results: VecDeque::from([Ok(()), Ok(())]),
                 session_id: Ok("helper-session-1".to_string()),
             };
             (adapter, steps)
@@ -305,10 +306,7 @@ mod tests {
             _authorization: &HelperRuntimeAuthorizationExternalForm,
         ) -> Result<(), HelperRuntimeAdmissionAdapterError> {
             self.steps.borrow_mut().push(RecordedStep::RuntimeRight);
-            if self.authorization_results.is_empty() {
-                return Ok(());
-            }
-            self.authorization_results.remove(0)
+            self.authorization_results.pop_front().unwrap_or(Ok(()))
         }
 
         fn generate_session_id(&mut self) -> Result<String, HelperRuntimeAdmissionAdapterError> {
@@ -399,7 +397,7 @@ mod tests {
     #[test]
     fn authorization_denial_stops_before_handshake_and_session_creation() {
         let (mut adapter, steps) = RecordingAdapter::allowed(501);
-        adapter.authorization_results = vec![Err(HelperRuntimeAdmissionAdapterError)];
+        adapter.authorization_results = vec![Err(HelperRuntimeAdmissionAdapterError)].into();
         let error = HelperRuntimeAdmissionExecutor::new(adapter, helper(), policy())
             .admit("connection".to_string(), request())
             .unwrap_err();
@@ -485,7 +483,7 @@ mod tests {
     fn mutating_command_rechecks_authorization_before_consuming_sequence() {
         let (mut adapter, _steps) = RecordingAdapter::allowed(501);
         adapter.authorization_results =
-            vec![Ok(()), Err(HelperRuntimeAdmissionAdapterError), Ok(())];
+            vec![Ok(()), Err(HelperRuntimeAdmissionAdapterError), Ok(())].into();
         let mut session = HelperRuntimeAdmissionExecutor::new(adapter, helper(), policy())
             .admit("connection".to_string(), request())
             .unwrap();
