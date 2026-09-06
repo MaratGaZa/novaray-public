@@ -181,6 +181,13 @@ Direct Developer ID distribution сохраняется как целевая м
   sequence. Прямое публичное создание runtime session с client-selected ID закрыто. Это recording-
   adapter evidence без live socket, kernel credentials, Security framework, authorization database,
   root runtime или network mutation; ADR-009 остаётся `Proposed`.
+- [x] macOS helper runtime peer-credential inspector: macOS-only boundary вызывает `getpeereid` для
+  уже connected `UnixStream`, возвращает только kernel-derived effective UID/GID и отображает syscall
+  failure в стабильную ошибку без descriptor/identity values. Real socket-pair test подтверждает
+  credentials обоих endpoint и остановку configured UID mismatch до authorization/session callbacks.
+  Это same-process kernel evidence без persistent listener, cross-process helper, другого UID,
+  Security framework, authorization database, root runtime или network mutation; ADR-009 остаётся
+  `Proposed`.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до

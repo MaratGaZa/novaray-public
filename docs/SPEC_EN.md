@@ -197,6 +197,13 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   client-selected ID is closed. This is recording-adapter evidence without a live socket, kernel
   credentials, Security framework, authorization database, root runtime, or network mutation;
   ADR-009 remains `Proposed`.
+- [x] macOS helper runtime peer-credential inspector: a macOS-only boundary calls `getpeereid` for an
+  already-connected `UnixStream`, returns only kernel-derived effective UID/GID, and maps syscall
+  failure to a stable error without descriptor or identity values. A real socket-pair test proves
+  credentials on both endpoints and stops a configured UID mismatch before authorization/session
+  callbacks. This is same-process kernel evidence without a persistent listener, cross-process
+  helper, different UID, Security framework, authorization database, root runtime, or network
+  mutation; ADR-009 remains `Proposed`.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a

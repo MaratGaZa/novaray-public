@@ -310,6 +310,10 @@ Android VpnService → Android UI → release
   form, injected peer/right/session adapter, порядок peer → authorization → handshake → helper-
   generated session, connection-local ownership и rights recheck до sequence consumption; без live
   socket, Security framework, authorization database, root runtime или network mutation (issue #80).
+- [x] Добавить macOS kernel peer-credential inspector для уже connected Unix stream: `getpeereid`,
+  stable redacted failure, real socket-pair UID/GID evidence и UID-mismatch stop до right/session
+  callbacks; без persistent listener, cross-process helper, Security framework, authorization
+  database, root runtime или network mutation (issue #82).
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.

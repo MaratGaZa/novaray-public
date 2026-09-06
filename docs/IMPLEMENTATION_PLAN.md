@@ -690,6 +690,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     runtime-session constructor. Scope excludes live IPC/socket, kernel credential and Security
     framework adapters, authorization database mutation, helper runtime/root execution, `/Library`,
     `launchctl`, `utun`, route/DNS/firewall/system-proxy mutation, packet flow and ADR promotion.
+56. [x] macOS helper runtime kernel peer credentials — issue #82: добавить macOS-only inspector,
+    который получает effective UID/GID через `getpeereid` из уже connected `UnixStream` и возвращает
+    стабильную ошибку без descriptor/identity values. Acceptance uses a real socket pair to prove
+    both endpoint credentials, invalid-descriptor failure and configured UID mismatch stopping
+    admission before authorization/session callbacks. Scope excludes a persistent listener,
+    cross-process or different-UID helper/client evidence, socket lifecycle, Security framework,
+    authorization database mutation, root runtime, `/Library`, `launchctl`, `utun`,
+    route/DNS/firewall/system-proxy mutation, packet flow and ADR promotion.
 
 ## 7. Зависимости
 
