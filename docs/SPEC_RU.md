@@ -174,6 +174,13 @@ Direct Developer ID distribution сохраняется как целевая м
   UID/socket permissions не считаются достаточной same-UID authentication, а runtime session нельзя
   создавать до helper-side authorization check. ADR-009 остаётся `Proposed`; live IPC, authorization
   adapter, root helper runtime и network mutation не реализованы.
+- [x] macOS helper runtime admission contract: pure Rust executor принимает только exact-size
+  redacted authorization form и через injected adapter закрепляет порядок peer UID → runtime right →
+  handshake → helper-generated session. Authenticated session владеет connection/form/replay scope и
+  повторно проверяет right до sequence validation mutating-команды, поэтому denial не потребляет
+  sequence. Прямое публичное создание runtime session с client-selected ID закрыто. Это recording-
+  adapter evidence без live socket, kernel credentials, Security framework, authorization database,
+  root runtime или network mutation; ADR-009 остаётся `Proposed`.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до

@@ -154,8 +154,10 @@ Proposed runtime admission описан в
 проверяет kernel-derived Unix peer UID/GID, затем отдельный Authorization Services right и только
 после этого version/capability handshake создаёт server-generated session. Socket mode/UID защищает
 от других аккаунтов, но не считается authentication процесса того же UID; external authorization
-form является redacted connection-local bearer secret. Live adapter и validation spike ещё
-отсутствуют, поэтому этот порядок не является evidence persistent IPC.
+form является redacted connection-local bearer secret. Pure Rust admission executor фиксирует этот
+порядок, connection-local ownership и rights recheck до sequence consumption для mutating commands.
+Live socket/Security framework adapter и validation spike ещё отсутствуют, поэтому это не является
+evidence persistent IPC или реальной macOS authentication.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

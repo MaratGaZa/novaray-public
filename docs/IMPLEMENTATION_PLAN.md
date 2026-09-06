@@ -682,6 +682,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     redacted bearer secret and defines live macOS validation/negative cases. Scope is docs-only and
     excludes live IPC/socket, authorization adapter, helper runtime/root execution, `/Library`,
     `launchctl`, `utun`, route/DNS/firewall/system-proxy mutation, packet flow and ADR promotion.
+55. [x] macOS helper runtime admission contract — issue #80: реализовать pure Rust executor с
+    exact-size redacted authorization form и injected adapter, который закрепляет порядок peer UID →
+    runtime right → handshake → helper-generated session. Acceptance proves fail-closed stage
+    ordering, connection-local ownership, rights recheck before mutating-command sequence validation,
+    no sequence consumption on denial, stable redacted errors and the absence of a public direct
+    runtime-session constructor. Scope excludes live IPC/socket, kernel credential and Security
+    framework adapters, authorization database mutation, helper runtime/root execution, `/Library`,
+    `launchctl`, `utun`, route/DNS/firewall/system-proxy mutation, packet flow and ADR promotion.
 
 ## 7. Зависимости
 
