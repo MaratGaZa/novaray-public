@@ -318,6 +318,11 @@ Android VpnService → Android UI → release
   private temporary filesystem Unix socket, accepted `getpeereid` credentials, mismatch stop до
   authorization/session callbacks и RAII cleanup; без production listener/helper, different-UID или
   same-UID authentication, Security framework, root runtime или network mutation (issue #84).
+- [x] Реализовать typed ownership contract для fixed macOS runtime Authorization right: absent →
+  create, exact owned match → idempotent no-op, conflict → fail-closed install; uninstall удаляет
+  только exact owned definition и сохраняет изменённую/чужую policy как diagnostic stop-state. Без
+  Authorization Services calls, authorization database mutation, root runtime или network mutation
+  (issue #86).
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.

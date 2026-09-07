@@ -6,6 +6,7 @@ pub mod connection;
 pub mod core;
 pub mod engine;
 pub mod helper_runtime_admission;
+pub mod helper_runtime_right;
 pub mod macos_helper_install;
 pub mod macos_launchd;
 pub mod matcher;

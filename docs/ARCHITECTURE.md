@@ -161,6 +161,9 @@ socket-pair и separate-process filesystem-socket tests подтверждают
 stop до authorization. Последний остаётся same-UID test harness, а не production helper listener;
 different-UID process, Security framework adapter и оставшаяся часть validation spike ещё
 отсутствуют, поэтому это не является evidence persistent IPC или полной macOS authentication.
+Pure Rust runtime-right ownership contract фиксирует absent/create, exact/no-op,
+conflict/fail-closed и uninstall preserve semantics для fixed `authenticate-admin` definition, но не
+вызывает Authorization Services и не доказывает policy-database lifecycle.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

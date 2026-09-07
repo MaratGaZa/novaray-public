@@ -12,6 +12,8 @@
   cross-process helper и Authorization Services части spike остаются открыты
 - Ревизия: 2026-09-07 — issue #84 добавил cross-process same-UID evidence через private filesystem
   Unix socket; different-UID и Authorization Services части spike остаются открыты
+- Ревизия: 2026-09-07 — issue #86 добавил pure Rust ownership/reconciliation contract для fixed
+  runtime right; live Authorization Services/database evidence остаётся открытым
 
 ## Контекст
 
@@ -144,6 +146,10 @@ private filesystem Unix socket и сравнением kernel-derived credential
 UID/GID child process; deliberate configured-UID mismatch останавливается до right/session callbacks,
 а временный socket удаляется. Это всё ещё same-UID test без production helper listener, другого UID
 или same-UID Authorization Services boundary.
+Issue #86 моделирует fixed right name и `authenticate-admin` delegated rule, fail-closed install
+reconciliation и uninstall preservation stop-state. Это pure Rust contract: он не вызывает
+`AuthorizationRightGet`/`AuthorizationRightSet`/`AuthorizationRightRemove`, не создаёт right и не
+доказывает exact roundtrip системной policy database.
 
 1. На реальном Apple Silicon Mac доказать, что helper adapter получает UID/GID connected client через
    kernel API и отклоняет другой expected UID независимо от полей payload.
