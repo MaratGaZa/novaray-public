@@ -698,6 +698,15 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     cross-process or different-UID helper/client evidence, socket lifecycle, Security framework,
     authorization database mutation, root runtime, `/Library`, `launchctl`, `utun`,
     route/DNS/firewall/system-proxy mutation, packet flow and ADR promotion.
+57. [x] macOS cross-process peer-credential evidence — issue #84: запустить отдельный unprivileged
+    test client, подключить его к private temporary filesystem Unix socket и проверить accepted
+    connection существующим `getpeereid` inspector. Acceptance compares kernel-derived UID/GID with
+    the child process's effective credentials, proves deliberate configured-UID mismatch stops before
+    authorization/session callbacks, bounds child wait/early exit, verifies private modes and removes
+    temporary socket state through RAII. Scope excludes a production/persistent helper listener,
+    different-UID and same-UID attacker authentication, Security framework/authorization database,
+    root runtime, `/Library`, `launchctl`, `utun`, route/DNS/firewall/system-proxy mutation, packet
+    flow and ADR promotion.
 
 ## 7. Зависимости
 

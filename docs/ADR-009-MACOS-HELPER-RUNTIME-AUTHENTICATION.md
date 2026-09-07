@@ -10,6 +10,8 @@
   evidence; live macOS adapter и validation spike остаются открыты
 - Ревизия: 2026-09-06 — issue #82 добавил macOS `getpeereid` inspector и real socket-pair evidence;
   cross-process helper и Authorization Services части spike остаются открыты
+- Ревизия: 2026-09-07 — issue #84 добавил cross-process same-UID evidence через private filesystem
+  Unix socket; different-UID и Authorization Services части spike остаются открыты
 
 ## Контекст
 
@@ -137,8 +139,11 @@ helper-generated session, connection-local владение authorization form �
 потребления sequence mutating-командой. Это source-level evidence, а не выполнение live spike ниже.
 Issue #82 дополнительно вызывает `getpeereid` для реального connected Unix socket pair и доказывает
 kernel-derived effective UID/GID и UID-mismatch stop до right/session callbacks. Оба endpoint
-принадлежат одному test process; это не доказывает cross-process helper listener, другой UID или
-same-UID authorization boundary.
+принадлежат одному test process. Issue #84 расширяет evidence отдельным spawned client process,
+private filesystem Unix socket и сравнением kernel-derived credentials с фактическими effective
+UID/GID child process; deliberate configured-UID mismatch останавливается до right/session callbacks,
+а временный socket удаляется. Это всё ещё same-UID test без production helper listener, другого UID
+или same-UID Authorization Services boundary.
 
 1. На реальном Apple Silicon Mac доказать, что helper adapter получает UID/GID connected client через
    kernel API и отклоняет другой expected UID независимо от полей payload.

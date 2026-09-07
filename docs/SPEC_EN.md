@@ -204,6 +204,13 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   callbacks. This is same-process kernel evidence without a persistent listener, cross-process
   helper, different UID, Security framework, authorization database, root runtime, or network
   mutation; ADR-009 remains `Proposed`.
+- [x] macOS cross-process peer-credential evidence: a separate unprivileged test process connects to
+  a private temporary filesystem Unix socket, the accepted connection is inspected with
+  `getpeereid`, and the kernel-derived UID/GID match the child process's effective credentials. A
+  deliberate configured-UID mismatch stops admission before authorization/session callbacks; RAII
+  removes the socket state. This is a same-UID test harness without different-UID evidence, same-UID
+  authentication, a production listener/helper, Security framework, root runtime, or network
+  mutation; ADR-009 remains `Proposed`.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
