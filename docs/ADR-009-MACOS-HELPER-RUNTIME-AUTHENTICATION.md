@@ -8,6 +8,8 @@
   Developer ID/стабильного Team ID
 - Ревизия: 2026-09-04 — issue #80 добавил pure Rust admission executor и recording-adapter
   evidence; live macOS adapter и validation spike остаются открыты
+- Ревизия: 2026-09-06 — issue #82 добавил macOS `getpeereid` inspector и real socket-pair evidence;
+  cross-process helper и Authorization Services части spike остаются открыты
 
 ## Контекст
 
@@ -133,6 +135,10 @@ authentication factors. Они остаются diagnostics, freshness и defens
 Pure Rust executor из issue #80 фиксирует порядок peer → authorization → handshake →
 helper-generated session, connection-local владение authorization form и повторную проверку права до
 потребления sequence mutating-командой. Это source-level evidence, а не выполнение live spike ниже.
+Issue #82 дополнительно вызывает `getpeereid` для реального connected Unix socket pair и доказывает
+kernel-derived effective UID/GID и UID-mismatch stop до right/session callbacks. Оба endpoint
+принадлежат одному test process; это не доказывает cross-process helper listener, другой UID или
+same-UID authorization boundary.
 
 1. На реальном Apple Silicon Mac доказать, что helper adapter получает UID/GID connected client через
    kernel API и отклоняет другой expected UID независимо от полей payload.

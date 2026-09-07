@@ -2,7 +2,8 @@
 //!
 //! The platform adapter supplies peer credentials, Authorization Services right checks and
 //! session-ID generation. This module only enforces ordering and connection-local ownership; it
-//! does not open sockets, call platform APIs, run as root or mutate network state.
+//! does not open sockets, run as root or mutate network state. On macOS, a narrow inspector reads
+//! kernel peer credentials from an already-connected Unix stream.
 
 use std::fmt;
 
@@ -65,6 +66,39 @@ impl fmt::Debug for HelperRuntimeAdmissionRequest {
 pub struct HelperRuntimePeerCredentials {
     pub effective_uid: u32,
     pub effective_gid: u32,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("helper runtime peer credential inspection failed")]
+pub struct MacOsPeerCredentialInspectionError;
+
+#[cfg(target_os = "macos")]
+pub fn inspect_macos_peer_credentials(
+    stream: &std::os::unix::net::UnixStream,
+) -> Result<HelperRuntimePeerCredentials, MacOsPeerCredentialInspectionError> {
+    use std::os::fd::AsRawFd;
+
+    inspect_macos_peer_credentials_fd(stream.as_raw_fd())
+}
+
+#[cfg(target_os = "macos")]
+fn inspect_macos_peer_credentials_fd(
+    descriptor: std::os::fd::RawFd,
+) -> Result<HelperRuntimePeerCredentials, MacOsPeerCredentialInspectionError> {
+    let mut effective_uid: libc::uid_t = 0;
+    let mut effective_gid: libc::gid_t = 0;
+
+    // SAFETY: getpeereid only reads the supplied descriptor and writes to valid uid/gid pointers.
+    let result = unsafe { libc::getpeereid(descriptor, &mut effective_uid, &mut effective_gid) };
+    if result != 0 {
+        return Err(MacOsPeerCredentialInspectionError);
+    }
+
+    Ok(HelperRuntimePeerCredentials {
+        effective_uid,
+        effective_gid,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -570,5 +604,116 @@ mod tests {
             HelperRuntimeAdmissionPolicy::new(0),
             Err(HelperRuntimeAdmissionError::PrivilegedClientUidRejected)
         );
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_tests {
+    use std::cell::Cell;
+    use std::os::unix::net::UnixStream;
+    use std::rc::Rc;
+
+    use super::*;
+    use crate::platform_contract::{
+        CoreHello, HelperHello, PlatformCapability, PlatformKind, CURRENT_PLATFORM_CONTRACT_VERSION,
+    };
+
+    #[test]
+    fn macos_inspector_reads_kernel_credentials_from_both_socket_endpoints() {
+        let (first, second) = UnixStream::pair().unwrap();
+
+        let first_peer = inspect_macos_peer_credentials(&first).unwrap();
+        let second_peer = inspect_macos_peer_credentials(&second).unwrap();
+        // SAFETY: these process credential getters take no pointers and have no preconditions.
+        let current = unsafe {
+            HelperRuntimePeerCredentials {
+                effective_uid: libc::geteuid(),
+                effective_gid: libc::getegid(),
+            }
+        };
+
+        assert_eq!(first_peer, current);
+        assert_eq!(second_peer, current);
+    }
+
+    #[test]
+    fn macos_inspector_maps_invalid_descriptor_to_stable_error() {
+        assert_eq!(
+            inspect_macos_peer_credentials_fd(-1),
+            Err(MacOsPeerCredentialInspectionError)
+        );
+        assert_eq!(
+            MacOsPeerCredentialInspectionError.to_string(),
+            "helper runtime peer credential inspection failed"
+        );
+    }
+
+    #[test]
+    fn macos_kernel_peer_uid_mismatch_stops_before_authorization() {
+        let (connection, _peer) = UnixStream::pair().unwrap();
+        let actual = inspect_macos_peer_credentials(&connection).unwrap();
+        let expected_uid = if actual.effective_uid == 1 { 2 } else { 1 };
+        let right_checks = Rc::new(Cell::new(0));
+        let session_ids = Rc::new(Cell::new(0));
+        let adapter = LivePeerRecordingAdapter {
+            right_checks: Rc::clone(&right_checks),
+            session_ids: Rc::clone(&session_ids),
+        };
+        let request = HelperRuntimeAdmissionRequest {
+            core_hello: CoreHello::default(),
+            authorization: HelperRuntimeAuthorizationExternalForm::from_slice(&[0x5a; 32]).unwrap(),
+        };
+
+        let error = HelperRuntimeAdmissionExecutor::new(
+            adapter,
+            macos_helper(),
+            HelperRuntimeAdmissionPolicy::new(expected_uid).unwrap(),
+        )
+        .admit(connection, request)
+        .unwrap_err();
+
+        assert_eq!(error, HelperRuntimeAdmissionError::UnexpectedPeerUid);
+        assert_eq!(right_checks.get(), 0);
+        assert_eq!(session_ids.get(), 0);
+    }
+
+    struct LivePeerRecordingAdapter {
+        right_checks: Rc<Cell<u32>>,
+        session_ids: Rc<Cell<u32>>,
+    }
+
+    impl HelperRuntimeAdmissionAdapter for LivePeerRecordingAdapter {
+        type Connection = UnixStream;
+
+        fn peer_credentials(
+            &mut self,
+            connection: &Self::Connection,
+        ) -> Result<HelperRuntimePeerCredentials, HelperRuntimeAdmissionAdapterError> {
+            inspect_macos_peer_credentials(connection)
+                .map_err(|_| HelperRuntimeAdmissionAdapterError)
+        }
+
+        fn validate_runtime_right(
+            &mut self,
+            _connection: &mut Self::Connection,
+            _authorization: &HelperRuntimeAuthorizationExternalForm,
+        ) -> Result<(), HelperRuntimeAdmissionAdapterError> {
+            self.right_checks.set(self.right_checks.get() + 1);
+            Ok(())
+        }
+
+        fn generate_session_id(&mut self) -> Result<String, HelperRuntimeAdmissionAdapterError> {
+            self.session_ids.set(self.session_ids.get() + 1);
+            Ok("helper-generated-session".to_string())
+        }
+    }
+
+    fn macos_helper() -> HelperHello {
+        HelperHello {
+            protocol_version: CURRENT_PLATFORM_CONTRACT_VERSION,
+            platform: PlatformKind::MacOs,
+            app_version: "0.1.0".to_string(),
+            capabilities: vec![PlatformCapability::Tun],
+        }
     }
 }
