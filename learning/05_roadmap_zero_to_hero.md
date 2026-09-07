@@ -314,6 +314,10 @@ Android VpnService → Android UI → release
   stable redacted failure, real socket-pair UID/GID evidence и UID-mismatch stop до right/session
   callbacks; без persistent listener, cross-process helper, Security framework, authorization
   database, root runtime или network mutation (issue #82).
+- [x] Добавить cross-process same-UID evidence для macOS peer credentials: separate test client,
+  private temporary filesystem Unix socket, accepted `getpeereid` credentials, mismatch stop до
+  authorization/session callbacks и RAII cleanup; без production listener/helper, different-UID или
+  same-UID authentication, Security framework, root runtime или network mutation (issue #84).
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.

@@ -188,6 +188,13 @@ Direct Developer ID distribution сохраняется как целевая м
   Это same-process kernel evidence без persistent listener, cross-process helper, другого UID,
   Security framework, authorization database, root runtime или network mutation; ADR-009 остаётся
   `Proposed`.
+- [x] macOS cross-process peer-credential evidence: отдельный unprivileged test process подключается
+  к private temporary filesystem Unix socket, accepted connection проверяется через `getpeereid`, а
+  kernel-derived UID/GID совпадают с effective credentials child process. Deliberate configured-UID
+  mismatch останавливает admission до authorization/session callbacks; socket state удаляется через
+  RAII. Это same-UID test harness без different-UID evidence, same-UID authentication, production
+  listener/helper, Security framework, root runtime или network mutation; ADR-009 остаётся
+  `Proposed`.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до

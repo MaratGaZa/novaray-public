@@ -157,8 +157,9 @@ Proposed runtime admission описан в
 form является redacted connection-local bearer secret. Pure Rust admission executor фиксирует этот
 порядок, connection-local ownership и rights recheck до sequence consumption для mutating commands.
 macOS inspector получает effective UID/GID через `getpeereid` из уже connected Unix stream, а real
-socket-pair test подтверждает kernel credentials и mismatch stop до authorization. Persistent
-listener, cross-process helper, Security framework adapter и оставшаяся часть validation spike ещё
+socket-pair и separate-process filesystem-socket tests подтверждают kernel credentials и mismatch
+stop до authorization. Последний остаётся same-UID test harness, а не production helper listener;
+different-UID process, Security framework adapter и оставшаяся часть validation spike ещё
 отсутствуют, поэтому это не является evidence persistent IPC или полной macOS authentication.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
