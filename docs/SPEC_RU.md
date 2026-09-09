@@ -202,6 +202,12 @@ Direct Developer ID distribution сохраняется как целевая м
   diagnostic stop-state. Чужое policy content не отражается в errors/`Debug`. Это pure Rust
   contract без Security framework calls, authorization database mutation или live right evidence;
   ADR-009 остаётся `Proposed`.
+- [x] macOS read-only runtime-right inspector: native `AuthorizationRightGet` читает fixed right,
+  RAII освобождает CF object, а typed decoder сохраняет fail-closed поведение при лишних полях,
+  неизвестных типах/ключах, rule arrays и malformed/oversized strings. Missing/API failure/null
+  различаются без отражения policy content. Exact match доказан на synthetic CF dictionary;
+  live tests читают missing/existing rights. Create/read roundtrip, нормализация после записи,
+  database mutation и authorization остаются открыты; ADR-009 остаётся `Proposed`.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до
@@ -504,6 +510,12 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   диагностируемый preserve stop-state при изменённой/чужой definition. Arbitrary policy contents не
   должны сохраняться в contract errors или `Debug`. Этот contract не вызывает Authorization
   Services и не доказывает live authorization database lifecycle.
+- Read-only macOS runtime-right inspector должен читать только fixed right через
+  `AuthorizationRightGet`, отличать отсутствие от ошибок API и освобождать возвращённый CF object.
+  Только dictionary с единственным строковым `rule`, точно равным `authenticate-admin`, может
+  пройти существующий ownership classifier. Лишние поля, неизвестные типы/ключи и некорректные или
+  oversized значения отвергаются до planning; system metadata не отбрасывается ради exact match.
+  Errors не отражают содержимое policy. Read-only evidence не доказывает create/read roundtrip.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

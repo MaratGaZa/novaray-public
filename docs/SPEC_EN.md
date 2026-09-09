@@ -218,6 +218,12 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   conflict as a diagnostic stop-state. Foreign policy content is not reflected in errors/`Debug`.
   This is a pure Rust contract without Security framework calls, authorization-database mutation, or
   live right evidence; ADR-009 remains `Proposed`.
+- [x] macOS read-only runtime-right inspector: native `AuthorizationRightGet` reads the fixed right,
+  RAII releases the CF object, and a typed decoder fails closed on extra fields, unknown types/keys,
+  rule arrays and malformed/oversized strings. Missing/API failure/null results are distinguished
+  without reflecting policy contents. Exact matching is proven with a synthetic CF dictionary;
+  live tests read missing/existing rights. Create/read roundtrip, post-write normalization,
+  database mutation and authorization remain open; ADR-009 remains `Proposed`.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
@@ -480,6 +486,12 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   preserve stop-state for a changed/foreign definition. Arbitrary policy contents must not be stored
   in contract errors or `Debug`. This contract does not call Authorization Services or prove a live
   authorization-database lifecycle.
+- The read-only macOS runtime-right inspector must read only the fixed right with
+  `AuthorizationRightGet`, distinguish absence from API errors, and release the returned CF object.
+  Only a dictionary containing a single string `rule` exactly equal to `authenticate-admin` may
+  pass the existing ownership classifier. Extra fields, unknown types/keys and malformed or oversized
+  values are rejected before planning; system metadata is not discarded to obtain an exact match.
+  Errors do not reflect policy contents. Read-only evidence does not prove a create/read roundtrip.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,

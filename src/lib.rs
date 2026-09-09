@@ -9,6 +9,8 @@ pub mod helper_runtime_admission;
 pub mod helper_runtime_right;
 pub mod macos_helper_install;
 pub mod macos_launchd;
+#[cfg(target_os = "macos")]
+pub mod macos_runtime_right;
 pub mod matcher;
 pub mod network_executor;
 pub mod network_state;
