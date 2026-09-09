@@ -211,6 +211,13 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   removes the socket state. This is a same-UID test harness without different-UID evidence, same-UID
   authentication, a production listener/helper, Security framework, root runtime, or network
   mutation; ADR-009 remains `Proposed`.
+- [x] macOS runtime Authorization right ownership contract: a fixed right name and
+  `authenticate-admin` delegated rule produce side-effect-free install/uninstall plans. An absent
+  right plans creation, an exact owned match is an idempotent no-op, and a conflicting/unrecognized
+  definition stops installation; uninstall removes only an exact owned match and preserves a
+  conflict as a diagnostic stop-state. Foreign policy content is not reflected in errors/`Debug`.
+  This is a pure Rust contract without Security framework calls, authorization-database mutation, or
+  live right evidence; ADR-009 remains `Proposed`.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
@@ -466,6 +473,13 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   after peer/right/version/capability checks, rechecks the right immediately before mutation without
   interactive UI, and never logs or persists the external form. A live adapter and validation spike
   remain mandatory before persistent IPC.
+- The fixed macOS runtime Authorization right must use a typed ownership contract: absence plans a
+  create with the exact owned definition, an exact match is an idempotent no-op, and a conflicting
+  or unrecognized definition stops installation without overwriting it. Uninstall removes the right
+  only on an exact owned match, treats absence as idempotent success, and returns a diagnosable
+  preserve stop-state for a changed/foreign definition. Arbitrary policy contents must not be stored
+  in contract errors or `Debug`. This contract does not call Authorization Services or prove a live
+  authorization-database lifecycle.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,

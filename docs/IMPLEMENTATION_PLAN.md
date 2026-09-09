@@ -707,6 +707,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     different-UID and same-UID attacker authentication, Security framework/authorization database,
     root runtime, `/Library`, `launchctl`, `utun`, route/DNS/firewall/system-proxy mutation, packet
     flow and ADR promotion.
+58. [x] macOS runtime Authorization right ownership contract — issue #86: определить fixed right
+    name и exact owned delegated rule, затем side-effect-free install/uninstall reconciliation.
+    Acceptance covers absent create, exact idempotent retry, conflicting/unrecognized install
+    rejection, exact owned removal, absent uninstall no-op and changed-policy preservation as a
+    diagnostic stop-state; arbitrary observed policy contents are redacted. Scope excludes Security
+    framework/Authorization Services calls, authorization database mutation, prompts, root runtime,
+    persistent IPC, `/Library`, `launchctl`, `utun`, route/DNS/firewall/system-proxy mutation, packet
+    flow and ADR promotion.
 
 ## 7. Зависимости
 

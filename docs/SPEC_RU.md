@@ -195,6 +195,13 @@ Direct Developer ID distribution сохраняется как целевая м
   RAII. Это same-UID test harness без different-UID evidence, same-UID authentication, production
   listener/helper, Security framework, root runtime или network mutation; ADR-009 остаётся
   `Proposed`.
+- [x] macOS runtime Authorization right ownership contract: fixed right name и
+  `authenticate-admin` delegated rule дают side-effect-free install/uninstall plans. Absent right
+  планирует create, exact owned match является idempotent no-op, conflict/unrecognized definition
+  останавливает install; uninstall удаляет только exact owned match и сохраняет конфликт как
+  diagnostic stop-state. Чужое policy content не отражается в errors/`Debug`. Это pure Rust
+  contract без Security framework calls, authorization database mutation или live right evidence;
+  ADR-009 остаётся `Proposed`.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до
@@ -490,6 +497,13 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   peer/right/version/capability checks, повторно проверяет right непосредственно перед mutation без
   interactive UI и никогда не логирует/сохраняет external form. Live adapter и validation spike
   остаются обязательными до persistent IPC.
+- Fixed macOS runtime Authorization right должен управляться через typed ownership contract:
+  отсутствие планирует create с exact owned definition, exact match является idempotent no-op, а
+  conflicting или unrecognized definition останавливает install без перезаписи. Uninstall удаляет
+  right только при exact owned match, считает отсутствие idempotent success и возвращает
+  диагностируемый preserve stop-state при изменённой/чужой definition. Arbitrary policy contents не
+  должны сохраняться в contract errors или `Debug`. Этот contract не вызывает Authorization
+  Services и не доказывает live authorization database lifecycle.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,
