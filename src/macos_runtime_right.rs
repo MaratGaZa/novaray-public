@@ -18,7 +18,8 @@ use crate::helper_runtime_right::{
 };
 
 const SUCCESS: i32 = 0;
-const DEFINITION_NOT_FOUND: i32 = -60005;
+// Authorization Services uses this status for denial generally, not just missing definitions.
+const ERR_AUTHORIZATION_DENIED: i32 = -60005;
 
 #[link(name = "Security", kind = "framework")]
 extern "C" {
@@ -62,9 +63,13 @@ fn classify_response(
     definition: Option<CFType>,
 ) -> Result<HelperRuntimeAuthorizationRightObservation, MacOsRuntimeRightInspectionError> {
     match (status, definition) {
-        (DEFINITION_NOT_FOUND, None) => Ok(HelperRuntimeAuthorizationRightObservation::absent()),
+        // AuthorizationDB.h documents this as absence specifically for AuthorizationRightGet.
+        // Do not reuse this mapping for authorization checks or database writes.
+        (ERR_AUTHORIZATION_DENIED, None) => {
+            Ok(HelperRuntimeAuthorizationRightObservation::absent())
+        }
         (SUCCESS, Some(definition)) => Ok(classify_definition(&definition)),
-        (SUCCESS, None) | (DEFINITION_NOT_FOUND, Some(_)) => {
+        (SUCCESS, None) | (ERR_AUTHORIZATION_DENIED, Some(_)) => {
             Err(MacOsRuntimeRightInspectionError::InvalidResponse)
         }
         _ => Err(MacOsRuntimeRightInspectionError::LookupFailed),
@@ -248,7 +253,7 @@ mod tests {
 
     #[test]
     fn lookup_statuses_distinguish_absence_errors_and_inconsistent_results() {
-        let absent = classify_response(DEFINITION_NOT_FOUND, None).unwrap();
+        let absent = classify_response(ERR_AUTHORIZATION_DENIED, None).unwrap();
         assert!(matches!(
             plan_helper_runtime_right_install(absent),
             Ok(Install::CreateOwned { .. })
@@ -258,7 +263,7 @@ mod tests {
             Err(MacOsRuntimeRightInspectionError::InvalidResponse)
         );
         assert_eq!(
-            classify_response(DEFINITION_NOT_FOUND, Some(with_rule("secret"))),
+            classify_response(ERR_AUTHORIZATION_DENIED, Some(with_rule("secret"))),
             Err(MacOsRuntimeRightInspectionError::InvalidResponse)
         );
         for status in [-60001, -60004, -60007, -60008, 1] {
@@ -282,7 +287,7 @@ mod tests {
         ))
         .unwrap();
         let (status, definition) = read_definition(&name);
-        assert_eq!(status, DEFINITION_NOT_FOUND);
+        assert_eq!(status, ERR_AUTHORIZATION_DENIED);
         assert!(definition.is_none());
         let observed = classify_response(status, definition).unwrap();
         assert_eq!(
