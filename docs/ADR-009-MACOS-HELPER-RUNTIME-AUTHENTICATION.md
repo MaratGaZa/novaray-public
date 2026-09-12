@@ -14,6 +14,8 @@
   Unix socket; different-UID и Authorization Services части spike остаются открыты
 - Ревизия: 2026-09-07 — issue #86 добавил pure Rust ownership/reconciliation contract для fixed
   runtime right; live Authorization Services/database evidence остаётся открытым
+- Ревизия: 2026-09-09 — issue #88 добавил read-only `AuthorizationRightGet` inspector и CF decoder;
+  создание/удаление right и точный create/read roundtrip остаются открыты
 
 ## Контекст
 
@@ -150,6 +152,21 @@ Issue #86 моделирует fixed right name и `authenticate-admin` delegate
 reconciliation и uninstall preservation stop-state. Это pure Rust contract: он не вызывает
 `AuthorizationRightGet`/`AuthorizationRightSet`/`AuthorizationRightRemove`, не создаёт right и не
 доказывает exact roundtrip системной policy database.
+
+Issue #88 читает fixed runtime right через `AuthorizationRightGet`, владеет возвращённым CF object
+через RAII и различает missing definition, ошибку API и inconsistent result. Decoder принимает
+только single-string `rule` через существующий classifier; дополнительные поля, включая system
+metadata, массивы и некорректные CF strings остаются unrecognized/conflicting. Точное owned
+definition проверено на синтетическом CF dictionary. Live read-only tests читают отсутствующий
+test right и существующий `system.preferences`, не создавая и не удаляя их. Это не доказывает
+нормализацию после `AuthorizationRightSet`; future mutation executor обязан заново проверять
+состояние, потому что observation является snapshot и не разрешением на последующую запись.
+
+Read/ownership semantics отдельно сверены 2026-09-09 с MacOSX SDK 26.2 `AuthorizationDB.h` и
+[Apple AuthorizationRightGet](https://developer.apple.com/documentation/security/authorizationrightget%28_%3A_%3A%29):
+API доступен без authorization reference, возвращает retained dictionary, а documented
+`errAuthorizationDenied` для этого вызова означает отсутствие definition. Остальные статусы
+не превращаются в отсутствие.
 
 1. На реальном Apple Silicon Mac доказать, что helper adapter получает UID/GID connected client через
    kernel API и отклоняет другой expected UID независимо от полей payload.

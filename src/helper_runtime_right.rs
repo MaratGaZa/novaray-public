@@ -8,7 +8,7 @@ use thiserror::Error;
 pub const HELPER_RUNTIME_AUTHORIZATION_RIGHT_NAME: &str = "org.novaray.platform-helper.runtime";
 pub const HELPER_RUNTIME_AUTHORIZATION_RULE: &str = "authenticate-admin";
 
-const MAX_OBSERVED_RULE_BYTES: usize = 128;
+pub(crate) const MAX_OBSERVED_RULE_BYTES: usize = 128;
 const MAX_OBSERVED_ADDITIONAL_FIELDS: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

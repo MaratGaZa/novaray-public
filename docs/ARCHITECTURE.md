@@ -159,11 +159,15 @@ form является redacted connection-local bearer secret. Pure Rust admissi
 macOS inspector получает effective UID/GID через `getpeereid` из уже connected Unix stream, а real
 socket-pair и separate-process filesystem-socket tests подтверждают kernel credentials и mismatch
 stop до authorization. Последний остаётся same-UID test harness, а не production helper listener;
-different-UID process, Security framework adapter и оставшаяся часть validation spike ещё
+different-UID process, Security framework authorization adapter и оставшаяся часть validation spike ещё
 отсутствуют, поэтому это не является evidence persistent IPC или полной macOS authentication.
 Pure Rust runtime-right ownership contract фиксирует absent/create, exact/no-op,
 conflict/fail-closed и uninstall preserve semantics для fixed `authenticate-admin` definition, но не
 вызывает Authorization Services и не доказывает policy-database lifecycle.
+Отдельный macOS read-only inspector вызывает `AuthorizationRightGet` для fixed runtime right,
+освобождает retained CF object и проверяет dictionary/value types до классификации. Он сохраняет
+fail-closed поведение при system metadata, rule arrays и malformed strings. Read-only missing/
+existing-right tests и synthetic exact CF fixture не закрывают create/read roundtrip или live auth.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

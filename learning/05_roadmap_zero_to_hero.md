@@ -324,6 +324,9 @@ Android VpnService → Android UI → release
   Authorization Services calls, authorization database mutation, root runtime или network mutation
   (issue #86).
 - [x] Реализовать typed IPC/FFI contract skeleton с Rust core без transport/runtime side effects.
+- [x] Добавить macOS read-only inspector fixed runtime Authorization right: native read, CF type/shape
+  validation, RAII и fail-closed classification без отбрасывания system metadata; synthetic CF tests
+  и live read-only evidence не закрывают create/read roundtrip или authorization (issue #88).
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.
 - [x] Реализовать `ConnectionState` и serialized helper command executor в Rust core без

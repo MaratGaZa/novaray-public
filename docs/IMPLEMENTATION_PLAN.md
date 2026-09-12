@@ -716,6 +716,14 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     persistent IPC, `/Library`, `launchctl`, `utun`, route/DNS/firewall/system-proxy mutation, packet
     flow and ADR promotion.
 
+59. [x] macOS read-only runtime-right inspector — issue #88: вызвать `AuthorizationRightGet` для
+    fixed runtime right, проверить CF types/shape и передать observation существующему classifier.
+    Acceptance: missing vs API failure, retained-object RAII, null-success rejection, bounded string
+    conversion, exact single-rule dictionary, rejection of extra fields/arrays/unknown types/keys,
+    redacted failures, synthetic CF fixtures and real read-only missing/existing-right tests.
+    System metadata is not normalized away. No create/read roundtrip, AuthorizationRightSet/Remove,
+    authorization acquisition/prompts, database mutation, root, IPC or network changes; ADR stays Proposed.
+
 ## 7. Зависимости
 
 ```mermaid
