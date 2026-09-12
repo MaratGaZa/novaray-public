@@ -16,6 +16,8 @@
   runtime right; live Authorization Services/database evidence остаётся открытым
 - Ревизия: 2026-09-09 — issue #88 добавил read-only `AuthorizationRightGet` inspector и CF decoder;
   создание/удаление right и точный create/read roundtrip остаются открыты
+- Ревизия: 2026-09-12 — issue #90 добавил lifecycle orchestration с recording readback/cleanup;
+  native mutation, normalization, atomic ownership и crash recovery остаются открыты
 
 ## Контекст
 
@@ -167,6 +169,17 @@ Read/ownership semantics отдельно сверены 2026-09-09 с MacOSX SD
 API доступен без authorization reference, возвращает retained dictionary, а documented
 `errAuthorizationDenied` для этого вызова означает отсутствие definition. Остальные статусы
 не превращаются в отсутствие.
+
+Issue #90 моделирует install/uninstall через injected adapter: fresh entry inspection, readback
+после create/remove и bounded compensation после неудачной проверки successful create. Ошибка
+create оставляет effects unknown и не запускает удаление; cleanup после successful create требует
+отдельного fresh exact-owned observation, сохраняет конфликт и возвращает cleanup outcome отдельно
+от primary failure. Ошибки remove/readback не запускают повторные записи или восстановление policy.
+Recording tests проверяют порядок и fault paths, а не native roundtrip. Последовательные read/write
+и Rust `&mut` не обеспечивают atomic ownership или исключение внешнего writer: live adapter нельзя
+подключать без отдельного review authorization, race exclusion и crash-recovery/rollback strategy.
+Exact policy equality сама по себе не доказывает provenance записи. Эта задача не принимает ADR и
+не меняет требования validation spike ниже.
 
 1. На реальном Apple Silicon Mac доказать, что helper adapter получает UID/GID connected client через
    kernel API и отклоняет другой expected UID независимо от полей payload.
