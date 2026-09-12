@@ -208,6 +208,14 @@ Direct Developer ID distribution сохраняется как целевая м
   различаются без отражения policy content. Exact match доказан на synthetic CF dictionary;
   live tests читают missing/existing rights. Create/read roundtrip, нормализация после записи,
   database mutation и authorization остаются открыты; ADR-009 остаётся `Proposed`.
+- [x] Runtime-right lifecycle executor (issue #90): текущая observation читается внутри операции,
+  create/remove требуют absent/exact-owned соответственно и завершаются проверкой readback.
+  Ошибка create оставляет effects неопределёнными и не разрешает удаление; при ошибке проверки после
+  успешного create компенсация требует нового exact-owned observation. Primary failure и cleanup
+  outcome диагностируются отдельно, чужая/unrecognized policy сохраняется. Evidence ограничено
+  recording-адаптером: native normalization, atomic ownership, межпроцессные гонки, crash recovery,
+  authorization и database mutation не доказаны. Live adapter требует отдельной стратегии
+  authorization, race exclusion и rollback; ADR-009 остаётся `Proposed`.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до

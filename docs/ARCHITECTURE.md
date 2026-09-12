@@ -168,6 +168,11 @@ conflict/fail-closed и uninstall preserve semantics для fixed `authenticate-
 освобождает retained CF object и проверяет dictionary/value types до классификации. Он сохраняет
 fail-closed поведение при system metadata, rule arrays и malformed strings. Read-only missing/
 existing-right tests и synthetic exact CF fixture не закрывают create/read roundtrip или live auth.
+Runtime-right lifecycle executor (`helper_runtime_right_execution`, issue #90) читает observation
+внутри операции и проверяет create/remove readback на recording adapter. Failed create не даёт
+права на blind cleanup; после successful create компенсация отдельно проверяет exact ownership и
+сохраняет конфликт. Primary failure и cleanup outcome разделены. Native mutation adapter отсутствует;
+atomic ownership, cross-process race exclusion, normalization и crash recovery не доказаны.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.
