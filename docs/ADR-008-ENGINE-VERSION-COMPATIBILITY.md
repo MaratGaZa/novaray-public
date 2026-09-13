@@ -7,6 +7,9 @@
 
 ## Decision
 
+The following records the original recommended-only startup scope. Explicit version selection is
+governed by the clarification below and [ADR-007](./ADR-007-ENGINE-VERSION-SELECTOR.md).
+
 `EngineConfigStrategy` owns a typed configuration dialect, while the catalog owns artifact versions.
 Each catalog release records the exact configuration dialect proven for that engine/version pair.
 Startup resolves the engine's single `recommended` catalog version, validates the strategy dialect
@@ -16,6 +19,18 @@ against that catalog release, and only then chooses the checksum source or spawn
 and does not bypass the configuration-dialect compatibility check. This keeps unsupported OS/arch
 targets usable with a trusted checksum while still binding them to the current recommended catalog
 version.
+
+## Clarification: selector integration (2026-09-13)
+
+[ADR-007](./ADR-007-ENGINE-VERSION-SELECTOR.md) extends the startup scope recorded above:
+`recommended` is the default, not the only eligible version. Explicit selection may choose a
+catalogued compatible `recommended` or `supported` release, or a `deprecated` release with a warning;
+unknown, `yanked`, and incompatible releases are rejected before spawn. A checksum override remains
+bound to the selected catalog version and never bypasses dialect or lifecycle validation.
+
+This documents the existing `resolve_engine_release_selection` implementation in
+[`src/engine.rs`](../src/engine.rs), not a new selection policy. The original evidence date and
+Accepted status are unchanged; uncatalogued binaries and runtime updates still require review.
 
 ## Consequences
 

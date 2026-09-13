@@ -390,6 +390,10 @@ Complete a platform-specific spike before production implementation. The spike c
 attribution, races, QUIC, helpers, sandboxed apps, reconnect behavior, privacy, and distribution
 compatibility. Results cannot be transferred between platforms without evidence. If reliability is
 not proven, domain/IP split tunneling is the honest release boundary.
+That path requires a documented M7 deferral decision: neither the per-app capability nor its UI
+may be presented as ready. Per-app evidence in ADR-003 Gate H and ADR-004 is mandatory for a release
+with per-app support, not for a domain/IP-only release with that deferral. All other network, DNS,
+recovery, and release gates remain mandatory; deferral does not automatically accept either ADR.
 
 ### FR-007 — DNS
 

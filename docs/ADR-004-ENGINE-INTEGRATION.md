@@ -4,7 +4,7 @@
 - Дата: 2026-08-16
 - Ревизия: 2026-08-17 — движок пересмотрен в пользу sing-box после проверки поддержки per-app routing
 - Владелец решения: MaratGaZa
-- Решение требуется до: реализации раздельного туннелирования по приложениям (M3) и выбора production engine
+- Решение требуется до: выбора production engine для M3 и реализации раздельного туннелирования по приложениям (M7)
 - Следующий review: перед production engine selection, Gate H data-plane work или добавлением нового protocol family
 
 ## Контекст
@@ -40,7 +40,7 @@ NovaRay использует протоколы VLESS, TLS и Reality (XTLS) д�
 | **Поддержка VLESS + Reality** | Эталонная (родина протокола XTLS Reality) | Полная (собственная реализация на Go) |
 | **Валидация конфигурации** | `xray run -test -c <config.json>` | `sing-box check -c <config.json>` |
 | **Embedded режим** | `libXray` (gomobile/cgo `xcframework`) | `experimental/libbox` (Apple и Android) |
-| **Текущий статус в NovaRay** | Реализован генератор `xray_generator.rs`, проверен реальным бинарником | Манифест зафиксирован в спайке Issue #12 |
+| **Состояние NovaRay при сверке 2026-09-13** | Генератор `xray_generator.rs`, preflight и opt-in WS/gRPC loopback tests | Генератор `sing_box_generator.rs`, catalog/dialect selector и opt-in real preflight; production packet flow не доказан |
 
 ## Предлагаемое решение
 
@@ -72,9 +72,17 @@ NovaRay использует протоколы VLESS, TLS и Reality (XTLS) д�
    4. *Bounded Logs:* логирование без утечки ключей и UUID.
    5. *Graceful Stop:* остановка по сигналу за отведенное время.
    6. *Zero Residue:* отсутствие процессов-сирот после аварийного завершения.
-   7. *Per-App Routing:* правило `process_name` доказанно направляет трафик конкретного приложения в отдельный outbound на реальном трафике.
+   7. *Per-App Routing:* для релиза с per-app правило `process_name` доказанно направляет трафик
+      конкретного приложения в отдельный outbound на реальном трафике. Для domain/IP-only релиза
+      вместо этого требуется документированное решение M7 об отсрочке по FR-006 без заявления
+      per-app capability или готового UI.
    8. *Packet Flow:* корректный обмен пакетами с виртуальным интерфейсом (см. ADR-003).
-9. *Legal Review:* формальное подтверждение условий GPL-3.0-or-later и naming restriction для выбранной модели распространения (см. ADR-002).
+   9. *Legal Review:* формальное подтверждение условий GPL-3.0-or-later и naming restriction для выбранной модели распространения (см. ADR-002).
+
+Уточнение 2026-09-13: gate 7 согласован с domain/IP fallback SPEC, а не снят как требование к
+per-app функции. Альтернатива обязательному per-app в первом релизе допускается только через явное
+решение M7; gates 1–6, 8 и 9 сохраняются. Перед включением per-app gate 7 открывается повторно.
+Это не выбор нового движка и не acceptance ADR; upstream-факты от 2026-08-17 не передатируются.
 
 ### Engineering legal review для public source snapshot (2026-08-18)
 

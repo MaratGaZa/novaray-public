@@ -27,8 +27,11 @@ and [sing-box v1.13.18](https://github.com/SagerNet/sing-box/releases/tag/v1.13.
 ## Versioned catalog maintenance
 
 `engine_catalog.json` is the checked-in runtime source of truth. It records lifecycle status and
-both hashes per declared target; runtime uses only each engine's `recommended` version. Maintainers
-use `scripts/update_engine_catalog.py` with an explicit asset manifest containing URLs, expected
+both hashes per declared target. Runtime defaults to each engine's `recommended` version;
+explicit selection also permits compatible catalogued `supported` releases and `deprecated`
+releases with a warning. Unknown, `yanked`, or incompatible versions fail closed, including when
+`--expected-sha256` is supplied; see [ADR-007](./ADR-007-ENGINE-VERSION-SELECTOR.md).
+Maintainers use `scripts/update_engine_catalog.py` with an explicit asset manifest containing URLs, expected
 archive SHA-256 values, and internal binary paths. The tool writes a separate candidate catalog and
 evidence document after checking each downloaded archive and hashing its extracted binary. Reviewers
 must independently review that candidate; the tool never performs a runtime update or overwrites the
