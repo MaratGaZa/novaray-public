@@ -1,0 +1,174 @@
+# Native Authorization Right Validation Protocol
+
+Status: proposed experiment protocol, not execution authorization or native evidence.
+Owner: MaratGaZa. Date: 2026-09-13. Issue: #92. Execution task: 61.
+Parent decision: [ADR-009](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md), still `Proposed`.
+
+## 1. Purpose and current boundary
+
+Specify the isolated experiment needed before a native mutation adapter can be reviewed. This
+document does not implement a runner, authorize a host change, prove a database roundtrip, accept
+normalization, or close Gate H / Gate I / ADR-009. Its adoption approves only the written protocol.
+
+Current evidence has three distinct levels:
+
+| Component | Proven | Not proven |
+|---|---|---|
+| [Ownership classifier](../src/helper_runtime_right.rs), #86 | bounded exact single-rule matching | provenance or system normalization |
+| [Read-only inspector](../src/macos_runtime_right.rs), #88 | native reads, CF ownership/type checks | write/read equivalence |
+| [Lifecycle executor](../src/helper_runtime_right_execution.rs), #90 | recording call order, readback checks, bounded cleanup | authorization, atomic ownership, external-writer exclusion, crash recovery |
+
+The next implementation may build an explicitly opt-in experimental harness only after review of
+this protocol. A real run additionally requires the per-run owner approval below. Neither an
+ordinary test command nor CI may mutate the authorization database.
+
+## 2. Checked facts and inference
+
+Checked on 2026-09-13 against installed macOS SDK 26.2 `Security.framework/Headers/AuthorizationDB.h`
+and the Apple pages below (their Markdown representations were read when HTML required JavaScript).
+This revision does not redate older ADR facts or claim that native writes were tested.
+
+- `AuthorizationRightGet` reads a definition without an authorization reference and returns a
+  dictionary the caller must release. SDK `errAuthorizationDenied` means no definition for this
+  particular API. [Apple RightGet](https://developer.apple.com/documentation/security/authorizationrightget%28_%3A_%3A%29)
+- `AuthorizationRightSet` can create **or update**, uses authorization for modification, and rejects
+  wildcard names. The SDK lists denied, canceled and interaction-not-allowed outcomes; none is a
+  missing-definition observation for a write. [Apple RightSet](https://developer.apple.com/documentation/security/authorizationrightset%28_%3A_%3A_%3A_%3A_%3A_%3A%29)
+- `AuthorizationRightRemove` takes an authorization reference and explicit name, not an expected
+  previous definition or version. [Apple RightRemove](https://developer.apple.com/documentation/security/authorizationrightremove%28_%3A_%3A%29)
+
+Inference limited to these APIs: their signatures do not supply a conditional create-if-absent or
+compare-and-delete primitive. A get/set/get sequence is not a transaction. This is not a claim that
+every possible macOS coordination mechanism has been ruled out.
+
+Protocol policy (proposal, not an Apple guarantee): a per-run random name and process-local lock
+reduce accidental collision/concurrent harness execution, but cannot constrain another authorized
+writer. An exact definition or matching digest identifies content, not who wrote it. A disposable
+environment limits experiment damage; it does not solve production ownership races.
+
+## 3. Admission checklist for a future run
+
+All items require recorded evidence and explicit owner approval before the first mutation:
+
+- [ ] Dedicated disposable macOS installation on Apple Silicon, with no user workloads, production
+  credentials or managed authorization policy. A VM is acceptable only after its required Security
+  Services behavior and snapshot/restore procedure are separately verified; VM support is not assumed.
+- [ ] Owner-approved environment identifier, macOS build, SDK/toolchain, reviewed runner commit and
+  binary digest recorded privately. No run on the developer workstation by default.
+- [ ] Whole disposable-environment snapshot/reimage baseline and a tested out-of-band restore path.
+  Restore must remain possible after the runner dies; an authorization-database file backup alone
+  is not an approved restore mechanism. Snapshot creation/restoration itself requires owner approval.
+- [ ] Controlled writer set recorded: one test controller; no parallel runners, policy management or
+  other administrative writers. If that condition cannot be established, stop before mutation.
+  Deliberate interference tests below are separate runs and never authorize production use.
+- [ ] One fresh test name in `org.novaray.validation.runtime-right.<32-lowercase-hex>` selected by
+  the harness and approved for this run. No wildcard, caller-selected arbitrary name, production
+  `org.novaray.platform-helper.runtime`, or built-in right may be a mutation target.
+- [ ] Native preflight reports that exact test name absent; lookup failure is not absence. Any
+  existing definition, including an exact match, aborts a fresh run. Never adopt a prior run's right.
+- [ ] Owner approves the exact create/read/remove operations, any planned fixture updates and
+  interruption points, time budget and permitted authorization interaction on that environment.
+  Approval is not implicit in `take next step`, commit/push/PR, or the existence of this document.
+- [ ] Authorization reference acquisition/release and denial/cancel paths are reviewed separately
+  in the runner. Any interaction is confined to the operator-side experiment controller. No helper
+  prompt, credentials in command lines, broad fallback right, or unattended escalation is allowed.
+
+The harness must keep its test namespace separate from the public fixed-runtime-right API. Do not
+make `inspect_macos_runtime_right` accept arbitrary names or implement the fixed-name lifecycle
+adapter using a test name. Reuse only reviewed internal decoding/observation logic where appropriate.
+
+## 4. Bounded procedure and evidence matrix
+
+Each row below is a separate controlled case starting from the approved clean baseline unless the
+row explicitly tests an in-run retry. No automatic retry of a failed mutation. After each mutation,
+readback records observed state, never atomic provenance. Existing classifier rules remain unchanged.
+Cases requiring a compatible created definition are blocked if normalization is incompatible; they
+must not be reported as passed or enabled by weakening the classifier within the experiment.
+
+| Case | Required observation | Stop / recovery |
+|---|---|---|
+| Clean baseline | fresh test name absent; production runtime name only observed read-only if needed | existing/unknown test state: no writes |
+| Create candidate | one Set with exact `rule = authenticate-admin` dictionary; record status, then complete bounded CF shape inspection after success | any error: effects unknown; no cleanup delete |
+| Native normalization | record returned key count, CF types, string-vs-array rule, and whether existing strict classifier accepts | extra metadata or another shape: incompatible, not silently stripped |
+| Exact in-run retry | only after successful compatible readback; re-inspection produces no second Set | mismatch/error: preserve and stop |
+| Conflict / superset | reviewed non-granting or additional-metadata synthetic test policy, installed only by the approved controller in this isolated run, is rejected by reconciliation | no overwrite or delete by subject under test |
+| Normal uninstall | successful compatible create, uninterrupted controlled run and fresh exact observation; one Remove followed by absence readback | error or non-absence: stop; no second Remove or policy recreation |
+| Remove retry | after verified removal in the same run, absent inspection causes no second Remove | changed state: stop |
+| Failed create | denied/canceled/interaction failure or injected uncertain-return boundary retains primary failure and `CreateEffectsUnknown` semantics | no blind deletion, even if later read looks exact |
+| Failed readback / cleanup | after successful create, independently fault readback and each cleanup stage; preserve primary error plus cleanup outcome | fresh conflict/unknown state is never deleted; no retry loop |
+| Controlled writer interference | insert a controller write between inspection and Set/Remove and between mutation and readback | record overwrite/removal exposure or other outcome; this tests a limitation, not race safety |
+| Process termination / reboot | terminate at the approved before-call, after-call-before-result and after-result-before-verification boundaries; inspect from a new process | interrupted ownership is uncertain; no automatic resume/delete |
+
+Post-write dictionary evidence must include **all** fields in bounded structural inspection, not
+just the fields the classifier understands. Do not log arbitrary values: record known key identifiers,
+unknown-key counts, CF type categories, lengths and accepted/rejected classification. A digest may
+be recorded privately only for deterministically encoded, reviewed synthetic fixture content; it
+must not be used to claim ownership. Size/type/encoding overflow stops the case without truncating
+the input into an apparently valid definition.
+
+If macOS returns system metadata, a rule array or another shape, the result is valuable evidence of
+incompatibility with #86/#88, **not** permission to normalize it away. Preserve the strict rejection;
+propose a separately reviewed decoder/ownership change with new tests before retrying that path.
+
+## 5. Cleanup and crash recovery boundary
+
+Automatic per-right cleanup is eligible only after a known successful create in the same
+uninterrupted, controlled run and a fresh compatible exact observation. These are experiment
+preconditions, not a general compare-and-delete guarantee. A local lock never upgrades them to one.
+
+On lost writer control, unexpected definition, failed create, interrupted process, reboot,
+unreadable state, cleanup failure or normalization mismatch: stop writes, release in-process
+resources, retain a redacted result, and quarantine the disposable environment. Do not delete a
+right merely because its name/digest matches. Fresh inspection is diagnostic, not recovery authority.
+
+The operator then restores/reimages the **whole dedicated environment** from the approved baseline
+through the out-of-band procedure. This intentionally discards that experiment, including deliberate
+conflict fixtures; it is not an in-place uninstall and must not run on a shared workstation. Verify
+baseline health and test-name absence before reuse. If restoration cannot be verified, leave the
+environment quarantined and mark the experiment blocked. Do not copy the authorization database
+file back manually, weaken SIP/Gatekeeper, or broaden privileges to force cleanup.
+
+A private durable run manifest must record stage intent before each mutation and its result after
+return, without authorization bytes or raw policy. Missing/corrupt/unflushed manifest or a crash
+between these writes means unknown effects, not permission to resume. The manifest helps diagnosis;
+it is neither a database transaction nor proof of provenance.
+
+## 6. Evidence and completion gates
+
+Evidence includes environment/build, reviewed commit/digest, approved case identifier, stage order,
+API status category, bounded shape classification, primary/cleanup outcomes and baseline restore
+verification. Keep authorization references/external forms, session IDs, credentials and raw policy
+out of logs, manifests, fixtures and PRs. Public reports use sanitized case labels, not host identity
+or the run's random right name. Bound waits in the future runner; timeouts enter unknown-effect
+recovery, not retry. The operator approves a per-case deadline before execution.
+
+These are unfulfilled native gates; this documentation task changes none of them to `[x]`:
+
+- [ ] Reviewed opt-in harness enforces environment/name/operation gates, resource lifetimes,
+  bounded inspection and fault injection; default local/CI tests cannot write the database.
+- [ ] Owner-approved disposable environment and restore drill satisfy section 3.
+- [ ] Native create/read shape is measured; either strict compatibility is demonstrated or a
+  separately reviewed incompatibility decision is recorded. Recording tests are not this evidence.
+- [ ] Success, retry, conflict, uncertain effects, cleanup failures and interruption cases have
+  native evidence plus verified restoration. A destructive race demonstration is not a passing
+  production-safety result.
+- [ ] A separate production mutation design resolves or explicitly rejects the remaining
+  external-writer/provenance risk. This protocol does not enable the fixed runtime-right adapter.
+
+External-form authorization success/denial/invalidation, same-UID attacker behavior, authenticated
+IPC and helper runtime remain the separate [ADR-009 validation spike](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md).
+Even a completed experiment here does not accept ADR-009 or prove Gate H/I.
+
+## 7. Alternatives and rollback
+
+Rejected for this experiment: mutate the real runtime right on the workstation; add only a process
+lock and call it race-safe; drop system fields until classification passes; remove any matching name
+on startup. All hide an unproven ownership or recovery assumption.
+
+Chosen proposal: isolate a test-only harness and recover uncertain state by discarding the approved
+disposable environment. Cost: environment setup and manual approval; no reusable production writer
+yet. Revisit if controlled isolation, authorization, restore or bounded evidence cannot be achieved.
+
+Documentation rollback is a code-review revert with no host cleanup. Implementing or running this
+protocol, accepting normalization changes and promoting ADR-009 each require their own review and
+owner authorization; none follows automatically from merging the documentation PR.

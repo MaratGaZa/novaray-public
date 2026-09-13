@@ -18,6 +18,8 @@
   создание/удаление right и точный create/read roundtrip остаются открыты
 - Ревизия: 2026-09-12 — issue #90 добавил lifecycle orchestration с recording readback/cleanup;
   native mutation, normalization, atomic ownership и crash recovery остаются открыты
+- Ревизия: 2026-09-13 — issue #92 описал isolated native validation protocol; это подготовка
+  эксперимента, не разрешение на запуск и не native evidence
 
 ## Контекст
 
@@ -139,6 +141,16 @@ authentication factors. Они остаются diagnostics, freshness и defens
   privileged command без действующего right выполнить не должен.
 
 ## Validation spike до принятия
+
+Для database-части spike действует
+[Native Authorization Right Validation Protocol](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md):
+отдельный owner approval запуска, disposable environment с проверенным restore, test-only namespace,
+normalization/race/fault matrix и stop states при неопределённых effects. Протокол отделяет факты
+SDK/API от inference и не утверждает atomic ownership. Native runner ещё отсутствует; протокол
+не разрешает менять fixed runtime API, отбрасывать metadata или запускать mutation на рабочем Mac.
+При unknown effects/crash recovery boundary — restore всей одобренной одноразовой среды, а не
+автоматическое удаление найденного права. Это не production race/rollback strategy и не заменяет
+оставшиеся проверки runtime authentication ниже.
 
 Pure Rust executor из issue #80 фиксирует порядок peer → authorization → handshake →
 helper-generated session, connection-local владение authorization form и повторную проверку права до

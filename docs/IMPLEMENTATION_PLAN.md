@@ -735,6 +735,15 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     root, IPC, network effects or ADR promotion. Live mutation requires a separately reviewed
     authorization/race/rollback strategy.
 
+61. [x] Native authorization-right validation protocol — issue #92: документировать отдельно
+    проверяемый isolated spike перед подключением native mutation adapter из задачи 60.
+    Acceptance: checked Apple/SDK facts versus inference, explicit per-run approval, disposable
+    environment/restore prerequisite, test-only namespace without widening fixed runtime APIs,
+    normalization/race/fault matrix, bounded redacted evidence and unknown-effect/crash stop states.
+    Document the lack of atomic ownership evidence; preserve strict decoder and conflicting policy.
+    Only the protocol is delivered: no runner, database mutation, prompts, root, environment restore,
+    IPC, network effects, native gate completion or ADR promotion.
+
 ## 7. Зависимости
 
 ```mermaid

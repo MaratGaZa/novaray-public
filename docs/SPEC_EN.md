@@ -233,6 +233,11 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   cross-process races, crash recovery, authorization and database mutation are not proven. A live
   adapter requires a separate authorization, race-exclusion and rollback strategy; ADR-009 remains
   `Proposed`.
+- [x] [Native right validation protocol](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md) (issue #92)
+  defines separate per-run approval, disposable environment/restore, a test-only namespace,
+  a normalization/race/fault matrix and stops for unknown effects/crashes. This is documentation,
+  not a runner or native evidence; the strict decoder, fixed runtime API and ADR/gate statuses
+  remain unchanged.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
