@@ -327,6 +327,10 @@ Android VpnService → Android UI → release
 - [x] Добавить macOS read-only inspector fixed runtime Authorization right: native read, CF type/shape
   validation, RAII и fail-closed classification без отбрасывания system metadata; synthetic CF tests
   и live read-only evidence не закрывают create/read roundtrip или authorization (issue #88).
+- [x] Реализовать runtime-right lifecycle executor с fresh inspection, create/remove readback,
+  bounded ownership-checked compensation и отдельными primary/cleanup diagnostics на recording
+  adapter; без native mutation, normalization, atomic ownership/race или crash-recovery evidence
+  (issue #90).
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.
 - [x] Реализовать `ConnectionState` и serialized helper command executor в Rust core без

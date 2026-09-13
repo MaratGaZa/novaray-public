@@ -724,6 +724,17 @@ protocol имеет отдельные leak/MTU/DNS observations, WireGuard им
     System metadata is not normalized away. No create/read roundtrip, AuthorizationRightSet/Remove,
     authorization acquisition/prompts, database mutation, root, IPC or network changes; ADR stays Proposed.
 
+60. [x] Runtime-right lifecycle executor — issue #90: поверх ownership contract из #86 и read-only
+    semantics из #88 реализовать injected-adapter install/uninstall с fresh entry inspection,
+    create/remove readback и bounded compensation после неудачной проверки successful create.
+    Acceptance: recording tests for exact/idempotent success, absent uninstall, conflict preservation,
+    read/create/remove failures, uncertain create effects without blind deletion, fresh ownership
+    check before cleanup, separate primary/cleanup diagnostics and failed cleanup verification.
+    Evidence does not establish native database normalization, atomic ownership, mutation race
+    exclusion or crash recovery. No concrete mutation adapter, Security framework writes/prompts,
+    root, IPC, network effects or ADR promotion. Live mutation requires a separately reviewed
+    authorization/race/rollback strategy.
+
 ## 7. Зависимости
 
 ```mermaid

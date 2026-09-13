@@ -224,6 +224,15 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   without reflecting policy contents. Exact matching is proven with a synthetic CF dictionary;
   live tests read missing/existing rights. Create/read roundtrip, post-write normalization,
   database mutation and authorization remain open; ADR-009 remains `Proposed`.
+- [x] Runtime-right lifecycle executor (issue #90): the current observation is read within each
+  operation; create/remove require absent/exact-owned respectively and finish with readback
+  verification. Create failure leaves effects uncertain and does not authorize deletion; failed
+  verification after successful create requires a fresh exact-owned observation before compensation.
+  Primary failure and cleanup outcome are diagnosed separately; foreign/unrecognized policy is
+  preserved. Evidence is limited to a recording adapter: native normalization, atomic ownership,
+  cross-process races, crash recovery, authorization and database mutation are not proven. A live
+  adapter requires a separate authorization, race-exclusion and rollback strategy; ADR-009 remains
+  `Proposed`.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
