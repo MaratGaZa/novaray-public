@@ -12,7 +12,8 @@
 | Ошибки | anyhow, thiserror | текущая обработка ошибок |
 | Логи | tracing, tracing-subscriber | консольные сообщения |
 | URI | url, percent-encoding | импорт VLESS URI |
-| Системные API | libc, macOS-only nix | подключены, но полноценная platform integration отсутствует |
+| Системные API | libc, macOS-only nix и core-foundation | native peer credentials и read-only AuthorizationRightGet; не live helper runtime |
+| Artifact integrity | sha2, hex | pinned SHA-256 проверки engine/helper; не runtime authentication |
 
 `bytes` подключён, но текущий data plane его практически не использует.
 
@@ -28,14 +29,18 @@ Xray/Sing-box artifact. Изолированные macOS spikes содержат
 - SwiftUI для окон, форм, состояния и accessibility;
 - AppKit bridge для menu bar и специфичных macOS возможностей, где SwiftUI недостаточно;
 - Rust static library для core;
-- `cbindgen`, UniFFI или вручную определённый C ABI после отдельного FFI spike;
-- Xcode targets для app и NetworkExtension.
+- versioned C ABI по ADR-001; синхронный Rust/Swift roundtrip есть в изолированном spike,
+  async production bridge и инструменты генерации bindings ещё требуют проверки;
+- Xcode app target и отдельный helper/network boundary по ADR-003; NetworkExtension target относится
+  только к отложенному Gate B, а не к обязательному source-first release stack.
 
 Преимущество — максимально нативное поведение macOS и прямой доступ к системным VPN API. Цена — небольшой слой Swift и более сложная сборка Rust + Xcode.
 
-### Резервный вариант
+### Другие UI-кандидаты
 
-Tauri v2 подходит, если приоритетом станет быстрая кроссплатформенная оболочка. Он использует Rust backend и HTML в системном WebView. Это компактнее Electron, но не является полностью Rust UI и не заменяет NetworkExtension/helper.
+Tauri v2 не является поддерживаемым резервным UI для macOS: ADR-001 исключает второй параллельный
+стек. Для других платформ выбор остаётся отдельным ADR; смена macOS stack потребует пересмотра
+ADR-001, а не добавления второй оболочки. WebView shell также не заменяет privileged boundary.
 
 ### Не рекомендуемый вариант для NovaRay
 
@@ -61,7 +66,9 @@ Rust-native `egui`/`wgpu` и Slint допустимы для экспериме�
 - Rust LaunchDaemon helper с изолированным типизированным API и отдельным runtime IPC boundary.
 - Helper install/deinstall Gate I реализован как типизированный executor с recording-adapter
   evidence; реальная привилегированная установка, root execution и mutation `/Library` не доказаны.
-- Gate H (helper runtime IPC, peer validation и authenticated commands) не начат.
+- Live Gate H (persistent helper runtime IPC и authenticated commands) не реализован. Подготовка
+  включает replay/admission contracts, kernel peer credential tests, read-only right inspector и
+  recording right-lifecycle executor. Ни один из них не доказывает Gate H или native right writes.
 
 ### Отложено: Network System Extension (`NEPacketTunnelProvider`)
 
@@ -87,11 +94,13 @@ signing, install/update/reboot и recovery. Hosted `windows-latest` годитс
 - **Current local-proxy/generator evidence path:** Xray-core (`v26.3.27`), MPL 2.0. Базовый генератор конфигураций в Core (`xray_generator.rs`), валидация через `xray run -test -c`.
 - **Proposed production engine direction:** sing-box (`v1.13.18`) по ADR-004; catalog/version-selector contracts приняты отдельно, но production packet-level integration не доказана.
 - **Управление:** `ProcessSupervisor` в Rust Core (PID, bounded redacted logging, graceful stop `SIGTERM`/`SIGKILL`, zero residue).
-- **8 гейтов Gate B** зафиксированы в `engine-evidence.json` и `ADR-004`.
+- **Production acceptance gates** задаёт ADR-004: engine lifecycle, packet flow и legal review;
+  per-app evidence либо явная domain/IP-only отсрочка M7 по FR-006. Исторический
+  `engine-evidence.json` описывает исходный spike, а не текущую сводку пройденных gates.
 - **Отложенные альтернативы:** service-owned process или Rust-native protocol implementation после
   отдельного review.
 
-Evidence-only spike issue development task #12 зафиксировал snapshot
+Исторический evidence-only spike issue development task #12 зафиксировал snapshot
 Xray-core `v26.3.27` и sing-box `v1.13.18`: оба upstream публикуют macOS arm64 CLI artifacts и
 config-validation команды. Для embedding найдены XTLS/libXray Apple wrapper и first-party
 sing-box `experimental/libbox`/Apple client path. Это только source/contract evidence: binary не
@@ -99,20 +108,19 @@ sing-box `experimental/libbox`/Apple client path. Это только source/con
 NetworkExtension runtime и process residue не проверены. Сравнение и digests находятся в
 [`spikes/macos-engine-topology-spike`](../spikes/macos-engine-topology-spike/README.md); engine не выбран.
 
-## 6. Планируемые Rust-компоненты
+## 6. Rust-компоненты: реализованная основа и оставшийся scope
 
-| Область | Предпочтительный подход |
-|---|---|
-| Конфигурация | Serde + JSON Schema + typed enums + migrations |
-| State machine | явная enum-модель и сериализация lifecycle-команд |
-| IP/CIDR | проверенный crate с IPv4/IPv6 типами |
-| DNS | системная конфигурация через network boundary; parser/resolver abstractions в core |
-| Policy | отдельный compiler user rules → engine/OS rules |
-| Process lifecycle | Tokio process, bounded log readers, readiness, restart, graceful stop |
-| Secrets | macOS Keychain и отдельно выбранный Windows credential mechanism |
-| Diagnostics | tracing spans, redaction, bounded rotating files |
-| Platform contracts | versioned typed commands/events, handshake и capabilities |
-| FFI/IPC | минимальный macOS ABI и authenticated Windows IPC после spikes |
+| Область | Уже есть | Оставшийся scope |
+|---|---|---|
+| Конфигурация | Serde, JSON Schema corpus, typed enums и validators | atomic profile storage и migrations |
+| State machine | supervisor enum/lifecycle и serialized start; helper contracts | production tunnel lifecycle с OS evidence |
+| IP/CIDR и policy | matcher и engine-specific config generation | полноценный policy compiler и packet-level enforcement |
+| DNS | typed snapshot/mutation contracts | реальный OS controller, leak tests и rollback |
+| Process lifecycle | Tokio child, bounded log readers, readiness, restart, graceful stop | связка с production helper/data plane |
+| Secrets | redaction primitives | Keychain и отдельный Windows credential mechanism |
+| Diagnostics | tracing и bounded redacted process logs | bounded rotating files и production support bundle |
+| Platform contracts | versioned commands/events, handshake, capabilities, replay/admission | authenticated persistent transport и реальные platform adapters |
+| FFI/IPC | изолированный синхронный macOS ABI spike | async production bridge; Windows IPC после отдельного решения |
 
 Конкретные crate версии фиксируются отдельным dependency review в момент реализации, а не заранее в документации.
 
@@ -149,8 +157,12 @@ cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
 ```
 
-Дополнительно планируются schema validation, dependency/license audit, Swift/Xcode tests,
-NetworkExtension tests, Windows contract/service/system tests, leak tests и platform signed-package smoke.
+JSON Schema corpus уже входит в Rust tests; CI также выполняет isolated Swift ABI harness,
+Swift/Xcode spike builds и проверки Markdown links/requirements traceability (см.
+[workflow](../.github/workflows/ci.yml)). Это не production UI или system-network tests.
+Остаются отдельные dependency/license evidence gates, property/fuzz coverage, live helper,
+NetworkExtension (отложенный path), Windows service/system, leak/recovery и source-first release
+smoke; signed-package smoke относится только к отложенному signing path.
 
 ## 9. Запрещённые архитектурные сокращения
 

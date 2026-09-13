@@ -1,6 +1,7 @@
 # NovaRay: полный roadmap от прототипа до macOS и Windows desktop-релизов
 
-Актуально на 2026-08-16.
+Сводка текущего состояния сверена 2026-09-13 с `main` на `d6edf24` (после слияния PR #93).
+Исторические evidence-записи ниже сохраняют собственные даты и границы проверок.
 
 ## Обозначения
 
@@ -16,20 +17,23 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 ## Текущее положение
 
 ```text
-Rust models/parser/matcher/tests
-              ↓
-      [мы находимся здесь]
-              ↓
-CLI поверх core → engine vertical slice → privileged helper + utun data plane
-              ↓
-domain/IP split tunneling → per-app split tunneling (движок) → security/recovery
-              ↓
-native macOS UI → source-first release
-              ↓
-Windows topology/service spike → Windows full/split tunnel → UI → release
-              ↓
-Android VpnService → Android UI → release
+Есть: Rust models/schema/parser/matcher + CLI/ProxyService/supervisor
+Есть: engine catalog/selector + preflight + opt-in Xray WS/gRPC loopback tests
+Есть: helper contracts/recording execution + native peer/read-only right adapters
+  -> Не доказаны: remote Reality/UDP M2, Gate I, live helper Gate H / utun
+  -> Далее: domain/IP traffic + DNS/kill-switch/recovery evidence
+  -> Per-app: отдельный spike M7 или явная отсрочка для domain/IP-only release
+  -> Production macOS UI + source-first Gate S
+  -> Windows topology/service -> full/split tunnel -> UI/release
+  -> Android (отдельный проект)
 ```
+
+Это несколько подготовительных потоков, а не один завершённый VPN milestone. Текущие gaps и
+ближайшая очередь находятся в [implementation plan, разделе 5](../docs/IMPLEMENTATION_PLAN.md),
+связи требований с тестами в [TRACEABILITY](../docs/TRACEABILITY.md).
+[Протокол проверки системного права](../docs/AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md) включён
+в проект через PR #93. Это только документ: реальный запуск требует отдельного одобрения
+и одноразовой среды с проверенным восстановлением; recording/read-only tests их не заменяют.
 
 ---
 
@@ -44,10 +48,14 @@ Android VpnService → Android UI → release
 - [x] Вынести Windows/Linux и дополнительные протоколы из первого MVP.
 - [x] Зафиксировать порядок: macOS первым, Windows 11 вторым, Android в отдельном проекте (issue #5).
 - [x] Описать proposed shared-core/platform boundaries в ADR-006 Cross-platform boundaries.
-- [x] Определить минимальный MVP: VLESS Reality, domain/IP split, recovery, native UI, signed `.app`.
+- [x] Определить минимальный MVP: VLESS Reality, domain/IP split, recovery, native UI, source-first
+  release по ADR-002 Gate S; Developer ID signing/notarization отложены. Это определение scope,
+  не evidence готового релиза.
 - [x] Добавить отдельный implementation plan и UI ADR.
 - [x] Добавить владельца и дату следующего review для каждого архитектурного решения.
 - [x] Ввести requirements traceability: `FR/NFR → задача → тест → evidence` (issue #76).
+- [x] Сверить сводки этапов и документацию с кодом, согласовать gates и перевести implementation
+  plan на русский без изменения смысла истории, статусов ADR и готовности функций (issue #94).
 
 ### 0.2. Gate: модель распространения
 
@@ -64,6 +72,8 @@ Android VpnService → Android UI → release
 - [~] Создать spike `NEPacketTunnelProvider` на Apple Silicon в `spikes/macos-networkextension-spike/` (issue #7; остаётся валидным evidence для отложенного пути).
 - [x] Зафиксировать факт: `utun` требует `root`, но не требует Apple entitlement.
 - [~] Зафиксировать privileged helper + `utun` как основную топологию в [ADR-003](../docs/ADR-003-NETWORK-TOPOLOGY.md) со статусом `Proposed`.
+- [ ] Пройти Gate I: доказанная privileged install/deinstall либо эквивалентное documented evidence
+  перед live Gate H. Типизированный install executor и recording adapter не закрывают этот gate.
 - [ ] Пройти Gate H: демон создаёт `utun`, поднимает и снимает туннель.
 - [ ] Пройти Gate H: доказанный откат маршрутов, DNS и firewall при остановке, `SIGKILL` и перезагрузке.
 - [ ] Пройти Gate H: отсутствие DNS-утечек и остаточных процессов/правил.
@@ -75,17 +85,19 @@ Android VpnService → Android UI → release
 ### 0.4. Gate: engine integration
 
 - [~] Pinned license/source/release metadata, официальные arm64 artifacts и embedding paths Xray-core
-  и Sing-box собраны в evidence-only spike issue #12; локальная arm64-сборка и запуск не выполнялись.
+  и Sing-box собраны в evidence-only spike issue #12; в рамках именно этого spike локальная
+  arm64-сборка и запуск не выполнялись. Более поздние preflight/loopback tests перечислены в фазе 2.
 - [~] Host subprocess, extension embedding/subprocess и helper-owned варианты сравнены по первичным
   источникам; runtime внутри development-entitled topology не доказан.
-- [~] Команды config validation и требуемые readiness/logging/graceful-stop contracts описаны;
-  реальное L4 lifecycle evidence отсутствует.
+- [~] Команды config validation и readiness/logging/graceful-stop contracts описаны в исходном
+  spike; последующие process/local-proxy tests не доказывают production engine в helper topology.
 - [x] Проверить по исходникам, поддерживают ли движки маршрутизацию по приложениям: Xray-core `v26.3.27` — нет, sing-box `v1.13.18` — `process_name`/`process_path` (macOS/Windows) и `package_name` (Android).
 - [~] Зафиксировать sing-box как production-движок в [ADR-004](../docs/ADR-004-ENGINE-INTEGRATION.md) со статусом `Proposed`.
 - [x] Зафиксировать версию, source revision и checksum sing-box в runtime catalog/evidence: `v1.13.18`,
   revision `45ca32dcb966f07f97fc888fe8586e359dbe8405`, archive SHA-256 и binary SHA-256 для
   `darwin-arm64`, `linux-arm64`, `windows-amd64`.
-- [ ] Пройти гейты ADR-004, включая per-app routing на реальном трафике и legal review.
+- [ ] Пройти гейты ADR-004, включая packet flow и legal review; для per-app нужен реальный traffic
+  evidence, для domain/IP-only релиза вместо него требуется явная отсрочка M7 по FR-006.
 
 Критерий завершения фазы: оформлен базовый архитектурный пакет ADR по UI, distribution, network topology и engine; дальнейшие задачи больше не зависят от скрытых предположений.
 
@@ -531,7 +543,8 @@ Android VpnService → Android UI → release
 - [x] Доказать минимальный arm64 Swift → Rust → typed event roundtrip через C ABI в изолированном
   `spikes/macos-rust-ffi-spike/` (issue #9).
 - [~] Зафиксировать предложение по UI в [ADR-001](../docs/ADR-001-MACOS-UI.md) со статусом `Proposed`
-  (runtime требует Gate B).
+  (production GUI требует acceptance UI/FFI критериев и явного принятия ADR; сетевой UI зависит от
+  доказанного helper lifecycle, NetworkExtension Gate B относится только к отложенному пути).
 - [ ] Измерить cold launch, idle memory и idle CPU.
 - [ ] Проверить menu bar, notifications, accessibility и dark/light mode.
 - [ ] Зафиксировать FFI ownership, threading и error mapping.

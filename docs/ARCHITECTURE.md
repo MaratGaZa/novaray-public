@@ -1,23 +1,37 @@
 # NovaRay: текущая и целевая архитектура
 
-Статус: текущий код — переносимый Rust prototype; diagram ниже — цель, а не evidence реализации.
+Статус: переносимый Rust core с local-proxy lifecycle и изолированными macOS helper adapters.
+Раздел 1 описывает текущие границы по коду; diagram раздела 3 описывает цель, не готовый VPN.
 
 Порядок релизов: macOS Apple Silicon первым, Windows 11 x64 вторым, Android третьим.
 
 ## 1. Текущая архитектура
 
 ```text
-CLI (печатает сообщения и завершается)
-              │
-              ▼
-Rust crate
-  config models · VLESS parser · matcher · Xray JSON generator
-  partial ProcessSupervisor · no-op RouteManager
+Foreground CLI start / validate / status / pinned-releases
+  -> ProxyService -> catalog/version/dialect/checksum checks
+                  -> Xray or sing-box config -> preflight -> ProcessSupervisor
+Rust core: config/schema/validators, VLESS parser, matcher, typed lifecycle
+Helper boundary: typed protocol, replay/admission and recording execution contracts
+macOS isolated adapters: getpeereid, AuthorizationRightGet (read-only)
+System routing path: RouteManager remains no-op; no production helper listener
 ```
 
-Сейчас отсутствуют real engine connection, TUN/NetworkExtension, Windows Service, routes/DNS
-controller, kill switch, platform UI, packaging и system tests. Matcher decision не применяется к
-пакетам и не является split tunneling.
+[`src/cli.rs`](../src/cli.rs) удерживает foreground `start` до остановки и делегирует работу
+[`ProxyService`](../src/engine.rs); [`ProcessSupervisor`](../src/core.rs) управляет настоящим child
+process, readiness, bounded logs и graceful stop. CLI `status` не является IPC-запросом к фоновому
+демону; remote disconnect из другого процесса пока не реализован.
+
+В [`tests/xray_transport_runtime_tests.rs`](../tests/xray_transport_runtime_tests.rs) есть opt-in
+real-engine WS/gRPC loopback traffic tests. Это не remote Reality/UDP acceptance M2 и не системный
+VPN. macOS peer tests проверяют kernel credentials, включая отдельный same-UID процесс;
+[`macos_runtime_right`](../src/macos_runtime_right.rs) только читает Authorization database.
+Authorization-right writes проверяются recording adapter, не системой.
+
+Не доказаны privileged install/deinstall Gate I и live helper runtime Gate H; нет production `utun`,
+routes/DNS/firewall controller, kill switch, platform UI, packaging или Windows Service. Matcher
+decision не применяется к пакетам и не является split tunneling. Process/filesystem/kernel-read
+tests существуют, но packet-level VPN, leak и system recovery evidence отсутствует.
 
 ## 2. Решения до platform data plane
 
@@ -25,7 +39,8 @@ controller, kill switch, platform UI, packaging и system tests. Matcher decisio
 
 - [ADR-001](./ADR-001-MACOS-UI.md): SwiftUI/AppKit shell + Rust core предлагается (`Proposed`) на
   основе спайков (Issue #7 и Issue #9); синхронный arm64 C ABI roundtrip доказан; production
-  runtime-интеграция ожидает Gate B.
+  GUI требует оставшихся UI/FFI критериев ADR-001 и его явного принятия. NetworkExtension Gate B
+  не блокирует source-first UI; реальный сетевой UI зависит от evidence helper lifecycle.
 - [ADR-002](./ADR-002-MACOS-DISTRIBUTION.md): source-first distribution предлагается (`Proposed`)
   как первичная модель; платное членство Apple Developer Program не приобретается, Developer ID и
   notarization отложены.
@@ -37,7 +52,8 @@ controller, kill switch, platform UI, packaging и system tests. Matcher decisio
 - [ADR-004](./ADR-004-ENGINE-INTEGRATION.md): sing-box предлагается (`Proposed`) как production-движок,
   так как per-app routing (`process_name`/`package_name`) отсутствует в Xray-core; определены гейты
   до утверждения.
-- Доказуемый scope per-app routing решается отдельным будущим ADR/decision в M7.
+- Доказуемый scope per-app routing решается отдельным будущим ADR/decision в M7. По FR-006 возможен
+  domain/IP-only релиз с явной отсрочкой per-app; это не снимает остальные network/recovery gates.
 
 ### 2.2. Cross-platform gate
 

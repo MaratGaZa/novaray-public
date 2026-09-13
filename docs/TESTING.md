@@ -2,19 +2,32 @@
 
 ## 1. Текущий статус
 
-Текущие тесты проверяют Rust-модели и чистую логику. Они не доказывают, что приложение подключается к VPN, создаёт tunnel, применяет split tunneling или восстанавливает macOS/Windows network state.
+Инвентарь тестов включает pure Rust contracts, реальные child processes/filesystem и ограниченные
+macOS kernel/Security read-only проверки. Отдельно доступны opt-in real-engine preflight и loopback
+traffic tests. Это не доказательство system VPN, tunnel, split tunneling или восстановления
+macOS/Windows network state. Ниже описан scope имеющихся тестов, не результат нового полного прогона.
 
 В проекте есть:
 
-- unit tests в `src/config.rs`, `src/parser.rs`, `src/matcher.rs`, `src/xray_generator.rs`;
+- unit tests моделей, parser/matcher, Xray/sing-box generators, catalog/version compatibility,
+  network-state/recovery и helper protocol/admission/right-lifecycle contracts;
 - integration-style tests в `tests/`, связывающие несколько Rust-модулей и fixtures;
-- проверки повреждённого JSON и некорректных VLESS URI.
+- проверки повреждённого JSON, некорректных VLESS URI и positive/negative JSON Schema corpus;
+- CLI/ProxyService/supervisor tests с настоящими child processes, сигналами, таймаутами и cleanup;
+- helper source/destination filesystem tests: symlinks, regular-file checks, opened-handle hashing;
+- [`tests/helper_peer_credentials_macos.rs`](../tests/helper_peer_credentials_macos.rs): настоящий
+  отдельный same-UID процесс и kernel credentials; authorization/session issuance остаются recording;
+- [`src/macos_runtime_right.rs`](../src/macos_runtime_right.rs): CF fixtures и реальные read-only
+  AuthorizationRightGet tests; exact-owned CF fixture не доказывает native write/read normalization;
+- opt-in ignored [`tests/xray_transport_runtime_tests.rs`](../tests/xray_transport_runtime_tests.rs)
+  и [`tests/sing_box_runtime_tests.rs`](../tests/sing_box_runtime_tests.rs): требуют отдельно
+  предоставленных engine binaries. Xray WS/gRPC loopback traffic не закрывает remote Reality/UDP M2;
 - изолированный L3 spike `spikes/macos-rust-ffi-spike/`: Rust unit/layout tests и arm64 Swift
   harness проверяют синхронный ABI v1 callback; это ещё не production lifecycle contract.
 - evidence-only manifest `spikes/macos-engine-topology-spike/` фиксирует pinned upstream metadata и
   открытые engine topology gates; offline validator проверяет честность claims, но не запускает engine.
 
-Файл `test_end_to_end_vless_to_xray_pipeline` является end-to-end только для in-memory цепочки `URI → models → matcher → JSON`. Это не системный VPN E2E.
+Тест `test_end_to_end_vless_to_xray_pipeline` является end-to-end только для in-memory цепочки `URI → models → matcher → JSON`. Это не системный VPN E2E.
 
 `test_route_manager_and_process_supervisor_initialization` вызывает no-op `RouteManager` и пустой `stop`; он не проверяет маршруты или процесс engine.
 
@@ -24,17 +37,19 @@
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
+python3 scripts/check_markdown_links.py .
+python3 scripts/check_requirements_traceability.py
+git diff --check
 ```
 
-На момент актуализации:
+Фактические результаты фиксируются для конкретного commit, OS/arch и команды в CI/session evidence.
+`cargo test --all-targets` не запускает ignored engine tests; для них нужен отдельный явный прогон
+по условиям соответствующего теста. macOS-only tests на Linux/Windows не выполняются.
+Зелёная переносимая Rust-джоба не доказывает macOS NetworkExtension, Gate I/H или Windows Service.
 
-- `cargo test --all-targets` проходит;
-- строгий Clippy `-D warnings` проходит после добавления `Default` для `ProcessSupervisor` и
-  `RouteManager`;
-- duplicate module compilation устранён: binary использует library target и больше не объявляет
-  повторные `mod`.
-
-Эти L0/L1 проверки не являются evidence работающего VPN, macOS NetworkExtension или Windows Service/network adapter.
+Per-app packet evidence обязательно перед включением функции. Domain/IP-only release требует
+документированной отсрочки M7 по FR-006 и отсутствия заявления per-app capability/UI; это не
+освобождает от domain/IP traffic, DNS-leak, kill-switch/recovery и остальных release tests.
 
 ## 3. Уровни тестирования
 

@@ -49,7 +49,10 @@ NovaRay ориентирован прежде всего на macOS Apple Silico
 
 ## Доказательства готовности (Evidence)
 
-Текущий статус остаётся `Proposed` до закрытия Gate B и production-интеграции.
+Текущий статус остаётся `Proposed` до проверки оставшихся UI/FFI критериев и явного утверждения
+владельцем перед production GUI. Уточнение 2026-09-13: NetworkExtension Gate B относится только к
+отложенному пути ADR-002/003 и не является условием source-first UI. Для сетевого UI обязательны
+реальные lifecycle events и evidence выбранного helper path; контракт или mock не доказывает tunnel.
 В рамках спайков Gate A подтверждено:
 - [x] **SwiftUI + System Extension target:** проект `NovaRaySpike.xcodeproj` успешно собирает `.app` и встроенный `org.novaray.spike.packettunnel.systemextension` для `arm64` (Issue #7).
 - [x] **Rust C ABI ↔ Swift 6 roundtrip:** Swift вызывает Rust `staticlib` и получает типизированные события `NovaRayStateEvent` в режиме Swift 6 strict concurrency (Issue #9).
