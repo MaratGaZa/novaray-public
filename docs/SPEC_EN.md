@@ -238,6 +238,11 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   a normalization/race/fault matrix and stops for unknown effects/crashes. This is documentation,
   not a runner or native evidence; the strict decoder, fixed runtime API and ADR/gate statuses
   remain unchanged.
+- [x] Isolated base-case experiment harness (#96), gated by `native-right-experiment`: generated-name
+  and prerequisite approval, one create/read/remove/read, intent/result journal, watchdog and stop
+  without blind cleanup. Recording order/failures, CF fixtures, local journal and adapter compilation
+  are verified. Native execution, environment restoration, remaining matrix cases and Gate I/H
+  are not proven; ADR-009 remains `Proposed`.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
@@ -510,6 +515,15 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   pass the existing ownership classifier. Extra fields, unknown types/keys and malformed or oversized
   values are rejected before planning; system metadata is not discarded to obtain an exact match.
   Errors do not reflect policy contents. Read-only evidence does not prove a create/read roundtrip.
+- The task 63 experimental harness (#96) is separate from normal CLI/helper targets and requires
+  the `native-right-experiment` feature. Its base case performs one create/read/remove/read for a
+  generated test name under the [protocol](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md). Before
+  authorization it requires interactive approval of the exact name/operations and owner-confirmed
+  disposable environment, restoration, controlled writers and reviewed build. Operator attestations
+  do not prove those external conditions. A bounded private journal is flushed before each mutation;
+  unknown results, incompatible shapes, journal failure or timeout stop writes without retries or
+  blind deletion. Recording tests and native adapter compilation are required, not a system run.
+  The remaining experiment matrix, native evidence and Gate I/H remain open.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,

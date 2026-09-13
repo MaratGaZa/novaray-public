@@ -78,6 +78,18 @@ development task #3. Windows hosted x64 portability job впервые
 
 ## Документация
 
+Отдельный экспериментальный target `native-right-roundtrip` требует feature
+`native-right-experiment` и не входит в обычные CLI/helper. Его сборка и `--help` безопасны:
+
+```bash
+cargo build --locked --features native-right-experiment --example native-right-roundtrip
+cargo run --locked --features native-right-experiment --example native-right-roundtrip -- --help
+```
+
+Не запускать `--run` на рабочей машине. Протокол, допуск конкретного эксперимента и ограничения
+описаны в [Native Authorization Right Validation](docs/AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md).
+
+
 - [Спецификация RU](./docs/SPEC_RU.md)
 - [Specification EN](./docs/SPEC_EN.md)
 - [Текущая и целевая архитектура](./docs/ARCHITECTURE.md)

@@ -220,6 +220,11 @@ Direct Developer ID distribution сохраняется как целевая м
   задаёт отдельное разрешение каждого запуска, disposable environment/restore, test-only namespace,
   normalization/race/fault matrix и остановку при unknown effects/crash. Это документация, не runner
   и не native evidence; strict decoder, fixed runtime API и статусы ADR/gates не изменены.
+- [x] Изолированный исполнитель базового эксперимента (#96) под feature `native-right-experiment`:
+  подтверждение сгенерированного имени и условий запуска, один create/read/remove/read,
+  журнал intent/result, watchdog и остановка без слепой очистки. Проверены recording-порядок/отказы,
+  CF fixtures, локальный журнал и сборка адаптера. Нативный запуск, восстановление среды,
+  остальные случаи матрицы и Gate I/H не доказаны; ADR-009 остаётся `Proposed`.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до
@@ -532,6 +537,15 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   пройти существующий ownership classifier. Лишние поля, неизвестные типы/ключи и некорректные или
   oversized значения отвергаются до planning; system metadata не отбрасывается ради exact match.
   Errors не отражают содержимое policy. Read-only evidence не доказывает create/read roundtrip.
+- Экспериментальный исполнитель задачи 63 (#96) отделён от обычных CLI/helper и включается только
+  feature `native-right-experiment`. Базовый случай выполняет один create/read/remove/read для
+  сгенерированного тестового имени по [протоколу](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md).
+  До авторизации нужны интерактивное одобрение конкретного имени/операций, подтверждённые владельцем
+  одноразовая среда, восстановление, контроль писателей и проверенная сборка. Подтверждения оператора
+  не доказывают эти внешние условия. Ограниченный приватный журнал фиксируется до каждой мутации;
+  неизвестный результат, несовместимая форма, сбой журнала или таймаут останавливают записи без
+  повторов и слепого удаления. Требуются регистрирующие тесты и сборка нативного адаптера, но не
+  системный запуск. Остальная матрица эксперимента, нативное evidence и Gate I/H остаются открытыми.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

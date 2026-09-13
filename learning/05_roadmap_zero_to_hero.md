@@ -347,6 +347,10 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   отдельный approval каждого запуска, disposable environment/restore, test-only namespace,
   normalization/race/fault matrix и unknown-effect/crash stop states. Только документ; без runner,
   database mutation, prompts, native evidence или принятия ADR-009 (issue #92).
+- [x] Реализовать изолированный opt-in исполнитель базового create/read/remove/read эксперимента:
+  подтверждение конкретного запуска, приватный журнал, ограниченное время и структурная диагностика,
+  остановка без слепой очистки; регистрирующие тесты без запуска записи в системную базу (#96).
+  Остальная матрица, одноразовая среда, её восстановление и нативное evidence остаются открытыми.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.
 - [x] Реализовать `ConnectionState` и serialized helper command executor в Rust core без
