@@ -173,6 +173,10 @@ Runtime-right lifecycle executor (`helper_runtime_right_execution`, issue #90) �
 права на blind cleanup; после successful create компенсация отдельно проверяет exact ownership и
 сохраняет конфликт. Primary failure и cleanup outcome разделены. Native mutation adapter отсутствует;
 atomic ownership, cross-process race exclusion, normalization и crash recovery не доказаны.
+Следующий database experiment ограничен
+[native validation protocol](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md) (issue #92): отдельный
+approval, test-only namespace и disposable environment с restore при unknown effects/crash.
+Документ не реализует runner и не снимает production mutation/authorization/race gates.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

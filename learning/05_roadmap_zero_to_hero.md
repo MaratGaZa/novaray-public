@@ -331,6 +331,10 @@ Android VpnService → Android UI → release
   bounded ownership-checked compensation и отдельными primary/cleanup diagnostics на recording
   adapter; без native mutation, normalization, atomic ownership/race или crash-recovery evidence
   (issue #90).
+- [x] Подготовить [native right validation protocol](../docs/AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md):
+  отдельный approval каждого запуска, disposable environment/restore, test-only namespace,
+  normalization/race/fault matrix и unknown-effect/crash stop states. Только документ; без runner,
+  database mutation, prompts, native evidence или принятия ADR-009 (issue #92).
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.
 - [x] Реализовать `ConnectionState` и serialized helper command executor в Rust core без

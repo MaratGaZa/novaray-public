@@ -216,6 +216,10 @@ Direct Developer ID distribution сохраняется как целевая м
   recording-адаптером: native normalization, atomic ownership, межпроцессные гонки, crash recovery,
   authorization и database mutation не доказаны. Live adapter требует отдельной стратегии
   authorization, race exclusion и rollback; ADR-009 остаётся `Proposed`.
+- [x] [Native right validation protocol](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md) (issue #92)
+  задаёт отдельное разрешение каждого запуска, disposable environment/restore, test-only namespace,
+  normalization/race/fault matrix и остановку при unknown effects/crash. Это документация, не runner
+  и не native evidence; strict decoder, fixed runtime API и статусы ADR/gates не изменены.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до
