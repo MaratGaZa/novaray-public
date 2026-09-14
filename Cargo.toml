@@ -18,6 +18,14 @@ path = "src/main.rs"
 name = "novaray-platform-helper"
 path = "src/bin/novaray-platform-helper.rs"
 
+[features]
+native-right-experiment = []
+
+[[example]]
+name = "native-right-roundtrip"
+path = "examples/native-right-roundtrip.rs"
+required-features = ["native-right-experiment"]
+
 [dependencies]
 tokio = { version = "1.40", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

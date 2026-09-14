@@ -1,6 +1,7 @@
 # Native Authorization Right Validation Protocol
 
 Status: proposed experiment protocol, not execution authorization or native evidence.
+Implementation update: 2026-09-14, issue #96, task 63 (base-case harness only).
 Owner: MaratGaZa. Date: 2026-09-13. Issue: #92. Execution task: 61.
 Parent decision: [ADR-009](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md), still `Proposed`.
 
@@ -172,3 +173,70 @@ yet. Revisit if controlled isolation, authorization, restore or bounded evidence
 Documentation rollback is a code-review revert with no host cleanup. Implementing or running this
 protocol, accepting normalization changes and promoting ADR-009 each require their own review and
 owner authorization; none follows automatically from merging the documentation PR.
+
+## 8. Opt-in base-case harness (2026-09-14, #96)
+
+The `native-right-roundtrip` Cargo example requires `native-right-experiment`; neither the normal
+CLI nor helper calls it. `--help`, compile checks, recording tests and CF fixtures never mutate the
+database. `--run` is macOS Apple Silicon only, refuses root/setuid execution, non-terminal
+stdin/stdout/stderr and any `CI` environment variable. These are accident-prevention guards, not
+authentication or proof that a machine is disposable. Run authorization remains the owner's
+separate decision under section 3, including independently checked restoration and writer control.
+
+This implementation covers only the clean baseline/create/normalization/remove/absence base case.
+Fault injection is recording-adapter evidence. Exact retries, deliberate conflict/interference,
+native injected failures, process termination and reboot cases in section 4 are not implemented as
+native cases. None of section 6's native gates is completed by compiling this harness.
+
+The controller starts a 120-second whole-process watchdog, including operator input and native
+calls. Expiry exits with code 3 without cleanup, leaving effects unknown. Ordinary return releases
+the Authorization reference using RAII; abrupt termination does not promise resource cleanup in
+Security Services. A private current directory must already exist, be owned by the unprivileged
+operator with mode 0700, and contain no prior `native-right-roundtrip.jsonl`. The directory is held
+open and locked; the manifest is created relative to that descriptor with exclusive/no-follow
+flags and mode 0600. A symlink or existing manifest is refused. The lock coordinates only this
+directory, not other database writers. There is no resume/cleanup command and no manifest reader.
+
+Before any authorization request the terminal displays a fresh 128-bit system-RNG test name, the
+binary file's SHA-256 and actual OS build. The operator must independently compare the reviewed
+binary and enter one JSON line (maximum 4096 bytes, including newline) with exactly these fields:
+
+```json
+{"environment":"PRIVATE-ENVIRONMENT-REFERENCE","os_build":"DISPLAYED-BUILD","sdk":"REVIEWED-SDK-TOOLCHAIN","reviewed_commit":"40-lowercase-hex","reviewed_sha256":"64-lowercase-hex","restore_evidence":"PRIVATE-RESTORE-DRILL-REFERENCE","disposable":true,"restore_tested":true,"exclusive_writers":true,"allow_authorization_interaction":true,"confirmation":"CREATE READ REMOVE GENERATED-TEST-NAME 120"}
+```
+
+Placeholders are intentionally invalid. Do not paste credentials, external forms, policy values
+or unrelated host data. The generated name is approved only for this uninterrupted run; it is not
+an input to a public right-name API. The booleans and references are operator attestations, not
+automated verification. Hashing the executable file does not attest the loaded process image;
+the environment must prohibit replacing the reviewed binary during the run. The commit/SDK and
+restore references are validated for shape, not independently established by this program.
+
+The private manifest records approval, stage order, write intent and returned write status,
+complete bounded CF structure, and final result. Each entry is followed by `sync_all`; creation also
+syncs the directory. Limits: 16 KiB per record, 64 KiB total, 16 members per container, 64 visited CF
+nodes, depth 3, 128 UTF-16 units per string and 1024 bytes per data value. Evidence includes known
+key identifiers, unknown key categories, types and lengths, never raw values/unknown names. Overflow
+stops the run, not truncates a policy into a compatible shape. Power loss or missing writes remain
+unknown effects, not recovery authority. Public reports must exclude the private manifest/challenge.
+
+Order: absent baseline -> authorization -> fresh absent check -> synced create intent -> one Set ->
+synced result -> full structural inspection and unchanged strict classifier -> fresh exact check ->
+synced remove intent -> one Remove -> synced result -> absence readback. No automatic retry. Any
+uncertain write, incompatible/read failure after create, changed definition, manifest failure or
+deadline means quarantine and separately approved whole-environment restoration. The harness is
+more conservative than the recording production lifecycle executor: it performs no compensating
+delete on a failed readback. Exact equality plus a local lock still does not prove provenance.
+
+Exit codes: 0 means the base case observed final absence, not successful restoration or production
+safety; 2 means refusal before database mutation; 3 requires quarantine/unknown-effect handling.
+Even code 0 does not waive the protocol's restoration verification before environment reuse.
+
+FFI signatures/ownership were checked on 2026-09-14 against installed SDK 26.2 `Authorization.h`
+and `AuthorizationDB.h`, and Apple documentation for
+[AuthorizationCreate](https://developer.apple.com/documentation/security/authorizationcreate(_:_:_:_:))
+and [AuthorizationRightSet](https://developer.apple.com/documentation/security/authorizationrightset(_:_:_:_:_:_:)).
+Create uses null rights/environment and defaults to obtain a reference; Set/Remove can require
+operator interaction. No external authorization forms, shell commands or fallback rights are used.
+Denied/canceled/interaction-not-allowed writes are failures, never absence. This is implementation
+review evidence, not a live authorization/create/read/remove result.

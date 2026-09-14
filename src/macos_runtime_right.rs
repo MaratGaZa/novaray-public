@@ -76,7 +76,9 @@ fn classify_response(
     }
 }
 
-fn classify_definition(definition: &CFType) -> HelperRuntimeAuthorizationRightObservation {
+pub(crate) fn classify_definition(
+    definition: &CFType,
+) -> HelperRuntimeAuthorizationRightObservation {
     let unrecognized = HelperRuntimeAuthorizationRightObservation::unrecognized;
     let Some(dictionary) = definition.downcast::<CFDictionary>() else {
         return unrecognized();

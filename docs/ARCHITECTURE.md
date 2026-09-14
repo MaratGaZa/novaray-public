@@ -187,12 +187,17 @@ existing-right tests и synthetic exact CF fixture не закрывают creat
 Runtime-right lifecycle executor (`helper_runtime_right_execution`, issue #90) читает observation
 внутри операции и проверяет create/remove readback на recording adapter. Failed create не даёт
 права на blind cleanup; после successful create компенсация отдельно проверяет exact ownership и
-сохраняет конфликт. Primary failure и cleanup outcome разделены. Native mutation adapter отсутствует;
+сохраняет конфликт. Primary failure и cleanup outcome разделены. Production mutation adapter отсутствует;
 atomic ownership, cross-process race exclusion, normalization и crash recovery не доказаны.
 Следующий database experiment ограничен
 [native validation protocol](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md) (issue #92): отдельный
 approval, test-only namespace и disposable environment с restore при unknown effects/crash.
 Документ не реализует runner и не снимает production mutation/authorization/race gates.
+Отдельный opt-in target `native-right-roundtrip` (#96) реализует только базовый эксперимент
+через `right_experiment`, не через fixed-runtime adapter. Нативный адаптер компилируется, но не
+вызывается тестами: подтверждены только recording-порядок/отказы, CF fixtures и локальный журнал.
+Оператор отдельно подтверждает одноразовую среду и восстановление; watchdog/неизвестный результат
+ведут к quarantine без слепой очистки. Системный запуск и остальные случаи матрицы не выполнены.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.

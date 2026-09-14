@@ -20,6 +20,8 @@ pub mod parser;
 pub mod platform_contract;
 pub mod platform_helper;
 pub mod recovery_journal;
+#[cfg(feature = "native-right-experiment")]
+pub mod right_experiment;
 pub mod routing;
 pub mod sing_box_generator;
 pub mod xray_generator;

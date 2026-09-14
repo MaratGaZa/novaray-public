@@ -23,6 +23,12 @@
 
 ## Контекст
 
+Ревизия реализации 2026-09-14 (#96): отдельный opt-in исполнитель базового эксперимента описан
+в [протоколе, раздел 8](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md#8-opt-in-base-case-harness-2026-09-14-96).
+Нативный адаптер не подключён к fixed-runtime lifecycle или helper. Проверки используют recording
+adapter и CF fixtures, а не запись в базу; native normalization, авторизация, восстановление,
+остальные случаи матрицы и принятие ADR остаются открытыми.
+
 ADR-003 выбирает root-owned `launchd` helper и Unix domain socket как целевой macOS runtime
 boundary. Уже существующий handshake проверяет protocol version/capabilities, а per-connection
 session guard защищает exact sequence от replay. Ни handshake, ни `session_id`, ни sequence, ни
