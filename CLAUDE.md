@@ -105,14 +105,13 @@ git diff --check
 ## 7. Дополнительные проверяемые rules
 
 Подробные узкие правила, созданные через `add-rule`, живут в `docs/rules/` и регистрируются здесь.
-Пока отдельных RULE-документов нет; обязательные ограничения разделов 2–6 уже действуют.
 
 Политика раскрытия уязвимостей и запрет на публикацию реальных credentials описаны в
 [`SECURITY.md`](./SECURITY.md).
 
 | Rule | Краткое требование |
 |---|---|
-| — | Отдельные RULE-документы ещё не приняты |
+| [RULE-001](./docs/rules/RULE-001-EXECUTION-TASK-METADATA.md) | Новые execution task в `docs/IMPLEMENTATION_PLAN.md` должны иметь стабильные metadata: Task ID, title, description, issue и PR; нельзя полагаться только на Markdown-нумерацию. |
 
 ## 8. Границы выполнения
 

@@ -82,12 +82,15 @@
 [`tests/`](../tests/), [TESTING](./TESTING.md). «Частично» не означает работающую VPN-функцию.
 
 Ближайшая очередь отделена от исторического журнала раздела 6; номера задач не перенумеровываются.
-Пункт 61 включён в `main` через [PR #93](https://github.com/MaratGaZa/novaray-public/pull/93).
-Пункт 62 описывает документационную ревизию [#94](https://github.com/MaratGaZa/novaray-public/issues/94)
-и включён в `main` через [PR #95](https://github.com/MaratGaZa/novaray-public/pull/95).
-Пункт 63 включён в `main` через [PR #97](https://github.com/MaratGaZa/novaray-public/pull/97):
-изолированный исполнитель базового эксперимента реализован и проверен без запуска изменения системы.
-Пункт 64 (#98) фиксирует эту сверку очереди после PR #97; он не разрешает запуск native experiment.
+Новые execution task записываются по [RULE-001](./rules/RULE-001-EXECUTION-TASK-METADATA.md):
+у каждой задачи должны быть стабильные `Task ID`, title, description, issue и PR.
+
+| Task ID | Статус | Title | Description | Issue | PR |
+|---|---|---|---|---|---|
+| 61 | `[x]` | Протокол проверки системного права авторизации | Документирует изолированный native experiment, disposable environment, restore и per-run approval; не разрешает запуск эксперимента. | [#92](https://github.com/MaratGaZa/novaray-public/issues/92) | [#93](https://github.com/MaratGaZa/novaray-public/pull/93) |
+| 62 | `[x]` | Сверка документации и перевод плана реализации | Согласует состояние документов после PR #93 и переводит план реализации на русский без изменения code/system evidence. | [#94](https://github.com/MaratGaZa/novaray-public/issues/94) | [#95](https://github.com/MaratGaZa/novaray-public/pull/95) |
+| 63 | `[x]` | Изолированный исполнитель базовой проверки системного права | Реализует opt-in base-case harness под `native-right-experiment`; ordinary tests/CI не запускают запись в системную базу. | [#96](https://github.com/MaratGaZa/novaray-public/issues/96) | [#97](https://github.com/MaratGaZa/novaray-public/pull/97) |
+| 64 | `[x]` | Сверка ближайшей очереди после базового native harness | Фиксирует, что task 63 уже в `main`, а live Authorization Services mutation остаётся заблокированной без disposable environment и отдельного approval. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -975,7 +978,7 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     вызывают записи. Не входят: запуск на этой машине, подготовка/восстановление среды, остальные
     случаи матрицы, нативное evidence, root, IPC/сеть и повышение статусов ADR или Gate I/H.
 
-64. [x] Сверка ближайшей очереди после базового native harness — задача #98:
+64. [x] Сверка ближайшей очереди после базового native harness — issue #98, PR #99:
     обновить описание текущей очереди после слияния PR #97, чтобы план больше не называл пункт 63
     ближайшей задачей и не создавал впечатления, что `native-right-roundtrip --run` разрешён
     обычной командой `take next step`. Критерии: зафиксировать, что task 63 уже в `main`, live
