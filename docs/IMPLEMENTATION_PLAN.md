@@ -91,6 +91,7 @@
 | 62 | `[x]` | Сверка документации и перевод плана реализации | Согласует состояние документов после PR #93 и переводит план реализации на русский без изменения code/system evidence. | [#94](https://github.com/MaratGaZa/novaray-public/issues/94) | [#95](https://github.com/MaratGaZa/novaray-public/pull/95) |
 | 63 | `[x]` | Изолированный исполнитель базовой проверки системного права | Реализует opt-in base-case harness под `native-right-experiment`; ordinary tests/CI не запускают запись в системную базу. | [#96](https://github.com/MaratGaZa/novaray-public/issues/96) | [#97](https://github.com/MaratGaZa/novaray-public/pull/97) |
 | 64 | `[x]` | Сверка ближайшей очереди после базового native harness | Фиксирует, что task 63 уже в `main`, а live Authorization Services mutation остаётся заблокированной без disposable environment и отдельного approval. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |
+| 65 | `[x]` | Валидатор metadata execution task | Автоматически проверяет, что реестр RULE-001 соответствует нумерованному журналу задач и что issue/PR metadata заполнены. | [#100](https://github.com/MaratGaZa/novaray-public/issues/100) | TBD |
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -986,6 +987,14 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     среды и отдельного per-run approval, а следующий технический шаг должен быть либо подготовкой
     такой среды без мутации базы, либо отдельно одобренным native-run task. Не входят: изменение
     кода, запуск экспериментального target с `--run`, запрос Authorization Services, запись базы,
+    root, IPC/сеть, изменение статусов ADR, Gate I/H или строк TRACEABILITY.
+
+65. [x] Валидатор metadata execution task — issue #100, PR TBD:
+    добавить проверяемый скрипт для RULE-001, который читает реестр ближайших задач в этом плане,
+    проверяет обязательные поля `Task ID`, status, title, description, issue и PR, затем сверяет
+    каждую запись реестра с нумерованным журналом раздела 6 по ID, status и title. Подключить
+    валидатор к documentation CI и покрыть негативные случаи через self-test. Не входят: изменение
+    product code, запуск `native-right-roundtrip --run`, запрос Authorization Services, запись базы,
     root, IPC/сеть, изменение статусов ADR, Gate I/H или строк TRACEABILITY.
 
 ## 7. Зависимости

@@ -106,7 +106,7 @@ jobs:
                 macos=true ;;
               spikes/macos-engine-topology-spike/*)
                 docs=true ;;
-              scripts/check_markdown_links.py|scripts/check_requirements_traceability.py)
+              scripts/check_markdown_links.py|scripts/check_requirements_traceability.py|scripts/check_execution_task_metadata.py)
                 docs=true ;;
               *.md)
                 docs=true ;;
@@ -307,6 +307,9 @@ jobs:
 
       - name: Validate requirements traceability
         run: python3 scripts/check_requirements_traceability.py
+
+      - name: Validate execution task metadata
+        run: python3 scripts/check_execution_task_metadata.py --self-test
 
       - name: Validate macOS engine topology evidence
         run: python3 spikes/macos-engine-topology-spike/scripts/validate_manifest.py
