@@ -225,6 +225,12 @@ Direct Developer ID distribution сохраняется как целевая м
   журнал intent/result, watchdog и остановка без слепой очистки. Проверены recording-порядок/отказы,
   CF fixtures, локальный журнал и сборка адаптера. Нативный запуск, восстановление среды,
   остальные случаи матрицы и Gate I/H не доказаны; ADR-009 остаётся `Proposed`.
+- [x] Preflight изолированного native-right эксперимента (#102): `native-right-roundtrip --preflight`
+  проверяет только автоматизируемые условия допуска — macOS Apple Silicon target, private terminal,
+  отсутствие CI, приватный рабочий каталог `0700` и отсутствие старого manifest — без вызовов
+  Security.framework, Authorization Services prompt, записи manifest или изменения базы.
+  Disposable environment, restore drill, exclusive writers, reviewed binary и per-run approval
+  остаются ручными prerequisites; preflight не разрешает `--run` и не доказывает Gate I/H.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до
@@ -546,6 +552,11 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   неизвестный результат, несовместимая форма, сбой журнала или таймаут останавливают записи без
   повторов и слепого удаления. Требуются регистрирующие тесты и сборка нативного адаптера, но не
   системный запуск. Остальная матрица эксперимента, нативное evidence и Gate I/H остаются открытыми.
+- Preflight-режим этого исполнителя должен быть безопасен без per-run authorization: он может
+  проверять только локальные автоматизируемые условия запуска и обязан завершаться до
+  Authorization Services calls, manifest creation, prompt или database mutation. Успешный preflight
+  означает только готовность перейти к ручной owner review; он не подтверждает одноразовую среду,
+  восстановление, контроль писателей, reviewed binary, native evidence или Gate I/H.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

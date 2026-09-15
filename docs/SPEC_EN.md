@@ -243,6 +243,12 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   without blind cleanup. Recording order/failures, CF fixtures, local journal and adapter compilation
   are verified. Native execution, environment restoration, remaining matrix cases and Gate I/H
   are not proven; ADR-009 remains `Proposed`.
+- [x] Isolated native-right experiment preflight (#102): `native-right-roundtrip --preflight` checks
+  only automatable admission conditions — macOS Apple Silicon target, private terminal, non-CI
+  context, private `0700` working directory and absence of an old manifest — without Security
+  framework calls, Authorization Services prompts, manifest writes or database mutation.
+  Disposable environment, restore drill, exclusive writers, reviewed binary and per-run approval
+  remain manual prerequisites; preflight does not authorize `--run` or prove Gate I/H.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
@@ -524,6 +530,11 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   unknown results, incompatible shapes, journal failure or timeout stop writes without retries or
   blind deletion. Recording tests and native adapter compilation are required, not a system run.
   The remaining experiment matrix, native evidence and Gate I/H remain open.
+- The harness preflight mode must be safe without per-run authorization: it may check only local
+  automatable launch conditions and must exit before Authorization Services calls, manifest
+  creation, prompts or database mutation. A successful preflight means only that manual owner review
+  may proceed; it does not prove the disposable environment, restoration, writer control, reviewed
+  binary, native evidence or Gate I/H.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,

@@ -1,7 +1,8 @@
 # Native Authorization Right Validation Protocol
 
 Status: proposed experiment protocol, not execution authorization or native evidence.
-Implementation update: 2026-09-14, issue #96, task 63 (base-case harness only).
+Implementation update: 2026-09-16, issue #102, task 66 (non-mutating preflight only).
+Prior implementation update: 2026-09-14, issue #96, task 63 (base-case harness only).
 Owner: MaratGaZa. Date: 2026-09-13. Issue: #92. Execution task: 61.
 Parent decision: [ADR-009](./ADR-009-MACOS-HELPER-RUNTIME-AUTHENTICATION.md), still `Proposed`.
 
@@ -177,8 +178,15 @@ owner authorization; none follows automatically from merging the documentation P
 ## 8. Opt-in base-case harness (2026-09-14, #96)
 
 The `native-right-roundtrip` Cargo example requires `native-right-experiment`; neither the normal
-CLI nor helper calls it. `--help`, compile checks, recording tests and CF fixtures never mutate the
-database. `--run` is macOS Apple Silicon only, refuses root/setuid execution, non-terminal
+CLI nor helper calls it. `--help`, `--preflight`, compile checks, recording tests and CF fixtures
+never mutate the database. `--preflight` performs only automatable local launch checks: macOS Apple
+Silicon target, stdin/stdout/stderr as terminals, absence of `CI`, current directory owned by the
+current non-root user with mode `0700`, and absence of `native-right-roundtrip.jsonl`. It does not
+call Security.framework, acquire authorization, prompt, inspect or mutate the authorization database,
+create the manifest, generate a test right name or approve a run. A successful preflight only allows
+manual owner review to continue; it does not prove disposable environment, restoration, controlled
+writers, reviewed binary, native evidence or Gate I/H. `--run` is macOS Apple Silicon only, refuses
+root/setuid execution, non-terminal
 stdin/stdout/stderr and any `CI` environment variable. These are accident-prevention guards, not
 authentication or proof that a machine is disposable. Run authorization remains the owner's
 separate decision under section 3, including independently checked restoration and writer control.
