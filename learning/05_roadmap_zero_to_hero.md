@@ -355,6 +355,9 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   а live Authorization Services mutation остаётся заблокированной без одноразовой macOS среды,
   проверенного восстановления и отдельного approval конкретного запуска (#98). Это документационная
   сверка; без запуска `native-right-roundtrip --run`, записи базы, root, IPC/сети или повышения ADR/Gate.
+- [x] Добавить validator для RULE-001 execution task metadata: проверять реестр ближайших задач
+  против нумерованного журнала, обязательные issue/PR metadata и расхождения статусов/title (#100).
+  Это процессная проверка; без product code, native run, системной авторизации или изменения gates.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.
 - [x] Реализовать `ConnectionState` и serialized helper command executor в Rust core без
