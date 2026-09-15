@@ -363,6 +363,10 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   отсутствие старого manifest) и явно оставлять disposable environment, restore drill, exclusive
   writers, reviewed binary и per-run owner approval ручными prerequisites (#102). Без `--run`,
   Authorization Services prompt, записи базы, root, IPC/сети или повышения ADR/Gate.
+- [x] Добавить readiness evidence template для native-right эксперимента: публичный JSON-шаблон и
+  offline validator фиксируют форму будущего private evidence package и проверяют, что committed
+  template остаётся non-authorizing (#104). Без private evidence, `--run`, Authorization Services
+  prompt, записи manifest/базы, root, IPC/сети, native evidence, restore proof или повышения ADR/Gate.
 - [x] Добавить protocol/version handshake между компонентами.
 - [x] Ограничить команды allowlist и валидировать все аргументы.
 - [x] Реализовать `ConnectionState` и serialized helper command executor в Rust core без

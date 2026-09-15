@@ -1,0 +1,36 @@
+{
+  "format": "novaray-native-right-readiness-v1",
+  "purpose": "TEMPLATE_ONLY_NOT_APPROVAL",
+  "environment": {
+    "reference": "PRIVATE-ENVIRONMENT-REFERENCE",
+    "disposable": false,
+    "os_build": "DISPLAYED-BUILD",
+    "hardware": "APPLE-SILICON-DISPOSABLE-MAC-OR-VM",
+    "current_machine_is_disposable": false
+  },
+  "restore": {
+    "evidence_reference": "PRIVATE-RESTORE-DRILL-REFERENCE",
+    "restore_tested": false,
+    "restore_method": "SNAPSHOT-OR-REIMAGE-METHOD"
+  },
+  "writer_control": {
+    "exclusive_writers": false,
+    "scope": "AUTHORIZATION-DATABASE-WRITERS-CONTROLLED-FOR-ONE-RUN"
+  },
+  "binary_review": {
+    "reviewed_commit": "40-lowercase-hex-placeholder",
+    "reviewed_sha256": "64-lowercase-hex-placeholder",
+    "sdk": "REVIEWED-SDK-TOOLCHAIN"
+  },
+  "run_boundary": {
+    "allowed_command": "--preflight-only",
+    "allow_authorization_interaction": false,
+    "generated_test_name": "GENERATED-BY-RUNNER-DO-NOT-PREFILL",
+    "confirmation": "NOT A RUN APPROVAL"
+  },
+  "operator_notes": {
+    "no_secrets": true,
+    "private_copy_only": true,
+    "do_not_commit_completed_evidence": true
+  }
+}
