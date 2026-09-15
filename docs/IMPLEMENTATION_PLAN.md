@@ -92,6 +92,7 @@
 | 63 | `[x]` | Изолированный исполнитель базовой проверки системного права | Реализует opt-in base-case harness под `native-right-experiment`; ordinary tests/CI не запускают запись в системную базу. | [#96](https://github.com/MaratGaZa/novaray-public/issues/96) | [#97](https://github.com/MaratGaZa/novaray-public/pull/97) |
 | 64 | `[x]` | Сверка ближайшей очереди после базового native harness | Фиксирует, что task 63 уже в `main`, а live Authorization Services mutation остаётся заблокированной без disposable environment и отдельного approval. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |
 | 65 | `[x]` | Валидатор metadata execution task | Автоматически проверяет, что реестр RULE-001 соответствует нумерованному журналу задач и что issue/PR metadata заполнены. | [#100](https://github.com/MaratGaZa/novaray-public/issues/100) | [#101](https://github.com/MaratGaZa/novaray-public/pull/101) |
+| 66 | `[x]` | Preflight native-right эксперимента без мутаций | Добавляет safe `--preflight` для `native-right-roundtrip`, который проверяет только автоматизируемые условия и не разрешает live `--run`. | [#102](https://github.com/MaratGaZa/novaray-public/issues/102) | [#103](https://github.com/MaratGaZa/novaray-public/pull/103) |
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -996,6 +997,16 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     валидатор к documentation CI и покрыть негативные случаи через self-test. Не входят: изменение
     product code, запуск `native-right-roundtrip --run`, запрос Authorization Services, запись базы,
     root, IPC/сеть, изменение статусов ADR, Gate I/H или строк TRACEABILITY.
+
+66. [x] Preflight native-right эксперимента без мутаций — issue #102, PR #103:
+    добавить безопасный режим `native-right-roundtrip --preflight` под feature
+    `native-right-experiment`. Критерии: проверить только автоматизируемые условия допуска
+    (macOS Apple Silicon target, private terminal, отсутствие CI, приватный рабочий каталог `0700`
+    текущего пользователя, отсутствие `native-right-roundtrip.jsonl`), вывести ручные prerequisites
+    disposable environment, restore drill, exclusive writers, reviewed binary и per-run owner
+    approval, вернуть отказ до эксперимента при неподходящей среде. Не входят: запуск `--run`,
+    вызовы Security.framework/Authorization Services, prompt, запись manifest, изменение базы,
+    root, IPC/сеть, native evidence, изменение статусов ADR, Gate I/H или повышение TRACEABILITY.
 
 ## 7. Зависимости
 
