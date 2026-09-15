@@ -8,6 +8,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,8 +21,10 @@ TASK_ENTRY = re.compile(
     r"^(?P<id>\d+)\.\s+(?P<status>\[[ x~]\])\s+(?P<title>.+?)\s+—",
     re.MULTILINE,
 )
+GITHUB_OWNER = "MaratGaZa"
+GITHUB_REPO = "novaray-public"
 ISSUE_OR_PR = re.compile(r"(?:\[#\d+\]\(https://github\.com/[^)]+\)|TBD)$")
-REFERENCE_NUMBER = re.compile(r"\[#(?P<number>\d+)\]\(https://github\.com/[^)]+\)")
+REFERENCE_LINK = re.compile(r"\[#(?P<number>\d+)\]\((?P<url>https://github\.com/[^)]+)\)")
 TASK_ENTRY_REFERENCES = re.compile(
     r"\bissue\s+#(?P<issue>\d+),\s+PR\s+#(?P<pr>\d+)\b",
     re.IGNORECASE,
@@ -39,11 +42,11 @@ class RegistryRow:
 
     @property
     def issue_number(self) -> str | None:
-        return reference_number(self.issue)
+        return reference_number(self.issue, expected_kind="issues")
 
     @property
     def pr_number(self) -> str | None:
-        return reference_number(self.pr)
+        return reference_number(self.pr, expected_kind="pull")
 
 
 @dataclass(frozen=True)
@@ -55,13 +58,19 @@ class TaskEntry:
     pr_number: str | None
 
 
-def reference_number(value: str) -> str | None:
+def reference_number(value: str, *, expected_kind: str) -> str | None:
     if value == "TBD":
         return None
-    match = REFERENCE_NUMBER.fullmatch(value)
+    match = REFERENCE_LINK.fullmatch(value)
     if match is None:
         return None
-    return match.group("number")
+
+    visible_number = match.group("number")
+    parsed = urlsplit(match.group("url"))
+    expected_path = f"/{GITHUB_OWNER}/{GITHUB_REPO}/{expected_kind}/{visible_number}"
+    if parsed.scheme != "https" or parsed.netloc != "github.com" or parsed.path != expected_path:
+        return None
+    return visible_number
 
 
 def table_cells(line: str) -> list[str]:
@@ -106,9 +115,9 @@ def extract_registry_rows(content: str) -> list[RegistryRow]:
         ):
             if value in {"", "-", "—"}:
                 raise ValueError(f"registry task {task_id} has empty {label}")
-        if ISSUE_OR_PR.fullmatch(issue) is None:
+        if ISSUE_OR_PR.fullmatch(issue) is None or reference_number(issue, expected_kind="issues") is None:
             raise ValueError(f"registry task {task_id} has invalid issue reference {issue!r}")
-        if ISSUE_OR_PR.fullmatch(pr) is None:
+        if ISSUE_OR_PR.fullmatch(pr) is None or reference_number(pr, expected_kind="pull") is None:
             raise ValueError(f"registry task {task_id} has invalid PR reference {pr!r}")
 
         rows.append(
@@ -207,7 +216,7 @@ def run_self_test() -> None:
 
 | Task ID | Статус | Title | Description | Issue | PR |
 |---|---|---|---|---|---|
-| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/org/repo/issues/98) | [#99](https://github.com/org/repo/pull/99) |
+| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |
 
 ## 6. Task log
 
@@ -221,19 +230,29 @@ def run_self_test() -> None:
     cases = {
         "missing-entry": valid.replace("64. [x] Good task", "65. [x] Good task"),
         "missing-registry-row": valid.replace(
-            "| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/org/repo/issues/98) | [#99](https://github.com/org/repo/pull/99) |\n",
+            "| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |\n",
             "",
         ),
         "status-mismatch": valid.replace("64. [x] Good task", "64. [ ] Good task"),
         "wrong-pr": valid.replace(
-            "[#99](https://github.com/org/repo/pull/99)",
-            "[#9999](https://github.com/org/repo/pull/9999)",
+            "[#99](https://github.com/MaratGaZa/novaray-public/pull/99)",
+            "[#9999](https://github.com/MaratGaZa/novaray-public/pull/9999)",
             1,
         ),
-        "missing-pr": valid.replace("[#99](https://github.com/org/repo/pull/99)", ""),
+        "wrong-pr-url-number": valid.replace(
+            "[#99](https://github.com/MaratGaZa/novaray-public/pull/99)",
+            "[#99](https://github.com/MaratGaZa/novaray-public/pull/9999)",
+            1,
+        ),
+        "wrong-pr-url-repo": valid.replace(
+            "[#99](https://github.com/MaratGaZa/novaray-public/pull/99)",
+            "[#99](https://github.com/attacker/evil/pull/99)",
+            1,
+        ),
+        "missing-pr": valid.replace("[#99](https://github.com/MaratGaZa/novaray-public/pull/99)", ""),
         "duplicate-row": valid.replace(
-            "| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/org/repo/issues/98) | [#99](https://github.com/org/repo/pull/99) |",
-            "| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/org/repo/issues/98) | [#99](https://github.com/org/repo/pull/99) |\n| 64 | `[x]` | Other task | Has scope. | [#98](https://github.com/org/repo/issues/98) | [#99](https://github.com/org/repo/pull/99) |",
+            "| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |",
+            "| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |\n| 64 | `[x]` | Other task | Has scope. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |",
         ),
     }
     for name, content in cases.items():
