@@ -21,6 +21,11 @@ TASK_ENTRY = re.compile(
     re.MULTILINE,
 )
 ISSUE_OR_PR = re.compile(r"(?:\[#\d+\]\(https://github\.com/[^)]+\)|TBD)$")
+REFERENCE_NUMBER = re.compile(r"\[#(?P<number>\d+)\]\(https://github\.com/[^)]+\)")
+TASK_ENTRY_REFERENCES = re.compile(
+    r"\bissue\s+#(?P<issue>\d+),\s+PR\s+#(?P<pr>\d+)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -32,12 +37,31 @@ class RegistryRow:
     issue: str
     pr: str
 
+    @property
+    def issue_number(self) -> str | None:
+        return reference_number(self.issue)
+
+    @property
+    def pr_number(self) -> str | None:
+        return reference_number(self.pr)
+
 
 @dataclass(frozen=True)
 class TaskEntry:
     task_id: int
     status: str
     title: str
+    issue_number: str | None
+    pr_number: str | None
+
+
+def reference_number(value: str) -> str | None:
+    if value == "TBD":
+        return None
+    match = REFERENCE_NUMBER.fullmatch(value)
+    if match is None:
+        return None
+    return match.group("number")
 
 
 def table_cells(line: str) -> list[str]:
@@ -119,14 +143,20 @@ def extract_section_6(content: str) -> str:
 
 def extract_task_entries(content: str) -> dict[int, TaskEntry]:
     entries: dict[int, TaskEntry] = {}
-    for match in TASK_ENTRY.finditer(extract_section_6(content)):
+    section = extract_section_6(content)
+    for match in TASK_ENTRY.finditer(section):
         task_id = int(match.group("id"))
         if task_id in entries:
             raise ValueError(f"duplicate numbered task entry {task_id}")
+        line_end = section.find("\n", match.start())
+        line = section[match.start() :] if line_end == -1 else section[match.start() : line_end]
+        references = TASK_ENTRY_REFERENCES.search(line)
         entries[task_id] = TaskEntry(
             task_id=task_id,
             status=match.group("status"),
             title=match.group("title").strip(),
+            issue_number=references.group("issue") if references is not None else None,
+            pr_number=references.group("pr") if references is not None else None,
         )
     return entries
 
@@ -134,6 +164,14 @@ def extract_task_entries(content: str) -> dict[int, TaskEntry]:
 def validate_content(content: str) -> tuple[int, int]:
     rows = extract_registry_rows(content)
     entries = extract_task_entries(content)
+    registry_ids = {row.task_id for row in rows}
+    first_registry_id = min(registry_ids)
+    uncovered_entries = sorted(
+        task_id for task_id in entries if task_id >= first_registry_id and task_id not in registry_ids
+    )
+    if uncovered_entries:
+        raise ValueError(f"numbered task entries missing from registry: {uncovered_entries}")
+
     for row in rows:
         entry = entries.get(row.task_id)
         if entry is None:
@@ -145,6 +183,21 @@ def validate_content(content: str) -> tuple[int, int]:
         if entry.title != row.title:
             raise ValueError(
                 f"task {row.task_id} title mismatch: registry={row.title!r} entry={entry.title!r}"
+            )
+        if row.issue_number is None:
+            raise ValueError(f"registry task {row.task_id} issue is still TBD")
+        if row.pr_number is None:
+            raise ValueError(f"registry task {row.task_id} PR is still TBD")
+        if entry.issue_number is None or entry.pr_number is None:
+            raise ValueError(f"numbered task entry {row.task_id} is missing issue/PR references")
+        if entry.issue_number != row.issue_number:
+            raise ValueError(
+                f"task {row.task_id} issue mismatch: registry=#{row.issue_number} "
+                f"entry=#{entry.issue_number}"
+            )
+        if entry.pr_number != row.pr_number:
+            raise ValueError(
+                f"task {row.task_id} PR mismatch: registry=#{row.pr_number} entry=#{entry.pr_number}"
             )
     return len(rows), len(entries)
 
@@ -167,7 +220,16 @@ def run_self_test() -> None:
 
     cases = {
         "missing-entry": valid.replace("64. [x] Good task", "65. [x] Good task"),
+        "missing-registry-row": valid.replace(
+            "| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/org/repo/issues/98) | [#99](https://github.com/org/repo/pull/99) |\n",
+            "",
+        ),
         "status-mismatch": valid.replace("64. [x] Good task", "64. [ ] Good task"),
+        "wrong-pr": valid.replace(
+            "[#99](https://github.com/org/repo/pull/99)",
+            "[#9999](https://github.com/org/repo/pull/9999)",
+            1,
+        ),
         "missing-pr": valid.replace("[#99](https://github.com/org/repo/pull/99)", ""),
         "duplicate-row": valid.replace(
             "| 64 | `[x]` | Good task | Has scope. | [#98](https://github.com/org/repo/issues/98) | [#99](https://github.com/org/repo/pull/99) |",
