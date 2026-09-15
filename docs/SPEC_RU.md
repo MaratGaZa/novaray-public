@@ -231,6 +231,10 @@ Direct Developer ID distribution сохраняется как целевая м
   Security.framework, Authorization Services prompt, записи manifest или изменения базы.
   Disposable environment, restore drill, exclusive writers, reviewed binary и per-run approval
   остаются ручными prerequisites; preflight не разрешает `--run` и не доказывает Gate I/H.
+- [x] Readiness evidence template для native-right эксперимента (#104): публичный JSON-шаблон и
+  offline validator фиксируют форму будущего приватного evidence-пакета и проверяют, что committed
+  template остаётся non-authorizing. Это не private evidence, не approval `--run`, не restore drill,
+  не Security.framework call и не native database evidence; Gate I/H остаются открытыми.
 - [x] macOS helper runtime replay guard contract: core моделирует текущую handshake session и exact
   next non-zero sequence/nonce для allowlisted runtime command envelope. Guard отклоняет команды без
   session, из другой/stale session, с нулевой, повторной, устаревшей sequence или forward jump до
@@ -557,6 +561,11 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   Authorization Services calls, manifest creation, prompt или database mutation. Успешный preflight
   означает только готовность перейти к ручной owner review; он не подтверждает одноразовую среду,
   восстановление, контроль писателей, reviewed binary, native evidence или Gate I/H.
+- Публичный readiness evidence template для `native-right-roundtrip` должен оставаться
+  non-authorizing: placeholder references, run-enabling booleans `false`, `--preflight-only`, no
+  generated test right name и confirmation `NOT A RUN APPROVAL`. Offline validator обязан падать,
+  если template начинает выглядеть как approval или содержит real-looking commit/hash. Приватный
+  evidence-пакет будущего запуска создаётся вне репозитория и не заменяется committed template.
 - Connection lifecycle skeleton сериализует только allowlisted helper commands, проверяет допустимые
   state transitions и correlation IDs и не запускает helper, engine или системный tunnel.
 - Network transaction contract skeleton содержит только типизированные snapshots, applied-state,

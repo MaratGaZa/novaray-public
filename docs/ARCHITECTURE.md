@@ -198,6 +198,9 @@ approval, test-only namespace и disposable environment с restore при unknow
 вызывается тестами: подтверждены только recording-порядок/отказы, CF fixtures и локальный журнал.
 Оператор отдельно подтверждает одноразовую среду и восстановление; watchdog/неизвестный результат
 ведут к quarantine без слепой очистки. Системный запуск и остальные случаи матрицы не выполнены.
+Публичный readiness template (#104) фиксирует форму будущего приватного evidence-пакета и
+проверяется offline-валидатором как non-authorizing. Он не является approval на `--run`, не
+доказывает disposable environment/restore и не подменяет private per-run evidence.
 
 UI не вызывает `route`, `scutil` или `pfctl`. Любая mutation выполняется только выбранным и
 минимально-привилегированным boundary.
