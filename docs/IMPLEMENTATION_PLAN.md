@@ -94,6 +94,13 @@
 | 65 | `[x]` | Валидатор metadata execution task | Автоматически проверяет, что реестр RULE-001 соответствует нумерованному журналу задач и что issue/PR metadata заполнены. | [#100](https://github.com/MaratGaZa/novaray-public/issues/100) | [#101](https://github.com/MaratGaZa/novaray-public/pull/101) |
 | 66 | `[x]` | Preflight native-right эксперимента без мутаций | Добавляет safe `--preflight` для `native-right-roundtrip`, который проверяет только автоматизируемые условия и не разрешает live `--run`. | [#102](https://github.com/MaratGaZa/novaray-public/issues/102) | [#103](https://github.com/MaratGaZa/novaray-public/pull/103) |
 | 67 | `[x]` | Readiness evidence template для native-right эксперимента | Добавляет публичный non-authorizing template и offline validator формы будущего private evidence без запуска `--run` или системных мутаций. | [#104](https://github.com/MaratGaZa/novaray-public/issues/104) | [#105](https://github.com/MaratGaZa/novaray-public/pull/105) |
+| 68 | `[x]` | Порядок защиты перед маршрутами и DNS | Закрепляет firewall перед AddRoute/SetDns при включённом kill switch, отказ до исполнения и сохранение порядка старых recovery-журналов. | [#106](https://github.com/MaratGaZa/novaray-public/issues/106) | [#107](https://github.com/MaratGaZa/novaray-public/pull/107) |
+
+Задача 68 / issue #106 / PR #107: **Порядок защиты перед маршрутами и DNS**. Реализована
+очередность существующего pure-core плана и проверка до нового исполнения; отказ и обратный
+план компенсации проверены тестами с регистрирующим адаптером. Статус: `[x]`.
+После PR #105 следующая независимая задача относится к фазе 6.1; live native-run остаётся
+заблокированным. Порядок по контракту не доказывает системную защиту.
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -1018,6 +1025,16 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     границу. Не входят: private evidence package, запуск `native-right-roundtrip --run`, prompt,
     Security.framework/Authorization Services calls, запись manifest или базы, root, IPC/сеть,
     native evidence, disposable restore proof, изменение ADR-009, Gate I/H или повышение TRACEABILITY.
+
+68. [x] Порядок защиты перед маршрутами и DNS — issue #106, PR #107:
+    план с включённым kill switch ставит единственный firewall-шаг раньше всех AddRoute/SetDns
+    по apply_order. Исполнитель отклоняет неверный порядок, дополнительные forward firewall-шаги
+    и запуск не из Planned до записи журнала и адаптера. Стабильные ключи операций сохраняются.
+    Критерии: отказ firewall останавливает route/DNS; обратная компенсация восстанавливает их
+    перед firewall; перестановка вектора не меняет порядок; прежние журналы сохраняют порядок
+    recovery. Связь: FR-004/FR-008/NFR-002, roadmap 6.1. Проверки: planner/executor/recovery,
+    fmt, strict Clippy, полный Rust suite, metadata, traceability, ссылки и diff.
+    Не входят: ОС/firewall backend, native-run, root, packet-level evidence и закрытие Gate I/H.
 
 ## 7. Зависимости
 

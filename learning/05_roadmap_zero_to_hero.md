@@ -525,6 +525,8 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 
 - [ ] Определить allowlist control-plane traffic.
 - [ ] Реализовать deny state до изменения default route.
+  - [x] Задача 68 / issue #106 / PR #107: в pure core закреплены порядок firewall перед route/DNS,
+    отказ до адаптера и обратный план компенсации; системный deny state остаётся открытым.
 - [ ] Сохранять защиту при engine crash/reconnect.
 - [ ] Не блокировать recovery/update без явного плана.
 - [ ] Проверить disable/uninstall cleanup.

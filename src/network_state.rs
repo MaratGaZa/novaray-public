@@ -109,6 +109,56 @@ impl fmt::Debug for AppliedNetworkState {
 }
 
 impl AppliedNetworkState {
+    /// Admission for a new execution, deliberately separate from legacy journal validation.
+    pub fn validate_for_execution(&self) -> Result<(), NetworkStateError> {
+        self.validate()?;
+        if self.phase != NetworkTransactionPhase::Planned {
+            return Err(NetworkStateError::InvalidPhase {
+                phase: self.phase,
+                reason: "new execution requires a planned transaction",
+            });
+        }
+
+        let mut firewall_order = None;
+        let mut firewall_count = 0;
+        for operation in &self.operations {
+            let order =
+                operation
+                    .apply_order
+                    .ok_or_else(|| NetworkStateError::MissingApplyOrder {
+                        operation_key: operation.key.clone(),
+                    })?;
+            match operation.kind {
+                NetworkOperationKind::ApplyFirewallPolicy {
+                    kill_switch_enabled,
+                    ..
+                } => {
+                    firewall_count += 1;
+                    if kill_switch_enabled {
+                        firewall_order = Some(order);
+                    }
+                }
+                NetworkOperationKind::RestoreFirewallSnapshot { .. } => firewall_count += 1,
+                _ => {}
+            }
+        }
+        if let Some(firewall_order) = firewall_order {
+            if firewall_count != 1
+                || self.operations.iter().any(|operation| {
+                    matches!(
+                        operation.kind,
+                        NetworkOperationKind::AddRoute { .. } | NetworkOperationKind::SetDns { .. }
+                    ) && operation
+                        .apply_order
+                        .is_some_and(|order| order < firewall_order)
+                })
+            {
+                return Err(NetworkStateError::UnsafeKillSwitchOrder);
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate(&self) -> Result<(), NetworkStateError> {
         validate_id("transaction_id", &self.transaction_id)?;
         validate_id("snapshot_id", &self.snapshot_id)?;
@@ -918,6 +968,9 @@ pub enum NetworkStateError {
 
     #[error("duplicate operation apply_order: {apply_order}")]
     DuplicateApplyOrder { apply_order: u32 },
+
+    #[error("kill-switch execution requires one firewall policy before route and DNS changes")]
+    UnsafeKillSwitchOrder,
 
     #[error("operation {operation_key} requires apply_order for deterministic rollback")]
     MissingApplyOrder { operation_key: String },

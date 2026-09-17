@@ -65,7 +65,7 @@ impl ConnectNetworkTransactionPlanner {
         snapshot: &NetworkSnapshot,
         intent: ConnectNetworkIntent,
     ) -> Result<AppliedNetworkState, NetworkStateError> {
-        let operations = vec![
+        let mut operations = vec![
             operation(
                 KEY_PRESERVE_ENDPOINT_ROUTE,
                 1,
@@ -139,6 +139,14 @@ impl ConnectNetworkTransactionPlanner {
             ),
         ];
 
+        if intent.kill_switch_enabled {
+            // Keep journal keys stable; apply_order, not a key's numeric prefix, controls execution.
+            operations[3..].rotate_right(1);
+            for (index, operation) in operations.iter_mut().enumerate() {
+                operation.apply_order = Some(index as u32 + 1);
+            }
+        }
+
         let state = AppliedNetworkState {
             transaction_id: intent.transaction_id,
             snapshot_id: snapshot.snapshot_id.clone(),
@@ -148,7 +156,7 @@ impl ConnectNetworkTransactionPlanner {
             operations,
             last_error: None,
         };
-        state.validate()?;
+        state.validate_for_execution()?;
         Ok(state)
     }
 }
@@ -340,14 +348,14 @@ mod tests {
                 (Some(1), KEY_PRESERVE_ENDPOINT_ROUTE),
                 (Some(2), KEY_SET_TUNNEL_ADDRESS),
                 (Some(3), KEY_SET_TUNNEL_MTU),
-                (Some(4), KEY_ROUTE_FULL_TUNNEL),
-                (Some(5), KEY_SET_DNS),
-                (Some(6), KEY_APPLY_FIREWALL),
+                (Some(4), KEY_APPLY_FIREWALL),
+                (Some(5), KEY_ROUTE_FULL_TUNNEL),
+                (Some(6), KEY_SET_DNS),
             ]
         );
 
         assert!(matches!(
-            plan.operations[3].kind,
+            plan.operations[4].kind,
             NetworkOperationKind::AddRoute {
                 destination: IpNetwork {
                     address: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
@@ -384,9 +392,9 @@ mod tests {
                 .map(|step| (step.apply_order, step.operation_key.as_str()))
                 .collect::<Vec<_>>(),
             vec![
-                (6, KEY_APPLY_FIREWALL),
-                (5, KEY_SET_DNS),
-                (4, KEY_ROUTE_FULL_TUNNEL),
+                (6, KEY_SET_DNS),
+                (5, KEY_ROUTE_FULL_TUNNEL),
+                (4, KEY_APPLY_FIREWALL),
                 (3, KEY_SET_TUNNEL_MTU),
                 (2, KEY_SET_TUNNEL_ADDRESS),
                 (1, KEY_PRESERVE_ENDPOINT_ROUTE),
@@ -420,7 +428,7 @@ mod tests {
         let plan = ConnectNetworkTransactionPlanner::plan(&snapshot, intent()).expect("valid plan");
 
         assert!(matches!(
-            plan.operations[3].rollback,
+            plan.operations[4].rollback,
             NetworkRollbackPlan {
                 inverse: Some(NetworkOperationKind::RemoveRoute {
                     destination: IpNetwork {
@@ -432,6 +440,40 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn disabled_kill_switch_preserves_unprotected_plan_order() {
+        let mut intent = intent();
+        intent.kill_switch_enabled = false;
+        let plan = ConnectNetworkTransactionPlanner::plan(&snapshot(), intent).unwrap();
+        assert!(matches!(
+            plan.operations[3].kind,
+            NetworkOperationKind::AddRoute { .. }
+        ));
+        assert!(matches!(
+            plan.operations[5].kind,
+            NetworkOperationKind::ApplyFirewallPolicy {
+                kill_switch_enabled: false,
+                ..
+            }
+        ));
+        plan.validate_for_execution().unwrap();
+    }
+
+    #[test]
+    fn ipv6_route_also_requires_prior_kill_switch() {
+        let mut plan = ConnectNetworkTransactionPlanner::plan(&snapshot(), intent()).unwrap();
+        if let NetworkOperationKind::AddRoute { destination, .. } = &mut plan.operations[4].kind {
+            *destination = IpNetwork::new(IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED), 0);
+        }
+        plan.validate_for_execution().unwrap();
+        plan.operations[3].apply_order = Some(5);
+        plan.operations[4].apply_order = Some(4);
+        assert_eq!(
+            plan.validate_for_execution(),
+            Err(NetworkStateError::UnsafeKillSwitchOrder)
+        );
     }
 
     #[test]

@@ -418,6 +418,12 @@ snapshot.
 
 ### FR-008 — Kill switch and recovery
 
+- Before new execution of a plan enabling the kill switch, core requires exactly one
+  `ApplyFirewallPolicy(true)` before every `AddRoute` and `SetDns` by `apply_order`; another forward
+  firewall operation, late ordering or a non-`Planned` start is rejected before journal/adapter calls.
+  Route/DNS compensation precedes firewall restoration. Legacy journals remain readable and recover
+  in their stored order without applying the new admission rule to recovery.
+  This is an ordering contract, not evidence of a system deny state or leak prevention.
 - Prevent silent direct fallback after an unexpected tunnel failure when enabled.
 - Snapshot platform network state before mutations.
 - Roll back after normal stop, signals, failed partial connection, and recovery on next launch.
