@@ -233,8 +233,8 @@ macOS-релиза ([ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM
 
 1. validate config and effective policy;
 2. acquire serialized lifecycle lock;
-3. capture platform `NetworkSnapshot` and write recovery journal;
-4. prepare/validate engine and resolve endpoint outside future tunnel;
+3. reject pending recovery or unknown protection; prepare/validate engine and resolve endpoint only for eligible initial bootstrap, never as implicit protected-reconnect fallback;
+4. recheck network context, capture platform `NetworkSnapshot` and write recovery journal before mutations;
 5. establish safe deny/kill-switch state when enabled;
 6. start engine and wait for readiness;
 7. apply tunnel, IPv4/IPv6, routes, MTU and DNS through platform boundary;
@@ -258,6 +258,15 @@ IP-семья; остальное Deny. `ConnectNetworkIntent::kill_switch_allow
 Этот API не выбирает интерфейс ОС и не подтверждает его идентичность. DHCP/NDP/bootstrap, входящий
 и established-state трафик, компиляция правил и проверка их применения остаются отдельными задачами.
 Gate H ADR-003 требует packet-level reachability, leak/refusal и локальный rollback без сети.
+
+Задача 70 документирует [endpoint bootstrap/reconnect](./ENDPOINT_BOOTSTRAP_PROTOCOL.md),
+но не добавляет runtime. На шаге 3 нужно отличать незащищённый первый connect от
+active/inherited/unknown deny; во втором случае resolver по uplink не вызывается.
+Один tuple привязан к наблюдаемому контексту, а не строке имени интерфейса. При смене сети или
+исчерпании кандидатов предусмотрен Blocked; новый direct bootstrap требует явного завершения
+защиты и подтверждённого rollback. Переключение A/AAAA не меняет identity профиля и должно
+отзывать старое исключение/established state до нового. Это ещё не поведение текущего executor;
+его обратная компенсация сама по себе не доказывает сохранение deny при protected recovery.
 
 ## 10. Disconnect и crash recovery
 

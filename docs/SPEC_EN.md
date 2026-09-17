@@ -418,6 +418,17 @@ snapshot.
 
 ### FR-008 — Kill switch and recovery
 
+- The proposed DNS-bootstrap and endpoint-change lifecycle is defined by the
+  [single protocol](./ENDPOINT_BOOTSTRAP_PROTOCOL.md), not yet implemented at runtime: initial
+  resolution outside the VPN is allowed only in an explicitly unprotected bootstrap phase without
+  active/inherited deny or recovery. Direct DNS is forbidden under active/unknown protection,
+  including reconnect. One tuple is pinned to a session and verified network context; A/AAAA
+  candidates are tried sequentially, revoking the old allowance before granting the new one.
+  An expired snapshot cannot authorize a new attempt; network change invalidates it and enters
+  Blocked, not an automatic DNS exception. The selected IP does not change profile TLS/SNI/Reality
+  identity. A new unprotected bootstrap requires explicit user termination of protection and
+  verified rollback. These are future Gate H requirements, not evidence of a working resolver,
+  reconnect, always-on protection or leak prevention.
 - The preparatory `KillSwitchAllowlist` is immutable after validation: outbound IP traffic on the
   uplink is allowed only to the exact resolved VPN endpoint (IP, non-zero port, TCP/UDP); a distinct
   tunnel interface permits only the selected IPv4 or IPv6 family; everything else gets `Deny`.
