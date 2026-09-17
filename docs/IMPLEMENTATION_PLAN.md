@@ -96,10 +96,11 @@
 | 67 | `[x]` | Readiness evidence template для native-right эксперимента | Добавляет публичный non-authorizing template и offline validator формы будущего private evidence без запуска `--run` или системных мутаций. | [#104](https://github.com/MaratGaZa/novaray-public/issues/104) | [#105](https://github.com/MaratGaZa/novaray-public/pull/105) |
 | 68 | `[x]` | Порядок защиты перед маршрутами и DNS | Закрепляет firewall перед AddRoute/SetDns при включённом kill switch, отказ до исполнения и сохранение порядка старых recovery-журналов. | [#106](https://github.com/MaratGaZa/novaray-public/issues/106) | [#107](https://github.com/MaratGaZa/novaray-public/pull/107) |
 | 69 | `[x]` | Типизированная allowlist endpoint и туннеля | Задаёт immutable egress-контракт точного endpoint и отдельного tunnel interface с default deny; не применяет системные правила. | [#108](https://github.com/MaratGaZa/novaray-public/issues/108) | [#109](https://github.com/MaratGaZa/novaray-public/pull/109) |
-| 70 | `[ ]` | Протокол выбора endpoint и DNS-bootstrap | Документирует первичное разрешение имени, закрепление одного адреса, смену кандидатов и безопасный отказ при переподключении; runtime не реализует. | [#110](https://github.com/MaratGaZa/novaray-public/issues/110) | TBD |
+| 70 | `[x]` | Протокол выбора endpoint и DNS-bootstrap | Документирует первичное разрешение имени, закрепление одного адреса, смену кандидатов и безопасный отказ при переподключении; runtime не реализует. | [#110](https://github.com/MaratGaZa/novaray-public/issues/110) | [#111](https://github.com/MaratGaZa/novaray-public/pull/111) |
 
-После слияния PR #109 задача 69 находится в `main`. Текущая задача 70 / issue #110:
+После слияния PR #109 задача 69 находится в `main`. Задача 70 / issue #110 / PR #111:
 **Протокол выбора endpoint и DNS-bootstrap** — документационная подготовка фаз 6.1–6.3.
+Статус `[x]` относится только к документу и его согласованности; PR ожидает review.
 Она не реализует resolver, автоматическое переподключение или системные правила. Сценарии
 Gate H, включая смену сети, несколько A/AAAA и отказ без прямого DNS, остаются непроверенными.
 Полная allowlist и привязка policy к исполнителю остаются открытыми; native-run не разрешён.
@@ -1050,7 +1051,7 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     native-run, root и packet-level evidence. Gate H получает критерии реального reachability,
     блокировки прямого выхода и локального rollback без сети. Проверки: Rust gates и docs validators.
 
-70. [ ] Протокол выбора endpoint и DNS-bootstrap — issue #110, PR TBD:
+70. [x] Протокол выбора endpoint и DNS-bootstrap — issue #110, PR #111:
     описать в [едином протоколе](./ENDPOINT_BOOTSTRAP_PROTOCOL.md) первичное разрешение имени
     до защиты, закрепление точного endpoint за сессией и сетевым контекстом, ограниченный набор
     A/AAAA-кандидатов, срок действия и отказ при смене сети без неявного разрешения прямого DNS.
