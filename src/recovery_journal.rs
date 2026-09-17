@@ -872,8 +872,8 @@ mod tests {
         state.phase = NetworkTransactionPhase::RollingBack;
         for operation in &mut state.operations {
             operation.status = match operation.apply_order {
-                Some(1..=4) => NetworkOperationStatus::Applied,
-                Some(5..) => NetworkOperationStatus::Planned,
+                Some(1..=5) => NetworkOperationStatus::Applied,
+                Some(6..) => NetworkOperationStatus::Planned,
                 _ => unreachable!("planner always assigns apply_order"),
             };
         }
@@ -893,6 +893,51 @@ mod tests {
                 .map(|step| (step.apply_order, step.operation_key.as_str()))
                 .collect::<Vec<_>>(),
             vec![
+                (5, "004_route_full_tunnel"),
+                (4, "006_apply_firewall"),
+                (3, "003_set_tunnel_mtu"),
+                (2, "002_set_tunnel_address"),
+                (1, "001_preserve_endpoint_route"),
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_firewall_last_journal_keeps_original_recovery_order() {
+        let snapshot = connect_snapshot();
+        let mut state =
+            ConnectNetworkTransactionPlanner::plan(&snapshot, connect_intent()).unwrap();
+        // Reconstruct the persisted order emitted before task 68, without rewriting it on load.
+        state.operations[3..].rotate_left(1);
+        for (index, op) in state.operations.iter_mut().enumerate() {
+            op.apply_order = Some(index as u32 + 1);
+        }
+        assert!(matches!(
+            state.validate_for_execution(),
+            Err(crate::network_state::NetworkStateError::UnsafeKillSwitchOrder)
+        ));
+        state.phase = NetworkTransactionPhase::Applied;
+        for op in &mut state.operations {
+            op.status = NetworkOperationStatus::Applied;
+        }
+        let temp = TempDirGuard::new("legacy_firewall_last");
+        let store = NetworkRecoveryJournalStore::new(temp.as_ref());
+        let legacy = NetworkRecoveryJournal::new(snapshot, state);
+        store.write_pending(&legacy).unwrap();
+        let loaded = store.load_pending().unwrap();
+        assert_eq!(loaded, vec![legacy]);
+        let steps = loaded[0]
+            .applied_state
+            .rollback_steps_reverse_order()
+            .unwrap();
+        assert_eq!(
+            steps
+                .iter()
+                .map(|step| (step.apply_order, step.operation_key.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (6, "006_apply_firewall"),
+                (5, "005_set_dns"),
                 (4, "004_route_full_tunnel"),
                 (3, "003_set_tunnel_mtu"),
                 (2, "002_set_tunnel_address"),

@@ -225,7 +225,7 @@ impl NetworkTransactionExecutor {
         operation_executor: &mut impl NetworkOperationExecutor,
         journal_writer: &mut impl NetworkRecoveryJournalWriter,
     ) -> Result<NetworkExecutionReport, NetworkExecutionError> {
-        plan.validate()?;
+        plan.validate_for_execution()?;
         let mut state = plan;
         state.phase = NetworkTransactionPhase::RollingBack;
 
@@ -332,6 +332,7 @@ impl SerializedNetworkTransactionExecutor {
         journal_writer: &mut impl NetworkRecoveryJournalWriter,
         start_gate: &mut impl NetworkTransactionStartGate,
     ) -> Result<NetworkExecutionReport, NetworkExecutionError> {
+        plan.validate_for_execution()?;
         start_gate.ensure_can_start_transaction(&plan.transaction_id)?;
         self.inner
             .execute(snapshot, plan, operation_executor, journal_writer)
@@ -633,6 +634,127 @@ mod tests {
     }
 
     #[test]
+    fn kill_switch_order_rejected_before_any_side_effects() {
+        for early_index in [4, 5] {
+            let mut plan = plan();
+            let early_order = plan.operations[early_index].apply_order;
+            plan.operations[early_index].apply_order = plan.operations[3].apply_order;
+            plan.operations[3].apply_order = early_order;
+            // Exercise the wire form too: vector order and stable keys are not authority.
+            plan.operations.reverse();
+            let plan = serde_json::from_str(&serde_json::to_string(&plan).unwrap()).unwrap();
+            let mut executor = DryRunNetworkOperationExecutor::new();
+            let mut journal = RecordingJournalWriter::default();
+            let mut gate = RecordingStartGate::default();
+            let error = SerializedNetworkTransactionExecutor::new()
+                .execute(&snapshot(), plan, &mut executor, &mut journal, &mut gate)
+                .unwrap_err();
+            assert!(matches!(
+                error,
+                NetworkExecutionError::State(NetworkStateError::UnsafeKillSwitchOrder)
+            ));
+            assert!(executor.executed().is_empty());
+            assert!(journal.writes.is_empty());
+            assert!(journal.applied_records.is_empty());
+            assert!(journal.cleared_transaction_ids.is_empty());
+            assert!(gate.checked_transaction_ids.is_empty());
+        }
+    }
+
+    #[test]
+    fn kill_switch_order_uses_apply_order_not_vector_position() {
+        let mut plan = plan();
+        let expected: Vec<_> = plan.operations.iter().map(|op| op.kind.clone()).collect();
+        plan.operations.reverse();
+        let mut executor = DryRunNetworkOperationExecutor::new();
+        let mut journal = RecordingJournalWriter::default();
+        NetworkTransactionExecutor
+            .execute(&snapshot(), plan, &mut executor, &mut journal)
+            .unwrap();
+        assert_eq!(executor.executed(), expected);
+    }
+
+    #[test]
+    fn kill_switch_rejects_additional_forward_firewall_changes() {
+        for kind in [
+            NetworkOperationKind::ApplyFirewallPolicy {
+                policy_id: "other".into(),
+                kill_switch_enabled: false,
+            },
+            NetworkOperationKind::ApplyFirewallPolicy {
+                policy_id: "other".into(),
+                kill_switch_enabled: true,
+            },
+            NetworkOperationKind::RestoreFirewallSnapshot {
+                policy_id: None,
+                kill_switch_enabled: false,
+            },
+        ] {
+            let mut plan = plan();
+            let mut extra = plan.operations[3].clone();
+            extra.key = "extra_firewall".into();
+            extra.apply_order = Some(7);
+            extra.kind = kind;
+            plan.operations.push(extra);
+            let mut executor = DryRunNetworkOperationExecutor::new();
+            let mut journal = RecordingJournalWriter::default();
+            assert!(matches!(
+                NetworkTransactionExecutor.execute(&snapshot(), plan, &mut executor, &mut journal),
+                Err(NetworkExecutionError::State(
+                    NetworkStateError::UnsafeKillSwitchOrder
+                ))
+            ));
+            assert!(executor.executed().is_empty());
+            assert!(journal.writes.is_empty());
+        }
+    }
+
+    #[test]
+    fn firewall_failure_stops_route_dns_and_retains_compensation() {
+        let mut executor = DryRunNetworkOperationExecutor::new().fail_on_apply_order(4);
+        let mut journal = RecordingJournalWriter::default();
+        let report = NetworkTransactionExecutor
+            .execute(&snapshot(), plan(), &mut executor, &mut journal)
+            .unwrap();
+        assert!(matches!(
+            report.outcome,
+            NetworkExecutionOutcome::Failed { .. }
+        ));
+        assert!(executor.executed().iter().all(|op| !matches!(
+            op,
+            NetworkOperationKind::AddRoute { .. } | NetworkOperationKind::SetDns { .. }
+        )));
+        let steps = report.state.rollback_steps_reverse_order().unwrap();
+        assert_eq!(steps.len(), 4);
+        assert!(matches!(
+            steps[0].inverse,
+            NetworkOperationKind::RestoreFirewallSnapshot { .. }
+        ));
+        assert!(journal.applied_records.is_empty());
+        assert_eq!(journal.writes.last().unwrap(), &report.state);
+    }
+
+    #[test]
+    fn completed_transaction_cannot_be_reexecuted() {
+        let mut plan = plan();
+        plan.phase = NetworkTransactionPhase::Applied;
+        for op in &mut plan.operations {
+            op.status = NetworkOperationStatus::Applied;
+        }
+        plan.validate().unwrap();
+        let mut executor = DryRunNetworkOperationExecutor::new();
+        let mut journal = RecordingJournalWriter::default();
+        assert!(matches!(
+            NetworkTransactionExecutor.execute(&snapshot(), plan, &mut executor, &mut journal),
+            Err(NetworkExecutionError::State(
+                NetworkStateError::InvalidPhase { .. }
+            ))
+        ));
+        assert!(executor.executed().is_empty());
+        assert!(journal.writes.is_empty());
+    }
+
+    #[test]
     fn dry_run_executor_records_successful_execution_order() {
         let snapshot = snapshot();
         let mut executor = DryRunNetworkOperationExecutor::new();
@@ -646,7 +768,7 @@ mod tests {
         assert_eq!(report.state.phase, NetworkTransactionPhase::Applied);
         assert_eq!(executor.executed().len(), 6);
         assert!(matches!(
-            executor.executed()[3],
+            executor.executed()[4],
             NetworkOperationKind::AddRoute { .. }
         ));
         assert_eq!(journal.writes.len(), 12);
@@ -990,7 +1112,7 @@ mod tests {
     fn serialized_executor_releases_guard_after_operation_failure() {
         let snapshot = snapshot();
         let mut serialized = SerializedNetworkTransactionExecutor::new();
-        let mut executor = DryRunNetworkOperationExecutor::new().fail_on_apply_order(4);
+        let mut executor = DryRunNetworkOperationExecutor::new().fail_on_apply_order(5);
         let mut journal = RecordingJournalWriter::default();
         let mut start_gate = RecordingStartGate::default();
 
@@ -1012,7 +1134,7 @@ mod tests {
             } if operation_key == "004_route_full_tunnel"
         ));
         assert!(serialized.is_idle());
-        assert_eq!(executor.executed().len(), 3);
+        assert_eq!(executor.executed().len(), 4);
         assert!(journal.applied_records.is_empty());
         assert!(journal.cleared_transaction_ids.is_empty());
         assert_eq!(start_gate.checked_transaction_ids, vec!["txn-1"]);
@@ -1057,7 +1179,7 @@ mod tests {
         let temp_dir = TempDirGuard::new("route_crash_before_postwrite");
         let mut store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
         let mut executor =
-            DryRunNetworkOperationExecutor::new().interrupt_after_execute_before_postwrite(4);
+            DryRunNetworkOperationExecutor::new().interrupt_after_execute_before_postwrite(5);
 
         let report = NetworkTransactionExecutor
             .execute(&snapshot, plan(), &mut executor, &mut store)
@@ -1066,7 +1188,7 @@ mod tests {
         assert_eq!(
             report.outcome,
             NetworkExecutionOutcome::Interrupted {
-                after_apply_order: 4,
+                after_apply_order: 5,
                 reason: "configured_pre_postwrite_interruption".to_string(),
             }
         );
@@ -1082,8 +1204,8 @@ mod tests {
                 NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applied,
+                NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applying,
-                NetworkOperationStatus::Planned,
                 NetworkOperationStatus::Planned,
             ]
         );
@@ -1104,7 +1226,8 @@ mod tests {
                 .map(|step| (step.apply_order, step.operation_key.as_str()))
                 .collect::<Vec<_>>(),
             vec![
-                (4, "004_route_full_tunnel"),
+                (5, "004_route_full_tunnel"),
+                (4, "006_apply_firewall"),
                 (3, "003_set_tunnel_mtu"),
                 (2, "002_set_tunnel_address"),
                 (1, "001_preserve_endpoint_route"),
@@ -1117,7 +1240,7 @@ mod tests {
         let snapshot = snapshot();
         let temp_dir = TempDirGuard::new("route_crash_after_postwrite");
         let mut store = NetworkRecoveryJournalStore::new(temp_dir.as_ref());
-        let mut executor = DryRunNetworkOperationExecutor::new().interrupt_after_apply_order(4);
+        let mut executor = DryRunNetworkOperationExecutor::new().interrupt_after_apply_order(5);
 
         let report = NetworkTransactionExecutor
             .execute(&snapshot, plan(), &mut executor, &mut store)
@@ -1135,7 +1258,7 @@ mod tests {
                 NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applied,
-                NetworkOperationStatus::Planned,
+                NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Planned,
             ]
         );
@@ -1149,14 +1272,14 @@ mod tests {
     #[test]
     fn executor_error_stops_later_operations_and_marks_failed_operation() {
         let snapshot = snapshot();
-        let mut executor = DryRunNetworkOperationExecutor::new().fail_on_apply_order(4);
+        let mut executor = DryRunNetworkOperationExecutor::new().fail_on_apply_order(5);
         let mut journal = RecordingJournalWriter::default();
 
         let report = NetworkTransactionExecutor
             .execute(&snapshot, plan(), &mut executor, &mut journal)
             .expect("operation failure is a typed report");
 
-        assert_eq!(executor.executed().len(), 3);
+        assert_eq!(executor.executed().len(), 4);
         assert!(matches!(
             report.outcome,
             NetworkExecutionOutcome::Failed {
@@ -1177,8 +1300,8 @@ mod tests {
                 NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Applied,
+                NetworkOperationStatus::Applied,
                 NetworkOperationStatus::Failed,
-                NetworkOperationStatus::Planned,
                 NetworkOperationStatus::Planned,
             ]
         );

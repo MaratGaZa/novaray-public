@@ -242,6 +242,14 @@ macOS-релиза ([ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM
 9. publish `Connected` only after successful probes;
 10. compensate in reverse order on any failure.
 
+Подготовительный контракт задачи 68 проверяет новый запуск в `Planned` и порядок по `apply_order`:
+при включённом kill switch единственный `ApplyFirewallPolicy` предшествует `AddRoute` и `SetDns`.
+Планировщик сохраняет сначала endpoint route/address/MTU, затем firewall, default route и DNS;
+это ещё не реализация полной системной последовательности выше. Ошибка firewall останавливает
+дальнейшие шаги; обратный план возвращает DNS/default route перед firewall. Ключи операций стабильны.
+Проверка допуска отделена от чтения старых recovery-журналов, чей порядок не переписывается.
+Реальный deny state, allowlist и packet-level защита остаются неподтверждёнными.
+
 ## 10. Disconnect и crash recovery
 
 Normal disconnect, engine/platform-service/UI crash, forced stop, power/network change, reboot and

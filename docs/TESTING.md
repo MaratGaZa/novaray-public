@@ -246,6 +246,15 @@ Per-app packet evidence обязательно перед включением �
 | Route manager | no-op success | any actual route/DNS behavior |
 | Integration-style | in-memory module composition, JSON schema compilation & validation against examples, supervisor process tests, secure runtime config (0600) lifecycle, engine artifact verification & SHA-256 validation, full mock engine lifecycle and TCP proxy request/response | real engine/server/network/OS/UI |
 
+Дополнение задачи 68 (L1/L3): `kill_switch_order_rejected_before_any_side_effects` проверяет
+перестановку apply_order у firewall/route и firewall/DNS после JSON roundtrip, нулевые вызовы
+адаптера, журнала и start gate. `kill_switch_order_uses_apply_order_not_vector_position` проверяет
+обратный вектор; `kill_switch_rejects_additional_forward_firewall_changes` запрещает второй
+firewall-шаг; `firewall_failure_stops_route_dns_and_retains_compensation` проверяет ранний отказ.
+Planner tests подтверждают IPv6, выключенный kill switch и DNS/route-before-firewall compensation.
+`legacy_firewall_last_journal_keeps_original_recovery_order` записывает и читает прежний порядок
+без миграции. Это не L5/L7 evidence: ОС, системный deny state, allowlist и утечки не проверяются.
+
 ## 5. Test environments
 
 ### Fast CI
