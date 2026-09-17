@@ -524,6 +524,8 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 ### 6.1. Kill switch
 
 - [ ] Определить allowlist control-plane traffic.
+  - [x] Задача 69 / issue #108 / PR #109: типизированные exact endpoint/tunnel egress-разрешения и default
+    deny; DHCP/NDP/bootstrap, inbound и системное применение остаются открытыми.
 - [ ] Реализовать deny state до изменения default route.
   - [x] Задача 68 / issue #106 / PR #107: в pure core закреплены порядок firewall перед route/DNS,
     отказ до адаптера и обратный план компенсации; системный deny state остаётся открытым.

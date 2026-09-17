@@ -418,6 +418,19 @@ snapshot.
 
 ### FR-008 — Kill switch and recovery
 
+- The preparatory `KillSwitchAllowlist` is immutable after validation: outbound IP traffic on the
+  uplink is allowed only to the exact resolved VPN endpoint (IP, non-zero port, TCP/UDP); a distinct
+  tunnel interface permits only the selected IPv4 or IPv6 family; everything else gets `Deny`.
+  Interface names must be exact ASCII identifiers of 1–64 characters (`alnum`, `_`, `-`, `.`), with
+  distinct uplink/tunnel names. Unspecified, loopback, multicast, link-local, IPv4 broadcast and
+  IPv4-mapped IPv6 addresses, and TCP/UDP port 0, are rejected, including during classification.
+  Non-zero IPv6 endpoint `scope_id` and `flowinfo` are also rejected, not silently ignored.
+  `ConnectNetworkIntent::kill_switch_allowlist` uses the intent's endpoint/interfaces/family,
+  requires an enabled kill switch and an explicit uplink; port and transport are supplied explicitly.
+  There are no implicit direct DNS, DHCP/NDP, LAN or update exceptions; bootstrap and inbound
+  traffic need a separate contract. Interface names here do not establish their provenance.
+  This pure-core API is not automatically called by `plan()`/`execute()` and does not yet bind
+  `policy_id` to system rules. ADR-003 Gate H requires separate live adapter validation.
 - Before new execution of a plan enabling the kill switch, core requires exactly one
   `ApplyFirewallPolicy(true)` before every `AddRoute` and `SetDns` by `apply_order`; another forward
   firewall operation, late ordering or a non-`Planned` start is rejected before journal/adapter calls.

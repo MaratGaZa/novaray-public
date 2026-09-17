@@ -248,7 +248,16 @@ macOS-релиза ([ADR-006 Cross-platform boundaries](./ADR-006-CROSS-PLATFORM
 это ещё не реализация полной системной последовательности выше. Ошибка firewall останавливает
 дальнейшие шаги; обратный план возвращает DNS/default route перед firewall. Ключи операций стабильны.
 Проверка допуска отделена от чтения старых recovery-журналов, чей порядок не переписывается.
-Реальный deny state, allowlist и packet-level защита остаются неподтверждёнными.
+Реальный deny state, применение allowlist и packet-level защита остаются неподтверждёнными.
+
+Задача 69 добавляет `KillSwitchAllowlist`: неизменяемую после проверки pure-core модель исходящего
+трафика. У uplink разрешён exact endpoint IP/port/transport, у отдельного tunnel interface — одна
+IP-семья; остальное Deny. `ConnectNetworkIntent::kill_switch_allowlist` строит её из endpoint,
+интерфейсов и семьи intent с явно переданными port/transport. Метод не вызывается автоматически
+планировщиком или исполнителем; `policy_id` пока остаётся непрозрачным идентификатором.
+Этот API не выбирает интерфейс ОС и не подтверждает его идентичность. DHCP/NDP/bootstrap, входящий
+и established-state трафик, компиляция правил и проверка их применения остаются отдельными задачами.
+Gate H ADR-003 требует packet-level reachability, leak/refusal и локальный rollback без сети.
 
 ## 10. Disconnect и crash recovery
 

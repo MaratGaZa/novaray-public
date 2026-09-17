@@ -255,6 +255,16 @@ Planner tests подтверждают IPv6, выключенный kill switch 
 `legacy_firewall_last_journal_keeps_original_recovery_order` записывает и читает прежний порядок
 без миграции. Это не L5/L7 evidence: ОС, системный deny state, allowlist и утечки не проверяются.
 
+Дополнение задачи 69 (L1): [kill_switch.rs](../src/kill_switch.rs) проверяет exact endpoint по
+IP/port/TCP-or-UDP/uplink, tunnel interface и отдельную IPv4/IPv6 семью, отказ invalid/wildcard
+входов, отсутствие неявных direct DNS/DHCP/NDP/LAN/update разрешений и redaction. Тесты в
+[network_transaction.rs](../src/network_transaction.rs) проверяют построение из intent, отказ
+disabled/missing uplink и независимость уже построенной policy от последующих изменений intent.
+Нет kernel/firewall/packet-flow evidence; policy пока не связана с `ApplyFirewallPolicy`.
+Для Gate H требуются реальные endpoint/tunnel reachability, блокировка постороннего egress и
+неподдерживаемого IPv6, отдельные DHCP/NDP/bootstrap/reconnect проверки и локальный rollback при
+потере сети. Успех unit matcher не закрывает ни один из этих системных пунктов.
+
 ## 5. Test environments
 
 ### Fast CI
