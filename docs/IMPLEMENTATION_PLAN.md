@@ -95,12 +95,15 @@
 | 66 | `[x]` | Preflight native-right эксперимента без мутаций | Добавляет safe `--preflight` для `native-right-roundtrip`, который проверяет только автоматизируемые условия и не разрешает live `--run`. | [#102](https://github.com/MaratGaZa/novaray-public/issues/102) | [#103](https://github.com/MaratGaZa/novaray-public/pull/103) |
 | 67 | `[x]` | Readiness evidence template для native-right эксперимента | Добавляет публичный non-authorizing template и offline validator формы будущего private evidence без запуска `--run` или системных мутаций. | [#104](https://github.com/MaratGaZa/novaray-public/issues/104) | [#105](https://github.com/MaratGaZa/novaray-public/pull/105) |
 | 68 | `[x]` | Порядок защиты перед маршрутами и DNS | Закрепляет firewall перед AddRoute/SetDns при включённом kill switch, отказ до исполнения и сохранение порядка старых recovery-журналов. | [#106](https://github.com/MaratGaZa/novaray-public/issues/106) | [#107](https://github.com/MaratGaZa/novaray-public/pull/107) |
+| 69 | `[x]` | Типизированная allowlist endpoint и туннеля | Задаёт immutable egress-контракт точного endpoint и отдельного tunnel interface с default deny; не применяет системные правила. | [#108](https://github.com/MaratGaZa/novaray-public/issues/108) | [#109](https://github.com/MaratGaZa/novaray-public/pull/109) |
 
-Задача 68 / issue #106 / PR #107: **Порядок защиты перед маршрутами и DNS**. Реализована
-очередность существующего pure-core плана и проверка до нового исполнения; отказ и обратный
-план компенсации проверены тестами с регистрирующим адаптером. Статус: `[x]`.
-После PR #105 следующая независимая задача относится к фазе 6.1; live native-run остаётся
-заблокированным. Порядок по контракту не доказывает системную защиту.
+После слияния PR #107 выполнена задача 69 / issue #108 / PR #109:
+**Типизированная allowlist endpoint и туннеля**. Статус: `[x]` по unit acceptance;
+PR ожидает review, слияние не утверждается. Полный локальный Rust suite: 345 passed,
+0 failed, 5 ignored; fmt и strict Clippy прошли. Это подготовка фазы 6.1, не системная защита.
+Контракт не подключён автоматически к `plan()`/`execute()` и не разрешает native-run.
+Полная allowlist, включая DHCP/NDP/bootstrap/inbound и применение в ОС, остаётся открытой;
+следующая execution task требует отдельной команды владельца.
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -1036,7 +1039,7 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     fmt, strict Clippy, полный Rust suite, metadata, traceability, ссылки и diff.
     Не входят: ОС/firewall backend, native-run, root, packet-level evidence и закрытие Gate I/H.
 
-69. [ ] Типизированная allowlist endpoint и туннеля — issue #108, PR TBD:
+69. [x] Типизированная allowlist endpoint и туннеля — issue #108, PR #109:
     неизменяемый pure-core контракт разрешает точный endpoint IP/port/TCP-or-UDP только через
     uplink, а поддерживаемую IP-семью — только через отдельный tunnel interface. Остальное Deny.
     Метод ConnectNetworkIntent использует собственные endpoint/interfaces/family и явные
