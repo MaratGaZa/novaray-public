@@ -248,3 +248,25 @@ Create uses null rights/environment and defaults to obtain a reference; Set/Remo
 operator interaction. No external authorization forms, shell commands or fallback rights are used.
 Denied/canceled/interaction-not-allowed writes are failures, never absence. This is implementation
 review evidence, not a live authorization/create/read/remove result.
+
+## 9. Readiness evidence package (2026-09-16, #104)
+
+The public [readiness template](./native-right-readiness.template.json) defines the shape of the
+private evidence that must be reviewed before a future `native-right-roundtrip --run` task can be
+approved. The committed template is intentionally non-authorizing: it contains placeholders, keeps
+all run-enabling booleans `false`, permits only `--preflight-only`, contains no generated test right
+name and requires `confirmation` to remain `NOT A RUN APPROVAL`.
+
+`scripts/check_native_right_readiness_template.py` validates that the committed template stays
+structurally aligned with this protocol and cannot be mistaken for a runnable approval. It fails if
+the template claims disposable readiness, restore success, exclusive writer control, authorization
+interaction, a real-looking reviewed commit/SHA-256, a generated test right name or a run approval
+confirmation. The validator is offline and does not call Security.framework, inspect the
+authorization database, create a manifest or run the experiment.
+
+A future native-run task must create a private per-run evidence package outside the public
+repository and compare it with the live runner output for the concrete disposable environment,
+restore drill, reviewed binary and generated test name. That private package is not reusable across
+runs and must not be committed. Passing the public template validator is only a documentation/CI
+guard; it does not prove the environment is disposable, restoration is tested, writers are
+controlled, the binary is reviewed, native evidence exists or Gate I/H is complete.

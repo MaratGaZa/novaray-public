@@ -93,6 +93,7 @@
 | 64 | `[x]` | Сверка ближайшей очереди после базового native harness | Фиксирует, что task 63 уже в `main`, а live Authorization Services mutation остаётся заблокированной без disposable environment и отдельного approval. | [#98](https://github.com/MaratGaZa/novaray-public/issues/98) | [#99](https://github.com/MaratGaZa/novaray-public/pull/99) |
 | 65 | `[x]` | Валидатор metadata execution task | Автоматически проверяет, что реестр RULE-001 соответствует нумерованному журналу задач и что issue/PR metadata заполнены. | [#100](https://github.com/MaratGaZa/novaray-public/issues/100) | [#101](https://github.com/MaratGaZa/novaray-public/pull/101) |
 | 66 | `[x]` | Preflight native-right эксперимента без мутаций | Добавляет safe `--preflight` для `native-right-roundtrip`, который проверяет только автоматизируемые условия и не разрешает live `--run`. | [#102](https://github.com/MaratGaZa/novaray-public/issues/102) | [#103](https://github.com/MaratGaZa/novaray-public/pull/103) |
+| 67 | `[x]` | Readiness evidence template для native-right эксперимента | Добавляет публичный non-authorizing template и offline validator формы будущего private evidence без запуска `--run` или системных мутаций. | [#104](https://github.com/MaratGaZa/novaray-public/issues/104) | [#105](https://github.com/MaratGaZa/novaray-public/pull/105) |
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -1007,6 +1008,16 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     approval, вернуть отказ до эксперимента при неподходящей среде. Не входят: запуск `--run`,
     вызовы Security.framework/Authorization Services, prompt, запись manifest, изменение базы,
     root, IPC/сеть, native evidence, изменение статусов ADR, Gate I/H или повышение TRACEABILITY.
+
+67. [x] Readiness evidence template для native-right эксперимента — issue #104, PR #105:
+    добавить публичный JSON-шаблон формы будущего private readiness evidence и offline validator,
+    который подтверждает, что committed template остаётся non-authorizing: placeholder references,
+    `false` для run-enabling booleans, `--preflight-only`, отсутствие generated test right name,
+    real-looking commit/hash и approval confirmation. Критерии: validator подключён к documentation
+    CI и self-test; SPEC RU/EN, protocol, testing matrix, traceability и roadmap синхронно отражают
+    границу. Не входят: private evidence package, запуск `native-right-roundtrip --run`, prompt,
+    Security.framework/Authorization Services calls, запись manifest или базы, root, IPC/сеть,
+    native evidence, disposable restore proof, изменение ADR-009, Gate I/H или повышение TRACEABILITY.
 
 ## 7. Зависимости
 

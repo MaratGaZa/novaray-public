@@ -249,6 +249,10 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
   framework calls, Authorization Services prompts, manifest writes or database mutation.
   Disposable environment, restore drill, exclusive writers, reviewed binary and per-run approval
   remain manual prerequisites; preflight does not authorize `--run` or prove Gate I/H.
+- [x] Native-right experiment readiness evidence template (#104): a public JSON template and
+  offline validator define the future private evidence package shape and verify that the committed
+  template remains non-authorizing. This is not private evidence, `--run` approval, a restore drill,
+  a Security.framework call or native database evidence; Gate I/H remain open.
 - [x] macOS helper runtime replay guard contract: core models the current handshake session and exact
   next non-zero sequence/nonce for allowlisted runtime command envelopes. The guard rejects commands
   with no session, another/stale session, zero sequence, repeated sequence, stale sequence, or a
@@ -535,6 +539,11 @@ requires preview and redaction. Telemetry remains disabled until a separate priv
   creation, prompts or database mutation. A successful preflight means only that manual owner review
   may proceed; it does not prove the disposable environment, restoration, writer control, reviewed
   binary, native evidence or Gate I/H.
+- The public readiness evidence template for `native-right-roundtrip` must remain non-authorizing:
+  placeholder references, run-enabling booleans `false`, `--preflight-only`, no generated test right
+  name and confirmation `NOT A RUN APPROVAL`. The offline validator must fail if the template starts
+  looking like approval or contains a real-looking commit/hash. A future run's private evidence
+  package is created outside the repository and is not replaced by the committed template.
 - The connection lifecycle skeleton serializes only allowlisted helper commands, validates allowed
   state transitions and correlation IDs, and does not start a helper, engine, or system tunnel.
 - The network transaction contract skeleton contains only typed snapshots, applied-state,
