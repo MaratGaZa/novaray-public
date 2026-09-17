@@ -1036,6 +1036,18 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     fmt, strict Clippy, полный Rust suite, metadata, traceability, ссылки и diff.
     Не входят: ОС/firewall backend, native-run, root, packet-level evidence и закрытие Gate I/H.
 
+69. [ ] Типизированная allowlist endpoint и туннеля — issue #108, PR TBD:
+    неизменяемый pure-core контракт разрешает точный endpoint IP/port/TCP-or-UDP только через
+    uplink, а поддерживаемую IP-семью — только через отдельный tunnel interface. Остальное Deny.
+    Метод ConnectNetworkIntent использует собственные endpoint/interfaces/family и явные
+    port/transport; disabled kill switch и отсутствующий uplink отклоняются.
+    Критерии: точное совпадение, негативная матрица IP/port/protocol/interface, IPv4/IPv6,
+    отказ wildcard/невалидных входов, redaction, неизменяемость и согласованные SPEC RU/EN.
+    Связь: FR-004/FR-008/NFR-001, roadmap 6.1, ADR-003 Proposed, задача 68 / PR #107.
+    Не входят: привязка policy_id к правилам исполнителя, DHCP/NDP/bootstrap/inbound, ОС/firewall,
+    native-run, root и packet-level evidence. Gate H получает критерии реального reachability,
+    блокировки прямого выхода и локального rollback без сети. Проверки: Rust gates и docs validators.
+
 ## 7. Зависимости
 
 ```mermaid

@@ -8,6 +8,7 @@ pub mod engine;
 pub mod helper_runtime_admission;
 pub mod helper_runtime_right;
 pub mod helper_runtime_right_execution;
+pub mod kill_switch;
 pub mod macos_helper_install;
 pub mod macos_launchd;
 #[cfg(target_os = "macos")]

@@ -428,6 +428,19 @@ Per-app routing является одной из двух главных фун�
 
 ### FR-008. Kill switch и recovery
 
+- Подготовительная `KillSwitchAllowlist` неизменяема после проверки: исходящий IP-трафик на
+  uplink разрешён только к точному resolved VPN-endpoint (IP, ненулевой порт, TCP/UDP), на отдельном
+  tunnel interface — только в выбранной IPv4 либо IPv6 семье; остальное получает `Deny`.
+  Допустимы только точные ASCII-имена интерфейсов длиной 1–64 (`alnum`, `_`, `-`, `.`), uplink
+  и tunnel различны. Unspecified, loopback, multicast, link-local, IPv4 broadcast и IPv4-mapped
+  IPv6 адреса, а также TCP/UDP port 0 отклоняются; эти ограничения действуют и при классификации.
+  У IPv6 endpoint ненулевые `scope_id` и `flowinfo` также отклоняются, а не игнорируются.
+  Метод `ConnectNetworkIntent::kill_switch_allowlist` использует endpoint/interface/family самого
+  intent, требует включённый kill switch и заданный uplink; порт и transport передаются явно.
+  Нет неявных разрешений для прямого DNS, DHCP/NDP, LAN или обновлений; bootstrap и входящий
+  трафик требуют отдельного контракта. Имена интерфейсов здесь не подтверждают их происхождение.
+  Этот pure-core API не вызывается `plan()`/`execute()` автоматически и пока не связывает
+  `policy_id` с системными правилами. Gate H в ADR-003 требует отдельной проверки живого адаптера.
 - Перед новым исполнением плана с включённым kill switch core требует единственную операцию
   `ApplyFirewallPolicy(true)` раньше всех `AddRoute` и `SetDns` по `apply_order`; другая forward-
   операция firewall, поздний порядок или запуск не из `Planned` отклоняются до журнала и адаптера.

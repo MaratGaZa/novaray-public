@@ -9,6 +9,7 @@ use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
 
+use crate::kill_switch::{EndpointTransport, KillSwitchAllowlist, KillSwitchPolicyError};
 use crate::network_state::{
     AppliedNetworkOperation, AppliedNetworkState, DnsSnapshot, IpNetwork, NetworkOperationKind,
     NetworkOperationStatus, NetworkRollbackPlan, NetworkSnapshot, NetworkStateError,
@@ -36,6 +37,30 @@ pub struct ConnectNetworkIntent {
     pub dns: DnsSnapshot,
     pub firewall_policy_id: String,
     pub kill_switch_enabled: bool,
+}
+
+impl ConnectNetworkIntent {
+    /// Build a preparatory egress policy. The planner/executor do not consume it automatically.
+    pub fn kill_switch_allowlist(
+        &self,
+        endpoint_port: u16,
+        transport: EndpointTransport,
+    ) -> Result<KillSwitchAllowlist, KillSwitchPolicyError> {
+        if !self.kill_switch_enabled {
+            return Err(KillSwitchPolicyError::Disabled);
+        }
+        let uplink = self
+            .endpoint_interface
+            .as_ref()
+            .ok_or(KillSwitchPolicyError::MissingEndpointInterface)?;
+        KillSwitchAllowlist::new(
+            std::net::SocketAddr::new(self.endpoint, endpoint_port),
+            transport,
+            uplink.clone(),
+            self.tunnel_interface.clone(),
+            self.tunnel_address.address.into(),
+        )
+    }
 }
 
 impl fmt::Debug for ConnectNetworkIntent {
@@ -330,6 +355,87 @@ mod tests {
             firewall_policy_id: "novaray-full-tunnel".to_string(),
             kill_switch_enabled: true,
         }
+    }
+
+    #[test]
+    fn allowlist_from_intent_uses_owned_endpoint_interface_and_family() {
+        use crate::kill_switch::{EgressDecision, EgressTransport, TunnelIpFamily};
+
+        let mut intent = intent();
+        intent.endpoint = "2001:db8::10".parse().unwrap();
+        intent.tunnel_address = IpNetwork::new("2001:db8:1::2".parse().unwrap(), 64);
+        let policy = intent
+            .kill_switch_allowlist(8443, EndpointTransport::Udp)
+            .unwrap();
+        assert_eq!(
+            policy.endpoint(),
+            std::net::SocketAddr::new(intent.endpoint, 8443)
+        );
+        assert_eq!(policy.endpoint_transport(), EndpointTransport::Udp);
+        assert_eq!(policy.uplink_interface(), "en0");
+        assert_eq!(policy.tunnel_interface(), "utun9");
+        assert_eq!(policy.tunnel_family(), TunnelIpFamily::Ipv6);
+
+        intent.endpoint = "2001:db8::20".parse().unwrap();
+        intent.endpoint_interface = Some("en1".into());
+        intent.tunnel_interface = "utun5".into();
+        let flow = EgressTransport::Udp {
+            destination_port: 8443,
+        };
+        assert_eq!(
+            policy.classify_egress("en0", "2001:db8::10".parse().unwrap(), flow),
+            EgressDecision::AllowEndpoint
+        );
+        assert_eq!(
+            policy.classify_egress("en1", intent.endpoint, flow),
+            EgressDecision::Deny
+        );
+        assert_eq!(
+            policy.classify_egress("utun5", intent.endpoint, flow),
+            EgressDecision::Deny
+        );
+
+        let fresh = intent
+            .kill_switch_allowlist(8443, EndpointTransport::Udp)
+            .unwrap();
+        assert_eq!(
+            fresh.classify_egress("en1", intent.endpoint, flow),
+            EgressDecision::AllowEndpoint
+        );
+        assert_eq!(
+            fresh.classify_egress("en0", policy.endpoint().ip(), flow),
+            EgressDecision::Deny
+        );
+    }
+
+    #[test]
+    fn allowlist_from_intent_rejects_missing_or_invalid_context() {
+        let mut intent = intent();
+        assert_eq!(
+            intent.kill_switch_allowlist(0, EndpointTransport::Tcp),
+            Err(KillSwitchPolicyError::InvalidPort)
+        );
+        intent.kill_switch_enabled = false;
+        assert_eq!(
+            intent.kill_switch_allowlist(443, EndpointTransport::Tcp),
+            Err(KillSwitchPolicyError::Disabled)
+        );
+        intent.kill_switch_enabled = true;
+        intent.endpoint_interface = None;
+        assert_eq!(
+            intent.kill_switch_allowlist(443, EndpointTransport::Tcp),
+            Err(KillSwitchPolicyError::MissingEndpointInterface)
+        );
+        intent.endpoint_interface = Some(intent.tunnel_interface.clone());
+        assert_eq!(
+            intent.kill_switch_allowlist(443, EndpointTransport::Tcp),
+            Err(KillSwitchPolicyError::SameInterface)
+        );
+        intent.endpoint_interface = Some("*".into());
+        assert_eq!(
+            intent.kill_switch_allowlist(443, EndpointTransport::Tcp),
+            Err(KillSwitchPolicyError::InvalidInterface)
+        );
     }
 
     #[test]
