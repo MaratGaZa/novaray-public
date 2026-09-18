@@ -538,7 +538,7 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 ### 6.2. DNS safety
 
 - [ ] Проверить системный resolver до/во время/после tunnel.
-  - [ ] Задача 71 / issue #112: pure-core допуск bootstrap и выбор первого endpoint;
+  - [x] Задача 71 / issue #112 / PR #113: pure-core допуск bootstrap и выбор первого endpoint;
     это частичная L1-подготовка без resolver/runtime, смены кандидата и packet-level evidence.
 - [ ] Реализовать split DNS policy.
 - [ ] Обработать IPv6 resolver и fallback.
