@@ -418,6 +418,16 @@ snapshot.
 
 ### FR-008 — Kill switch and recovery
 
+- The initial pure-core `EndpointBootstrap` must admit only explicitly acknowledged unprotected
+  bootstrap without recovery/always-on and bind responses to session, request, profile and network
+  generations. Limits: 64 records, 16 unique IPs, at most 30 seconds from start to endpoint handoff.
+  Duplicates use the minimum deadline; unsuitable addresses/families and expired candidates are
+  not selected. Order is IPv4 before IPv6, then address; non-zero port and transport come from the
+  profile. Admission, current context and monotonic time are rechecked before a single handoff.
+  A stale response is rejected without selection; changed current context, clock regression or
+  expiry enters terminal Blocked. Supplied observations do not establish OS truth, and output is
+  data, not privileged authority. This covers initial selection only: no DNS calls, active session,
+  IP-literal flow, retry/E04 rotation or executor integration.
 - The proposed DNS-bootstrap and endpoint-change lifecycle is defined by the
   [single protocol](./ENDPOINT_BOOTSTRAP_PROTOCOL.md), not yet implemented at runtime: initial
   resolution outside the VPN is allowed only in an explicitly unprotected bootstrap phase without

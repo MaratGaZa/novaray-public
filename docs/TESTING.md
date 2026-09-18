@@ -268,8 +268,8 @@ disabled/missing uplink и независимость уже построенн�
 ### Endpoint bootstrap и reconnect (задача 70)
 
 [Протокол](./ENDPOINT_BOOTSTRAP_PROTOCOL.md) задаёт ожидаемое поведение, а не результаты тестов.
-Все сценарии ниже **не выполнены**; L1/L3 проверки будущей машины состояний не заменяют L5/L7
-Gate H. Владельцы: core — снимок/переходы; resolver adapter — ограниченный ответ/deadline;
+Ни один сценарий ниже **не выполнен целиком**; частичные L1-проверки задачи 71 перечислены отдельно
+и не заменяют L3-интеграцию или L5/L7 Gate H. Владельцы: core — снимок/переходы; resolver adapter — ограниченный ответ/deadline;
 network adapter — kernel context, правила и отзыв established state; engine adapter — числовой
 endpoint без подмены TLS/SNI/Reality identity и без скрытого direct DNS.
 
@@ -286,6 +286,21 @@ endpoint без подмены TLS/SNI/Reality identity и без скрытог
 | E09 | IP literal и hostname-профиль, IPv4/IPv6 endpoint | L1/L3: literal без DNS, профильная identity сохранена; L5: engine использует выбранный IP, проверяет identity и не выполняет собственный direct resolve |
 | E10 | Crash/reboot во время bootstrap/замены, неопределённый journal | L3/L7: recovery раньше connect, cache не разрешает повтор, нет слепой очистки/нового DNS, недоказанное состояние не названо защищённым |
 | E11 | Пользователь прекращает защиту; rollback ломается или сеть недоступна | L3/L7: локальная команда доступна без DNS/сети, новый bootstrap запрещён до подтверждённого rollback; при ошибке — диагностируемый stop-state |
+
+Частичное L1-evidence задачи 71, [endpoint_bootstrap.rs](../src/endpoint_bootstrap.rs):
+
+| Аспекты | Существующие unit tests | Что не доказано |
+|---|---|---|
+| E01/E02 | `admission_is_checked_at_start_response_and_handoff`, `lifetime_is_positive_bounded_and_expires_at_exact_deadline`, `resolver_failure_bad_deadline_and_clock_regression_are_terminal` | Реальный resolver не вызывается вообще; нет orchestration, timeout driver, UI disclosure или доказательства DNS silence |
+| E03 | `raw_and_unique_bounds_are_checked_without_truncation`, `address_family_and_freshness_filter_before_selection`, `deterministic_single_handoff_owns_profile_tuple_and_binding` | Нет engine handoff, policy installation или пакетного deny |
+| Часть E05 | `duplicates_use_minimum_deadline_and_expiry_does_not_rotate` | Только initial selection/expiry; нет retry и активного проверенного канала |
+| Часть E07/E08 | `current_context_change_invalidates_before_response_or_handoff`, `stale_responses_do_not_replace_current_request_or_consume_it` | Поколения вводит тест; нет kernel observation, сети, sleep/wake или cancellation реального resolver |
+| Redaction | `diagnostics_redact_addresses_ports_and_binding_generations` | Нет диагностического UI/export runtime |
+
+E04/E06/E09–E11 остаются без новой реализации. В частности, отсутствие метода rotation не
+доказывает отзыв established flows. У модели нет IP-literal режима; адреса в тестах — фикстуры
+результатов разрешения. Валидация наблюдений не удостоверяет их источник или отсутствие race
+между выдачей данных и будущим системным действием.
 
 В L5/L7 использовать контролируемые authoritative DNS и два endpoint, непрерывные попытки direct
 DNS/обычного egress во время переходов, захват пакетов на старом и новом uplink и проверку

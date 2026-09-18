@@ -35,8 +35,15 @@ evidence и следующим гейтом. Статус строки явля�
 [протокол endpoint bootstrap/reconnect](./ENDPOINT_BOOTSTRAP_PROTOCOL.md) и
 [матрица будущих проверок E01–E11](./TESTING.md#endpoint-bootstrap-и-reconnect-задача-70).
 Это предложение lifecycle и критерии Gate H, не resolver/state-machine/system evidence.
-Статусы строк остаются `partial`; ротация endpoint, DNS freshness, отзыв established state и
-reconnect после смены сети не реализованы. Существующий matcher задачи 69 этих утверждений не доказывает.
+Статусы строк остаются `partial`; ротация endpoint, системная DNS freshness, отзыв established state
+и reconnect после смены сети не реализованы. Matcher задачи 69 этих утверждений не доказывает.
+
+Дополнение задачи 71: [endpoint_bootstrap.rs](../src/endpoint_bootstrap.rs) и
+[частичное L1 evidence](./TESTING.md#endpoint-bootstrap-и-reconnect-задача-70) проверяют начальный
+допуск, границы снимка, консервативную дедупликацию, выбор первого endpoint, переданные deadlines,
+stale response/current context и одноразовую выдачу. Это pure state machine без consumer в
+runtime/executor. Только аспекты E01/E02/E03/E05/E07/E08 имеют новое L1-покрытие; все полные
+системные сценарии остаются открытыми. `FR-007`, `FR-008` и `NFR-001` остаются `partial`.
 
 ## Правила обновления
 

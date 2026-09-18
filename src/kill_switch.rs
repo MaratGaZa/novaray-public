@@ -183,7 +183,7 @@ impl KillSwitchAllowlist {
     }
 }
 
-fn supported_unicast(address: IpAddr) -> bool {
+pub(crate) fn supported_unicast(address: IpAddr) -> bool {
     match address {
         IpAddr::V4(address) => {
             !address.is_unspecified()
