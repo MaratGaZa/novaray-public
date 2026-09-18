@@ -96,14 +96,14 @@
 | 67 | `[x]` | Readiness evidence template для native-right эксперимента | Добавляет публичный non-authorizing template и offline validator формы будущего private evidence без запуска `--run` или системных мутаций. | [#104](https://github.com/MaratGaZa/novaray-public/issues/104) | [#105](https://github.com/MaratGaZa/novaray-public/pull/105) |
 | 68 | `[x]` | Порядок защиты перед маршрутами и DNS | Закрепляет firewall перед AddRoute/SetDns при включённом kill switch, отказ до исполнения и сохранение порядка старых recovery-журналов. | [#106](https://github.com/MaratGaZa/novaray-public/issues/106) | [#107](https://github.com/MaratGaZa/novaray-public/pull/107) |
 | 69 | `[x]` | Типизированная allowlist endpoint и туннеля | Задаёт immutable egress-контракт точного endpoint и отдельного tunnel interface с default deny; не применяет системные правила. | [#108](https://github.com/MaratGaZa/novaray-public/issues/108) | [#109](https://github.com/MaratGaZa/novaray-public/pull/109) |
+| 70 | `[x]` | Протокол выбора endpoint и DNS-bootstrap | Документирует первичное разрешение имени, закрепление одного адреса, смену кандидатов и безопасный отказ при переподключении; runtime не реализует. | [#110](https://github.com/MaratGaZa/novaray-public/issues/110) | [#111](https://github.com/MaratGaZa/novaray-public/pull/111) |
 
-После слияния PR #107 выполнена задача 69 / issue #108 / PR #109:
-**Типизированная allowlist endpoint и туннеля**. Статус: `[x]` по unit acceptance;
-PR ожидает review, слияние не утверждается. Полный локальный Rust suite: 345 passed,
-0 failed, 5 ignored; fmt и strict Clippy прошли. Это подготовка фазы 6.1, не системная защита.
-Контракт не подключён автоматически к `plan()`/`execute()` и не разрешает native-run.
-Полная allowlist, включая DHCP/NDP/bootstrap/inbound и применение в ОС, остаётся открытой;
-следующая execution task требует отдельной команды владельца.
+После слияния PR #109 задача 69 находится в `main`. Задача 70 / issue #110 / PR #111:
+**Протокол выбора endpoint и DNS-bootstrap** — документационная подготовка фаз 6.1–6.3.
+Статус `[x]` относится только к документу и его согласованности; PR ожидает review.
+Она не реализует resolver, автоматическое переподключение или системные правила. Сценарии
+Gate H, включая смену сети, несколько A/AAAA и отказ без прямого DNS, остаются непроверенными.
+Полная allowlist и привязка policy к исполнителю остаются открытыми; native-run не разрешён.
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -1050,6 +1050,18 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Не входят: привязка policy_id к правилам исполнителя, DHCP/NDP/bootstrap/inbound, ОС/firewall,
     native-run, root и packet-level evidence. Gate H получает критерии реального reachability,
     блокировки прямого выхода и локального rollback без сети. Проверки: Rust gates и docs validators.
+
+70. [x] Протокол выбора endpoint и DNS-bootstrap — issue #110, PR #111:
+    описать в [едином протоколе](./ENDPOINT_BOOTSTRAP_PROTOCOL.md) первичное разрешение имени
+    до защиты, закрепление точного endpoint за сессией и сетевым контекстом, ограниченный набор
+    A/AAAA-кандидатов, срок действия и отказ при смене сети без неявного разрешения прямого DNS.
+    Зависимости: задача 69 / PR #109, FR-004/FR-007/FR-008/NFR-001, фазы 6.1–6.3, ADR-003 Proposed.
+    Критерии: состояния и отказы, последовательный отзыв/замена tuple, сохранение identity профиля,
+    явное прекращение защиты перед новым bootstrap, матрица будущих проверок E01–E11,
+    согласованные SPEC RU/EN, архитектура, тестовая стратегия и трассируемость без повышения статусов.
+    Проверки: metadata/self-test, traceability, локальные ссылки, смысловая сверка RU/EN и diff.
+    Не входят: Rust/runtime resolver, DNS-запросы, network/root/firewall mutation, native-run,
+    системное evidence, принятие ADR или закрытие Gate I/H/S. Откат — возврат документации без изменения ОС.
 
 ## 7. Зависимости
 

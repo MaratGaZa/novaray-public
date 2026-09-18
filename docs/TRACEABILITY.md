@@ -29,6 +29,15 @@ evidence и следующим гейтом. Статус строки явля�
 | `NFR-004` | Compatibility | [Roadmap](../learning/05_roadmap_zero_to_hero.md) 0.1, 0.3, phases 11-16; [plan](./IMPLEMENTATION_PLAN.md) M0/M9-M14, tasks 1-6 and 18-22 | [CI workflow](../.github/workflows/ci.yml) Linux/macOS/Windows jobs; [engine.rs](../src/engine.rs) `test_declared_engine_support_matrix_has_binary_checksums`; [ADR-006](./ADR-006-CROSS-PLATFORM-BOUNDARIES.md) | `partial` | Rust portability CI and engine artifact metadata cover declared desktop targets; macOS arm64 spikes build | Production macOS 14 source-first proof, controlled Windows 11 system evidence and future Android decision/project remain open |
 | `NFR-005` | Observability | [Roadmap](../learning/05_roadmap_zero_to_hero.md) 1.4, 2.3, 7.6; [plan](./IMPLEMENTATION_PLAN.md) M1/M2/M6, tasks 9, 13, 17, 42, 46-48 | [core.rs](../src/core.rs) `test_redact_log_line_masks_sensitive_data`; [connection.rs](../src/connection.rs) `observed_correlation_mismatch_fails_without_state_change`; [platform_contract.rs](../src/platform_contract.rs) `helper_runtime_debug_redacts_session_and_correlation_ids` | `partial` | Structured state transitions, correlation checks, redacted debug/log output and typed error categories have L1/L3 evidence | User-facing permission/DNS/routing diagnostics, diagnostic bundle preview/export and live cross-process correlation remain open |
 
+## Документальный prerequisite задачи 70
+
+Для `FR-004`, `FR-007`, `FR-008` и `NFR-001` добавлен
+[протокол endpoint bootstrap/reconnect](./ENDPOINT_BOOTSTRAP_PROTOCOL.md) и
+[матрица будущих проверок E01–E11](./TESTING.md#endpoint-bootstrap-и-reconnect-задача-70).
+Это предложение lifecycle и критерии Gate H, не resolver/state-machine/system evidence.
+Статусы строк остаются `partial`; ротация endpoint, DNS freshness, отзыв established state и
+reconnect после смены сети не реализованы. Существующий matcher задачи 69 этих утверждений не доказывает.
+
 ## Правила обновления
 
 1. Нормативные изменения сначала вносятся синхронно в обе SPEC; матрица обновляется в той же задаче.
