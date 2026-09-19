@@ -1091,6 +1091,8 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Локальное evidence: 9 новых tests; полный suite 364 passed / 0 failed / 5 ignored,
     feature suite 380 passed / 0 failed / 5 ignored; fmt/Clippy, ссылки 54/0 и traceability 16/16/16.
     Две временные мутации пойманы и восстановлены. CI/review проверяются отдельно в PR.
+    Уточнение review: обязательный caller teardown при mutation_attempted с сохранением deny
+    описан в SPEC/TESTING, но не реализован; Err/Blocked не доказывает системный fail-closed.
     Не входят: native adapter, системный lock, durable recovery, новые разрешения, DNS, root,
     network executor integration, пакетное evidence или закрытие E04/Gate H. Откат — revert кода/docs.
 
