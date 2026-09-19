@@ -418,6 +418,25 @@ snapshot.
 
 ### FR-008 — Kill switch and recovery
 
+- Preparatory `EndpointRevocation` must own the old allowlist and binding, check active deny and
+  known state, persist intent before mutations, and reinspect after persistence. Order: stop
+  transport → verify → remove the old endpoint exception → verify → clear established state
+  → verify all three absent → record the observation. Every check repeats binding/deny validation;
+  previously revoked parts must not reappear. Any failure is terminal, preserving its cause and
+  flags for a possible journal/attempted mutation; no retry, blind compensation, restoration of
+  the old tuple or new grant. This is only a recording-adapter portion of E04: `&mut` does not prove
+  a system lifecycle lock, observations do not authenticate OS state, and the result is not a
+  capability. Native adapters, durable recovery and packet evidence remain open; Gate H is not closed.
+- For every `EndpointRevocationError` with `mutation_attempted = true`, the future calling executor
+  must initiate full teardown of the affected VPN connection, not merely cancel replacement:
+  stop its engine/transport, release connection resources and revoke all endpoint exceptions and
+  established flows owned by that connection, verifying the result while preserving deny. This is
+  a separate time-bounded containment/recovery path, not a revocation retry or ordinary disconnect
+  restoring unprotected egress. Until teardown is verified, new grants, automatic reconnect and
+  direct DNS are forbidden; the pending intent is retained. Teardown failure preserves the primary
+  error and a separate cleanup error, leaves recovery/unknown state and makes no leak-free claim.
+  `mutation_attempted = false` does not prove a safe network either. This caller obligation is not
+  implemented yet; `Err`/`Blocked` means the sequence stopped, not a system fail-closed state.
 - The initial pure-core `EndpointBootstrap` must admit only explicitly acknowledged unprotected
   bootstrap without recovery/always-on and bind responses to session, request, profile and network
   generations. Limits: 64 records, 16 unique IPs, at most 30 seconds from start to endpoint handoff.
