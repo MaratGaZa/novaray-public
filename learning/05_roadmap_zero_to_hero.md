@@ -530,7 +530,7 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   - [x] Задача 68 / issue #106 / PR #107: в pure core закреплены порядок firewall перед route/DNS,
     отказ до адаптера и обратный план компенсации; системный deny state остаётся открытым.
 - [ ] Сохранять защиту при engine crash/reconnect.
-  - [ ] Задача 72 / issue #114: recording-adapter барьер отзыва старого endpoint;
+  - [x] Задача 72 / issue #114 / PR #115: recording-adapter барьер отзыва старого endpoint;
     без установки нового tuple, native adapter, durable recovery и packet-level evidence.
   - [x] Задача 70 / issue #110 / PR #111: документировать DNS-bootstrap, закрепление endpoint и отказ
     при смене сети по [единому протоколу](../docs/ENDPOINT_BOOTSTRAP_PROTOCOL.md); runtime и Gate H остаются открытыми.
