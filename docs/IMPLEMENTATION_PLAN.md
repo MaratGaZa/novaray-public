@@ -97,13 +97,14 @@
 | 68 | `[x]` | Порядок защиты перед маршрутами и DNS | Закрепляет firewall перед AddRoute/SetDns при включённом kill switch, отказ до исполнения и сохранение порядка старых recovery-журналов. | [#106](https://github.com/MaratGaZa/novaray-public/issues/106) | [#107](https://github.com/MaratGaZa/novaray-public/pull/107) |
 | 69 | `[x]` | Типизированная allowlist endpoint и туннеля | Задаёт immutable egress-контракт точного endpoint и отдельного tunnel interface с default deny; не применяет системные правила. | [#108](https://github.com/MaratGaZa/novaray-public/issues/108) | [#109](https://github.com/MaratGaZa/novaray-public/pull/109) |
 | 70 | `[x]` | Протокол выбора endpoint и DNS-bootstrap | Документирует первичное разрешение имени, закрепление одного адреса, смену кандидатов и безопасный отказ при переподключении; runtime не реализует. | [#110](https://github.com/MaratGaZa/novaray-public/issues/110) | [#111](https://github.com/MaratGaZa/novaray-public/pull/111) |
+| 71 | `[x]` | Допуск bootstrap и выбор первого endpoint | Реализует чистую начальную модель допуска, ограниченного ответа и однократного выбора с проверкой срока/контекста; resolver и системные действия не выполняет. | [#112](https://github.com/MaratGaZa/novaray-public/issues/112) | [#113](https://github.com/MaratGaZa/novaray-public/pull/113) |
 
-После слияния PR #109 задача 69 находится в `main`. Задача 70 / issue #110 / PR #111:
-**Протокол выбора endpoint и DNS-bootstrap** — документационная подготовка фаз 6.1–6.3.
-Статус `[x]` относится только к документу и его согласованности; PR ожидает review.
-Она не реализует resolver, автоматическое переподключение или системные правила. Сценарии
-Gate H, включая смену сети, несколько A/AAAA и отказ без прямого DNS, остаются непроверенными.
-Полная allowlist и привязка policy к исполнителю остаются открытыми; native-run не разрешён.
+После слияния PR #111 протокол задачи 70 находится в `main`. Задача 71 / issue #112 / PR #113:
+**Допуск bootstrap и выбор первого endpoint** — начальная pure-core модель, не resolver/runtime.
+Её L1-критерии выполнены; PR ожидает CI/review, слияние не выполнено.
+Ротация E04, active session, отзыв established-state и интеграция с executor остаются открытыми.
+Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
+не входят в текущую задачу. Следующая execution task требует отдельной команды владельца.
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -1062,6 +1063,20 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Проверки: metadata/self-test, traceability, локальные ссылки, смысловая сверка RU/EN и diff.
     Не входят: Rust/runtime resolver, DNS-запросы, network/root/firewall mutation, native-run,
     системное evidence, принятие ADR или закрытие Gate I/H/S. Откат — возврат документации без изменения ОС.
+
+71. [x] Допуск bootstrap и выбор первого endpoint — issue #112, PR #113:
+    реализовать чистую начальную машину состояний: допуск без защиты/recovery/always-on,
+    привязка к поколениям сессии/запроса/профиля/сети, ограниченный ответ, сортировка и один
+    выбор с повторной проверкой deadline и контекста. Критерии: негативная матрица допуска,
+    границы 64 записей/16 IP/30 секунд, дедупликация с минимальным сроком, неподдерживаемые
+    адреса/семьи, stale reply, resolver failure, регресс часов, терминальные состояния и redaction.
+    Зависимости: задача 70 / PR #111, FR-007/FR-008/NFR-001, roadmap 6.1–6.3, ADR-003 Proposed.
+    Проверки: focused и полный Rust suite, fmt, strict Clippy, metadata/self-test, ссылки,
+    traceability, RU/EN и diff. Только частичные L1 аспекты E01/E02/E03/E05/E07/E08.
+    Локальное evidence: 10 новых unit tests; полный suite — 355 passed / 0 failed / 5 ignored;
+    fmt/Clippy, ссылки 54/0 и traceability 16/16/16 прошли. CI/review проверяются отдельно в PR.
+    Не входят: DNS/engine/native/runtime/OS mutation, IP-literal flow, повтор/ротация E04,
+    отзыв established state, automatic executor integration или закрытие Gate H.
 
 ## 7. Зависимости
 

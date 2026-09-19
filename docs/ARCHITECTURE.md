@@ -268,6 +268,14 @@ active/inherited/unknown deny; во втором случае resolver по upli
 отзывать старое исключение/established state до нового. Это ещё не поведение текущего executor;
 его обратная компенсация сама по себе не доказывает сохранение deny при protected recovery.
 
+Задача 71 реализует начальный pure-core [EndpointBootstrap](../src/endpoint_bootstrap.rs):
+допуск bootstrap, ограниченный снимок кандидатов и однократную выдачу первого endpoint с
+повторной проверкой наблюдений. `Resolving/Prepared/Consumed/Blocked` описывают только локальную
+модель, не состояние ОС. Часы и поколения передаёт доверенный владелец; syscall/resolver/engine,
+наблюдение сети и automatic executor integration отсутствуют. Возвращённые данные не являются
+capability, и будущий исполнитель должен перепроверять их на границе побочного эффекта.
+См. [точные ограничения initial-среза](./ENDPOINT_BOOTSTRAP_PROTOCOL.md#начальный-срез-задачи-71-2026-09-18).
+
 ## 10. Disconnect и crash recovery
 
 Normal disconnect, engine/platform-service/UI crash, forced stop, power/network change, reboot and
