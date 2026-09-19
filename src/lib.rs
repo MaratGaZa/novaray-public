@@ -5,6 +5,7 @@ pub mod config_generator;
 pub mod connection;
 pub mod core;
 pub mod endpoint_bootstrap;
+pub mod endpoint_revocation;
 pub mod engine;
 pub mod helper_runtime_admission;
 pub mod helper_runtime_right;

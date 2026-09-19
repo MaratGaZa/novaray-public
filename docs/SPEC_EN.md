@@ -418,6 +418,15 @@ snapshot.
 
 ### FR-008 — Kill switch and recovery
 
+- Preparatory `EndpointRevocation` must own the old allowlist and binding, check active deny and
+  known state, persist intent before mutations, and reinspect after persistence. Order: stop
+  transport → verify → remove the old endpoint exception → verify → clear established state
+  → verify all three absent → record the observation. Every check repeats binding/deny validation;
+  previously revoked parts must not reappear. Any failure is terminal, preserving its cause and
+  flags for a possible journal/attempted mutation; no retry, blind compensation, restoration of
+  the old tuple or new grant. This is only a recording-adapter portion of E04: `&mut` does not prove
+  a system lifecycle lock, observations do not authenticate OS state, and the result is not a
+  capability. Native adapters, durable recovery and packet evidence remain open; Gate H is not closed.
 - The initial pure-core `EndpointBootstrap` must admit only explicitly acknowledged unprotected
   bootstrap without recovery/always-on and bind responses to session, request, profile and network
   generations. Limits: 64 records, 16 unique IPs, at most 30 seconds from start to endpoint handoff.

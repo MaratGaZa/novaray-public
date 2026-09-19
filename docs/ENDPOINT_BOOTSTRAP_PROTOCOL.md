@@ -46,7 +46,31 @@ kernel identity, user consent или подлинность DNS. Она не п�
 выданными данными; будущий исполнитель обязан снова проверить привязку и срок непосредственно
 перед мутацией под lifecycle lock. Нельзя считать выдачу доказательством установленного deny.
 Нет reset, retry/rotation, active-session, IP-literal или revocation API. Системные E01–E11
-и E04 даже на уровне orchestration остаются открытыми.
+остаются открытыми; задача 71 не реализует E04 orchestration.
+
+### Барьер отзыва задачи 72 (2026-09-19)
+
+[`EndpointRevocation`](../src/endpoint_revocation.rs) реализует только порядок отзыва на
+recording-адаптере: inspection → intent → повторный inspection → stop transport → inspection
+→ remove exception → inspection → clear established → inspection → запись наблюдения.
+Intent записывается **до остановки транспорта**, поскольку это тоже побочный эффект.
+Scope содержит точную старую allowlist и binding; exception означает старое firewall-исключение
+и endpoint exclusion route, не весь deny. Неизвестные данные, неактивный/неизвестный deny,
+смена любого поколения или сохранившийся/вернувшийся отозванный компонент дают отказ.
+
+`Ready → Executing → Observed/Blocked` — только локальные состояния одного объекта. Ошибка
+содержит этап, причину, `journal_may_exist` и `mutation_attempted`. Первый флаг выставляется
+до вызова записи intent, второй — до первой попытки мутации; они не утверждают, что эффект
+произошёл. Ошибка завершает последовательность, не вызывает compensation или повторное чтение
+ради разрешения продолжить. При panic объект остаётся `Executing` и тоже не допускает повтор.
+
+Нет default/native adapter, действующего journal backend, API нового разрешения или consumer
+в CLI/helper/network executor. `Observed` не является recovery/grant token. `&mut` не доказывает
+system lifecycle lock; перед native-реализацией обязательны authentic kernel observations,
+durable snapshot/crash recovery, ограниченные сроки и mutation-boundary проверки. Синхронный
+core не прерывает зависший callback. Старый tuple не восстанавливается автоматически: безопасное
+восстановление может оставить deny и потерю доступности, но не разрешить устаревший endpoint.
+Это частичное L1-покрытие E04; непрерывность deny и отзыв пакетов по-прежнему не доказаны.
 
 ## 2. Инварианты предложения
 
@@ -113,7 +137,7 @@ implementation evidence. Разрешение DNS через уже провер
 
 ### Замена одного tuple другим
 
-Под lifecycle lock и сохранённым deny: остановить старую попытку и её транспорт; записать intent;
+Под lifecycle lock и сохранённым deny: записать intent до первой мутации; остановить старую попытку и её транспорт;
 отозвать старое endpoint-исключение и связанные established-state разрешения; подтвердить отзыв;
 затем установить маршрут-исключение и разрешение нового tuple, проверить их и начать новую попытку.
 Endpoint exclusion route не должен попасть в сам туннель. Повторно проверить context/deadline

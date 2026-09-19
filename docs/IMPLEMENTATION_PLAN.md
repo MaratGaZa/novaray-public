@@ -98,11 +98,11 @@
 | 69 | `[x]` | Типизированная allowlist endpoint и туннеля | Задаёт immutable egress-контракт точного endpoint и отдельного tunnel interface с default deny; не применяет системные правила. | [#108](https://github.com/MaratGaZa/novaray-public/issues/108) | [#109](https://github.com/MaratGaZa/novaray-public/pull/109) |
 | 70 | `[x]` | Протокол выбора endpoint и DNS-bootstrap | Документирует первичное разрешение имени, закрепление одного адреса, смену кандидатов и безопасный отказ при переподключении; runtime не реализует. | [#110](https://github.com/MaratGaZa/novaray-public/issues/110) | [#111](https://github.com/MaratGaZa/novaray-public/pull/111) |
 | 71 | `[x]` | Допуск bootstrap и выбор первого endpoint | Реализует чистую начальную модель допуска, ограниченного ответа и однократного выбора с проверкой срока/контекста; resolver и системные действия не выполняет. | [#112](https://github.com/MaratGaZa/novaray-public/issues/112) | [#113](https://github.com/MaratGaZa/novaray-public/pull/113) |
+| 72 | `[ ]` | Барьер отзыва старого endpoint перед заменой | Проверяет порядок intent, остановки транспорта, удаления исключения и established-state на recording-адаптере; нового разрешения не выдаёт. | [#114](https://github.com/MaratGaZa/novaray-public/issues/114) | TBD |
 
-После слияния PR #111 протокол задачи 70 находится в `main`. Задача 71 / issue #112 / PR #113:
-**Допуск bootstrap и выбор первого endpoint** — начальная pure-core модель, не resolver/runtime.
-Её L1-критерии выполнены; PR ожидает CI/review, слияние не выполнено.
-Ротация E04, active session, отзыв established-state и интеграция с executor остаются открытыми.
+После слияния PR #113 задача 71 находится в `main`. Текущая задача 72 / issue #114:
+**Барьер отзыва старого endpoint перед заменой** — только recording-adapter часть E04.
+Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
 не входят в текущую задачу. Следующая execution task требует отдельной команды владельца.
 
@@ -1077,6 +1077,18 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     fmt/Clippy, ссылки 54/0 и traceability 16/16/16 прошли. CI/review проверяются отдельно в PR.
     Не входят: DNS/engine/native/runtime/OS mutation, IP-literal flow, повтор/ротация E04,
     отзыв established state, automatic executor integration или закрытие Gate H.
+
+72. [ ] Барьер отзыва старого endpoint перед заменой — issue #114, PR TBD:
+    реализовать одноразовое последовательное исполнение отзыва на узком recording-адаптере.
+    Зависимости: задачи 69–71, FR-008/NFR-001, roadmap 6.1, ADR-003 Proposed.
+    Критерии: intent до мутации, повторная проверка после intent, отдельные остановка транспорта,
+    удаление исключения и очистка established-state с проверкой каждого результата; fail-closed
+    при изменении binding/deny, неизвестном или вернувшемся состоянии. Ошибка сохраняет этап,
+    причину и признаки возможного журнала/попытки мутации; повтор и автоматический rollback запрещены.
+    Проверки: recording order и fault matrix, redaction, полный Rust suite, fmt/strict Clippy,
+    metadata/self-test, ссылки, traceability, синхронность RU/EN и diff.
+    Не входят: native adapter, системный lock, durable recovery, новые разрешения, DNS, root,
+    network executor integration, пакетное evidence или закрытие E04/Gate H. Откат — revert кода/docs.
 
 ## 7. Зависимости
 
