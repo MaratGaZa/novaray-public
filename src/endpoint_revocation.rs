@@ -123,6 +123,69 @@ pub struct EndpointRevocationError {
     pub mutation_attempted: bool,
 }
 
+/// Adapter-reported categories only: synchronous core cannot preempt a blocked callback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContainmentAdapterError {
+    Failed,
+    TimedOut,
+}
+
+/// Whole-connection snapshot, not merely the old tuple or a kernel attestation.
+#[derive(Debug, Clone, Copy)]
+pub struct ContainmentObservation {
+    /// Identity of the original owning connection, not the current network generation.
+    pub owner: BootstrapBinding,
+    pub deny: ObservedDeny,
+    pub engine: ObservedPresence,
+    pub transport: ObservedPresence,
+    pub resources: ObservedPresence,
+    /// ALL exceptions and exclusion routes owned by this connection.
+    pub exceptions: ObservedPresence,
+    pub established: ObservedPresence,
+}
+
+/// Separate recovery path: preserve deny and pending intent, never retry revocation or reconnect.
+/// A native implementation must bound/cancel its work, authenticate observations and verify original
+/// ownership under the lifecycle lock even when the current network context has changed. It must not
+/// touch another connection's resources. These obligations are not implemented by the core caller.
+pub trait EndpointContainmentAdapter: EndpointRevocationAdapter {
+    fn teardown_connection(
+        &mut self,
+        scope: &RevocationScope,
+        primary: &EndpointRevocationError,
+    ) -> Result<(), ContainmentAdapterError>;
+    fn inspect_connection_after_teardown(
+        &mut self,
+        scope: &RevocationScope,
+    ) -> Result<ContainmentObservation, ContainmentAdapterError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContainmentFailure {
+    Teardown(ContainmentAdapterError),
+    Inspection(ContainmentAdapterError),
+    WrongOwner,
+    DenyUnproven,
+    UnknownState,
+    ResidualState,
+}
+
+/// No variant is a protected status, new grant, or authority to clear pending recovery intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContainmentOutcome {
+    NotRequired,
+    TeardownObserved,
+    RecoveryUnknown(ContainmentFailure),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("{primary}; containment: {containment:?}")]
+pub struct RevocationContainmentError {
+    #[source]
+    pub primary: EndpointRevocationError,
+    pub containment: ContainmentOutcome,
+}
+
 /// Single-use orchestration. Observed is not a grant, a durable recovery token or packet evidence.
 #[derive(Debug)]
 pub struct EndpointRevocation {
@@ -198,7 +261,69 @@ impl EndpointRevocation {
         }
     }
 
+    /// Runs revocation once, with mandatory containment on returned post-mutation errors.
+    /// A successful cleanup never turns the primary failure into success. Pending intent remains.
+    /// Panics/crashes require external supervision; there is no Drop cleanup or callback preemption.
+    ///
+    /// The raw path cannot be called by external consumers:
+    /// ```compile_fail,E0624
+    /// use novaray_core::endpoint_revocation::{EndpointRevocation, EndpointRevocationAdapter};
+    /// fn bypass(mut operation: EndpointRevocation, adapter: &mut impl EndpointRevocationAdapter) {
+    ///     let _ = operation.execute_revocation(adapter);
+    /// }
+    /// ```
     pub fn execute(
+        mut self,
+        adapter: &mut impl EndpointContainmentAdapter,
+    ) -> Result<(), RevocationContainmentError> {
+        self.execute_revocation(adapter).map_err(|primary| {
+            let containment = if primary.mutation_attempted {
+                match self.contain(adapter, &primary) {
+                    Ok(()) => ContainmentOutcome::TeardownObserved,
+                    Err(cause) => ContainmentOutcome::RecoveryUnknown(cause),
+                }
+            } else {
+                ContainmentOutcome::NotRequired
+            };
+            RevocationContainmentError {
+                primary,
+                containment,
+            }
+        })
+    }
+
+    fn contain(
+        &self,
+        adapter: &mut impl EndpointContainmentAdapter,
+        primary: &EndpointRevocationError,
+    ) -> Result<(), ContainmentFailure> {
+        adapter
+            .teardown_connection(&self.scope, primary)
+            .map_err(ContainmentFailure::Teardown)?;
+        let observed = adapter
+            .inspect_connection_after_teardown(&self.scope)
+            .map_err(ContainmentFailure::Inspection)?;
+        let presence = [
+            observed.engine,
+            observed.transport,
+            observed.resources,
+            observed.exceptions,
+            observed.established,
+        ];
+        if observed.owner != self.scope.binding {
+            Err(ContainmentFailure::WrongOwner)
+        } else if observed.deny != ObservedDeny::Active {
+            Err(ContainmentFailure::DenyUnproven)
+        } else if presence.contains(&ObservedPresence::Unknown) {
+            Err(ContainmentFailure::UnknownState)
+        } else if presence.contains(&ObservedPresence::Present) {
+            Err(ContainmentFailure::ResidualState)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn execute_revocation(
         &mut self,
         adapter: &mut impl EndpointRevocationAdapter,
     ) -> Result<(), EndpointRevocationError> {
@@ -287,6 +412,10 @@ mod tests {
         expected_policy: KillSwitchAllowlist,
         expected_binding: BootstrapBinding,
         mutation_attempts: usize,
+        containment_calls: Vec<&'static str>,
+        primary: Option<EndpointRevocationError>,
+        teardown_result: Result<(), ContainmentAdapterError>,
+        cleanup_snapshot: Result<ContainmentObservation, ContainmentAdapterError>,
     }
 
     impl RecordingAdapter {
@@ -314,6 +443,18 @@ mod tests {
                 expected_policy: policy(),
                 expected_binding: binding,
                 mutation_attempts: 0,
+                containment_calls: Vec::new(),
+                primary: None,
+                teardown_result: Ok(()),
+                cleanup_snapshot: Ok(ContainmentObservation {
+                    owner: binding,
+                    deny: ObservedDeny::Active,
+                    engine: Absent,
+                    transport: Absent,
+                    resources: Absent,
+                    exceptions: Absent,
+                    established: Absent,
+                }),
             }
         }
 
@@ -345,6 +486,35 @@ mod tests {
             } else {
                 Ok(())
             }
+        }
+    }
+
+    impl EndpointContainmentAdapter for RecordingAdapter {
+        fn teardown_connection(
+            &mut self,
+            scope: &RevocationScope,
+            primary: &EndpointRevocationError,
+        ) -> Result<(), ContainmentAdapterError> {
+            assert!(self.containment_calls.is_empty());
+            assert_eq!(scope.policy(), &self.expected_policy);
+            assert_eq!(scope.binding(), self.expected_binding);
+            assert!(primary.mutation_attempted);
+            assert!(primary.journal_may_exist);
+            assert!(self.mutation_attempts > 0);
+            self.primary = Some(*primary);
+            self.containment_calls.push("teardown");
+            self.teardown_result
+        }
+
+        fn inspect_connection_after_teardown(
+            &mut self,
+            scope: &RevocationScope,
+        ) -> Result<ContainmentObservation, ContainmentAdapterError> {
+            assert_eq!(self.containment_calls, ["teardown"]);
+            assert_eq!(scope.policy(), &self.expected_policy);
+            assert_eq!(scope.binding(), self.expected_binding);
+            self.containment_calls.push("inspect");
+            self.cleanup_snapshot
         }
     }
 
@@ -419,11 +589,11 @@ mod tests {
         let mut adapter = RecordingAdapter::new();
         let mut executor = adapter.executor();
         assert_eq!(executor.state(), RevocationState::Ready);
-        executor.execute(&mut adapter).unwrap();
+        executor.execute_revocation(&mut adapter).unwrap();
         assert_eq!(adapter.seen, ORDER);
         assert_eq!(adapter.mutation_attempts, 3);
         assert_eq!(executor.state(), RevocationState::Observed);
-        let error = executor.execute(&mut adapter).unwrap_err();
+        let error = executor.execute_revocation(&mut adapter).unwrap_err();
         assert_eq!(error.cause, RevocationFailure::AlreadyAttempted);
         assert_eq!(error.stage, RevocationStage::Admission);
         assert_eq!(adapter.seen, ORDER);
@@ -436,7 +606,7 @@ mod tests {
             let mut adapter = RecordingAdapter::new();
             adapter.fault = Some(index);
             let mut executor = adapter.executor();
-            let error = executor.execute(&mut adapter).unwrap_err();
+            let error = executor.execute_revocation(&mut adapter).unwrap_err();
             assert_eq!(error.stage, *stage);
             assert_eq!(error.cause, RevocationFailure::AdapterFailed);
             assert_eq!(error.journal_may_exist, index >= 1);
@@ -445,7 +615,7 @@ mod tests {
             assert_eq!(executor.state(), RevocationState::Blocked);
             adapter.fault = None;
             assert_eq!(
-                executor.execute(&mut adapter).unwrap_err().cause,
+                executor.execute_revocation(&mut adapter).unwrap_err().cause,
                 RevocationFailure::AlreadyAttempted
             );
             assert_eq!(adapter.seen, ORDER[..=index]);
@@ -461,7 +631,7 @@ mod tests {
                 values[dimension] += 1;
                 adapter.observations[observation_index].binding = binding(values);
                 let mut executor = adapter.executor();
-                let error = executor.execute(&mut adapter).unwrap_err();
+                let error = executor.execute_revocation(&mut adapter).unwrap_err();
                 assert_eq!(error.cause, RevocationFailure::ContextChanged);
                 assert_eq!(error.stage, ORDER[observation_index * 2]);
                 assert_eq!(adapter.seen, ORDER[..=observation_index * 2]);
@@ -481,7 +651,7 @@ mod tests {
                 let mut adapter = RecordingAdapter::new();
                 adapter.observations[index].deny = deny;
                 let mut executor = adapter.executor();
-                let error = executor.execute(&mut adapter).unwrap_err();
+                let error = executor.execute_revocation(&mut adapter).unwrap_err();
                 assert_eq!(error.cause, RevocationFailure::DenyUnproven);
                 assert_eq!(adapter.seen, ORDER[..=index * 2]);
                 assert_eq!(executor.state(), RevocationState::Blocked);
@@ -502,7 +672,7 @@ mod tests {
                 }
                 let mut executor = adapter.executor();
                 assert_eq!(
-                    executor.execute(&mut adapter).unwrap_err().cause,
+                    executor.execute_revocation(&mut adapter).unwrap_err().cause,
                     RevocationFailure::UnknownState
                 );
                 assert_eq!(adapter.seen, ORDER[..=index * 2]);
@@ -524,7 +694,7 @@ mod tests {
                 }
                 let mut executor = adapter.executor();
                 assert_eq!(
-                    executor.execute(&mut adapter).unwrap_err().cause,
+                    executor.execute_revocation(&mut adapter).unwrap_err().cause,
                     RevocationFailure::RevocationUnproven
                 );
                 assert_eq!(adapter.seen, ORDER[..=index * 2]);
@@ -538,7 +708,7 @@ mod tests {
         let mut adapter = RecordingAdapter::new();
         adapter.observations[4].established = ObservedPresence::Present;
         let mut executor = adapter.executor();
-        let error = executor.execute(&mut adapter).unwrap_err();
+        let error = executor.execute_revocation(&mut adapter).unwrap_err();
         assert_eq!(error.stage, RevocationStage::FinalInspection);
         assert_eq!(error.cause, RevocationFailure::RevocationUnproven);
         assert!(error.journal_may_exist && error.mutation_attempted);
@@ -551,12 +721,12 @@ mod tests {
         adapter.panic_at = Some(3);
         let mut executor = adapter.executor();
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            executor.execute(&mut adapter)
+            executor.execute_revocation(&mut adapter)
         }));
         assert!(panic.is_err());
         assert_eq!(executor.state(), RevocationState::Executing);
         assert_eq!(
-            executor.execute(&mut adapter).unwrap_err().cause,
+            executor.execute_revocation(&mut adapter).unwrap_err().cause,
             RevocationFailure::AlreadyAttempted
         );
         drop(executor);
@@ -568,7 +738,7 @@ mod tests {
         let mut adapter = RecordingAdapter::new();
         let mut executor = adapter.executor();
         adapter.fault = Some(5);
-        let error = executor.execute(&mut adapter).unwrap_err();
+        let error = executor.execute_revocation(&mut adapter).unwrap_err();
         let diagnostics = format!(
             "{executor:?} {:?} {error:?} {error}",
             adapter.observations[0]
@@ -588,5 +758,201 @@ mod tests {
         assert!(diagnostics.contains("<redacted>"));
         assert!(diagnostics.contains("RemoveException"));
         assert!(diagnostics.contains("AdapterFailed"));
+    }
+
+    #[test]
+    fn containment_dispatches_once_for_every_post_mutation_callback_error() {
+        for (index, stage) in ORDER.iter().enumerate() {
+            let mut adapter = RecordingAdapter::new();
+            adapter.fault = Some(index);
+            let error = adapter.executor().execute(&mut adapter).unwrap_err();
+            assert_eq!(
+                error.primary,
+                EndpointRevocationError {
+                    stage: *stage,
+                    cause: RevocationFailure::AdapterFailed,
+                    journal_may_exist: index >= 1,
+                    mutation_attempted: index >= 3,
+                }
+            );
+            assert_eq!(adapter.seen, ORDER[..=index]);
+            if index >= 3 {
+                assert_eq!(adapter.containment_calls, ["teardown", "inspect"]);
+                assert_eq!(adapter.primary, Some(error.primary));
+                assert_eq!(error.containment, ContainmentOutcome::TeardownObserved);
+            } else {
+                assert!(adapter.containment_calls.is_empty());
+                assert_eq!(error.containment, ContainmentOutcome::NotRequired);
+            }
+        }
+        let mut adapter = RecordingAdapter::new();
+        adapter.executor().execute(&mut adapter).unwrap();
+        assert_eq!(adapter.seen, ORDER);
+        assert!(adapter.containment_calls.is_empty());
+    }
+
+    #[test]
+    fn containment_handles_observation_failures_and_context_changes() {
+        for index in 0..5 {
+            for kind in 0..4 {
+                let mut adapter = RecordingAdapter::new();
+                let observation = &mut adapter.observations[index];
+                match kind {
+                    0 => observation.binding = binding([18001, 18002, 18003, 18004]),
+                    1 => observation.deny = ObservedDeny::Unknown,
+                    2 => observation.transport = ObservedPresence::Unknown,
+                    _ => observation.established = ObservedPresence::Unknown,
+                }
+                let error = adapter.executor().execute(&mut adapter).unwrap_err();
+                assert_eq!(error.primary.stage, ORDER[index * 2]);
+                assert_eq!(
+                    error.primary.cause,
+                    match kind {
+                        0 => RevocationFailure::ContextChanged,
+                        1 => RevocationFailure::DenyUnproven,
+                        _ => RevocationFailure::UnknownState,
+                    }
+                );
+                assert_eq!(adapter.seen, ORDER[..=index * 2]);
+                assert_eq!(
+                    error.containment,
+                    if index >= 2 {
+                        assert_eq!(adapter.primary, Some(error.primary));
+                        assert_eq!(adapter.containment_calls, ["teardown", "inspect"]);
+                        ContainmentOutcome::TeardownObserved
+                    } else {
+                        assert!(adapter.containment_calls.is_empty());
+                        ContainmentOutcome::NotRequired
+                    }
+                );
+            }
+        }
+        let mut adapter = RecordingAdapter::new();
+        adapter.observations[4].established = ObservedPresence::Present;
+        let error = adapter.executor().execute(&mut adapter).unwrap_err();
+        assert_eq!(error.primary.cause, RevocationFailure::RevocationUnproven);
+        assert_eq!(adapter.containment_calls, ["teardown", "inspect"]);
+    }
+
+    #[test]
+    fn containment_failure_and_reported_timeout_preserve_primary_error() {
+        for fault in [
+            ContainmentAdapterError::Failed,
+            ContainmentAdapterError::TimedOut,
+        ] {
+            for during_inspection in [false, true] {
+                let mut adapter = RecordingAdapter::new();
+                adapter.fault = Some(3);
+                if during_inspection {
+                    adapter.cleanup_snapshot = Err(fault);
+                } else {
+                    adapter.teardown_result = Err(fault);
+                }
+                let error = adapter.executor().execute(&mut adapter).unwrap_err();
+                assert_eq!(error.primary.stage, RevocationStage::StopTransport);
+                assert_eq!(error.primary.cause, RevocationFailure::AdapterFailed);
+                assert_eq!(adapter.primary, Some(error.primary));
+                assert_eq!(
+                    error.containment,
+                    ContainmentOutcome::RecoveryUnknown(if during_inspection {
+                        ContainmentFailure::Inspection(fault)
+                    } else {
+                        ContainmentFailure::Teardown(fault)
+                    })
+                );
+                assert_eq!(
+                    adapter.containment_calls,
+                    if during_inspection {
+                        vec!["teardown", "inspect"]
+                    } else {
+                        vec!["teardown"]
+                    }
+                );
+                assert_eq!(adapter.seen, ORDER[..=3]);
+                assert!(error.primary.journal_may_exist);
+            }
+        }
+    }
+
+    #[test]
+    fn containment_requires_every_owned_resource_absent() {
+        for presence in [ObservedPresence::Present, ObservedPresence::Unknown] {
+            for field in 0..5 {
+                let mut adapter = RecordingAdapter::new();
+                adapter.fault = Some(5);
+                let snapshot = adapter.cleanup_snapshot.as_mut().unwrap();
+                match field {
+                    0 => snapshot.engine = presence,
+                    1 => snapshot.transport = presence,
+                    2 => snapshot.resources = presence,
+                    3 => snapshot.exceptions = presence,
+                    _ => snapshot.established = presence,
+                }
+                let error = adapter.executor().execute(&mut adapter).unwrap_err();
+                assert_eq!(
+                    error.containment,
+                    ContainmentOutcome::RecoveryUnknown(if presence == ObservedPresence::Unknown {
+                        ContainmentFailure::UnknownState
+                    } else {
+                        ContainmentFailure::ResidualState
+                    })
+                );
+                assert_eq!(adapter.primary, Some(error.primary));
+                assert_eq!(adapter.containment_calls, ["teardown", "inspect"]);
+            }
+        }
+    }
+
+    #[test]
+    fn containment_rejects_each_wrong_owner_generation_and_unproven_deny() {
+        for field in 0..4 {
+            let mut adapter = RecordingAdapter::new();
+            adapter.fault = Some(7);
+            let mut values = [17001, 17002, 17003, 17004];
+            values[field] += 1;
+            adapter.cleanup_snapshot.as_mut().unwrap().owner = binding(values);
+            let error = adapter.executor().execute(&mut adapter).unwrap_err();
+            assert_eq!(
+                error.containment,
+                ContainmentOutcome::RecoveryUnknown(ContainmentFailure::WrongOwner)
+            );
+        }
+        for deny in [ObservedDeny::Inactive, ObservedDeny::Unknown] {
+            let mut adapter = RecordingAdapter::new();
+            adapter.fault = Some(7);
+            adapter.cleanup_snapshot.as_mut().unwrap().deny = deny;
+            let error = adapter.executor().execute(&mut adapter).unwrap_err();
+            assert_eq!(
+                error.containment,
+                ContainmentOutcome::RecoveryUnknown(ContainmentFailure::DenyUnproven)
+            );
+        }
+    }
+
+    #[test]
+    fn containment_diagnostics_redact_owner_and_preserve_error_source() {
+        let mut adapter = RecordingAdapter::new();
+        adapter.fault = Some(3);
+        let snapshot = adapter.cleanup_snapshot.unwrap();
+        let error = adapter.executor().execute(&mut adapter).unwrap_err();
+        let diagnostics = format!("{snapshot:?} {error:?} {error}");
+        for secret in [
+            "17001",
+            "17002",
+            "17003",
+            "17004",
+            "203.0.113.42",
+            "8443",
+            "en7",
+            "utun19",
+        ] {
+            assert!(!diagnostics.contains(secret));
+        }
+        assert!(diagnostics.contains("<redacted>"));
+        let source = std::error::Error::source(&error).unwrap();
+        assert_eq!(
+            source.downcast_ref::<EndpointRevocationError>(),
+            Some(&error.primary)
+        );
     }
 }

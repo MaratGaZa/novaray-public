@@ -435,8 +435,21 @@ snapshot.
   restoring unprotected egress. Until teardown is verified, new grants, automatic reconnect and
   direct DNS are forbidden; the pending intent is retained. Teardown failure preserves the primary
   error and a separate cleanup error, leaves recovery/unknown state and makes no leak-free claim.
-  `mutation_attempted = false` does not prove a safe network either. This caller obligation is not
-  implemented yet; `Err`/`Blocked` means the sequence stopped, not a system fail-closed state.
+  `mutation_attempted = false` does not prove a safe network either. `Err`/`Blocked` means the
+  sequence stopped, not a system fail-closed state.
+- Preparatory core composition must consume the revocation object and make the raw path without
+  containment non-public. After a returned error with an attempted mutation it calls teardown
+  exactly once, then (only on callback success) independently inspects a snapshot: the original
+  connection owner, active deny and absence of engine, transport, resources, all connection-owned
+  endpoint exceptions/routes and established flows. Binding identifies the owner, not an unchanged
+  current network: the native adapter must verify ownership across context changes.
+  The original error is always returned; a separate outcome is `NotRequired`, `TeardownObserved`
+  or `RecoveryUnknown` with a cause. No outcome grants authority or a protected status; intent is
+  retained even after observed cleanup. Failure/adapter-reported timeout, unknown, residual or
+  foreign state leaves `RecoveryUnknown`.
+  This is partial L1 evidence: synchronous core does not preempt blocked callbacks or handle
+  panic/crash as returned errors. Native teardown, real deadlines/cancellation, system locking,
+  durable recovery and packet evidence remain open; Gate H is not closed.
 - The initial pure-core `EndpointBootstrap` must admit only explicitly acknowledged unprotected
   bootstrap without recovery/always-on and bind responses to session, request, profile and network
   generations. Limits: 64 records, 16 unique IPs, at most 30 seconds from start to endpoint handoff.

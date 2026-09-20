@@ -99,10 +99,11 @@
 | 70 | `[x]` | Протокол выбора endpoint и DNS-bootstrap | Документирует первичное разрешение имени, закрепление одного адреса, смену кандидатов и безопасный отказ при переподключении; runtime не реализует. | [#110](https://github.com/MaratGaZa/novaray-public/issues/110) | [#111](https://github.com/MaratGaZa/novaray-public/pull/111) |
 | 71 | `[x]` | Допуск bootstrap и выбор первого endpoint | Реализует чистую начальную модель допуска, ограниченного ответа и однократного выбора с проверкой срока/контекста; resolver и системные действия не выполняет. | [#112](https://github.com/MaratGaZa/novaray-public/issues/112) | [#113](https://github.com/MaratGaZa/novaray-public/pull/113) |
 | 72 | `[x]` | Барьер отзыва старого endpoint перед заменой | Проверяет порядок intent, остановки транспорта, удаления исключения и established-state на recording-адаптере; нового разрешения не выдаёт. | [#114](https://github.com/MaratGaZa/novaray-public/issues/114) | [#115](https://github.com/MaratGaZa/novaray-public/pull/115) |
+| 73 | `[ ]` | Обязательный containment после частичного отзыва | Связывает отзыв с обязательным teardown callback и отдельной проверкой результата; сохраняет первичную ошибку без заявления о системной защите. | [#116](https://github.com/MaratGaZa/novaray-public/issues/116) | TBD |
 
-После слияния PR #113 задача 71 находится в `main`. Задача 72 / issue #114 / PR #115:
-**Барьер отзыва старого endpoint перед заменой** — только recording-adapter часть E04.
-Её локальные критерии выполнены, PR ожидает CI/review; системный отзыв не доказан.
+После слияния PR #115 задача 72 находится в `main`. Задача 73 / issue #116:
+**Обязательный containment после частичного отзыва** — только core/recording-композиция E04.
+Критерии задачи 73 проверяются отдельно; системный отзыв и teardown не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
 не входят в текущую задачу. Следующая execution task требует отдельной команды владельца.
@@ -1095,6 +1096,20 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     описан в SPEC/TESTING, но не реализован; Err/Blocked не доказывает системный fail-closed.
     Не входят: native adapter, системный lock, durable recovery, новые разрешения, DNS, root,
     network executor integration, пакетное evidence или закрытие E04/Gate H. Откат — revert кода/docs.
+
+73. [ ] Обязательный containment после частичного отзыва — issue #116, PR TBD:
+    реализовать потребляющий объект публичный вход с обязательным teardown после возвращённой
+    ошибки с mutation_attempted; сырой путь исполнения сделать приватным.
+    Зависимости: задачи 69–72, FR-008/NFR-001, roadmap 6.1, ADR-003 Proposed.
+    Критерии: ровно один teardown, затем независимый снимок владельца/deny и отсутствия engine,
+    transport, ресурсов, всех исключений/маршрутов и established flows соединения. Первичная
+    ошибка сохраняется при любом исходе; вторичная причина отделена, intent не очищается.
+    Проверки: порядок/fault matrix, отрицательные наблюдения, public integration и compile-fail,
+    redaction, default/feature suites, doc tests, fmt/strict Clippy, metadata/self-test, ссылки,
+    traceability, синхронность RU/EN и diff.
+    Не входят: native teardown, системные таймеры/отмена/lock, panic/crash recovery, durable journal,
+    новые grant, DNS, root, пакетное evidence или закрытие E04/Gate H. Timeout только сообщается
+    адаптером, core не прерывает зависший callback. Откат — revert кода/docs без миграции данных.
 
 ## 7. Зависимости
 

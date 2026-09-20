@@ -283,6 +283,13 @@ recording-adapter последовательность отзыва старог
 lock, проверка на границе мутации, durable recovery и native adapter не реализованы.
 Network executor и текущие recovery-журналы не изменяются; это не packet-level E04 evidence.
 
+Задача 73 делает публичный вход отзыва потребляющим и обязательным для containment-композиции;
+сырой путь приватен. После возвращённой ошибки с попыткой мутации вызываются полный teardown
+и независимая проверка снимка владельца/deny/всех ресурсов соединения. Первичная ошибка и pending
+intent сохраняются при любом исходе; `TeardownObserved` не выдаёт grant или protected status.
+Это recording-контракт, не native teardown: синхронный core не прерывает callback, timeout только
+сообщается адаптером. Native ownership, lifecycle lock, deadlines и crash recovery остаются открытыми.
+
 ## 10. Disconnect и crash recovery
 
 Normal disconnect, engine/platform-service/UI crash, forced stop, power/network change, reboot and

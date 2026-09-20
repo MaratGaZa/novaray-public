@@ -328,7 +328,24 @@ endpoint без подмены TLS/SNI/Reality identity и без скрытог
 старого разрешения. На L5/L7 проверить непрерывность deny и отсутствие старого разрешённого
 egress после подтверждённого teardown; отдельно измерить остаточный трафик между исходной ошибкой
 и завершением containment. Один `Err`, Active deny или возвращённый callback не доказывает
-отсутствие пакетов. Эти проверки **не выполнены**, caller/teardown в задаче 72 не реализованы.
+отсутствие пакетов. Полные L3/L5/L7 проверки **не выполнены**; системный caller/teardown отсутствует.
+
+Частичное L1-evidence задачи 73 в [endpoint_revocation.rs](../src/endpoint_revocation.rs):
+
+| Проверка | Recording evidence | Ограничение |
+|---|---|---|
+| Обязательный однократный вызов после мутации; отсутствие вызова до неё и при успехе | `containment_dispatches_once_for_every_post_mutation_callback_error` | Callback не доказывает реальную очистку |
+| Ошибки наблюдения, смена контекста, неполный отзыв | `containment_handles_observation_failures_and_context_changes` | Владение и live kernel context доверены адаптеру |
+| Вторичная ошибка/timeout и неизменная первичная причина | `containment_failure_and_reported_timeout_preserve_primary_error` | Timeout сообщён адаптером; core не прерывает зависший вызов |
+| Остаточные/неизвестные engine, transport, ресурсы, все исключения/маршруты и flows | `containment_requires_every_owned_resource_absent` | Нет OS/packet evidence |
+| Все поколения владельца, inactive/unknown deny | `containment_rejects_each_wrong_owner_generation_and_unproven_deny` | Снимок не доказывает непрерывность deny |
+| Redaction и сохранение source error | `containment_diagnostics_redact_owner_and_preserve_error_source` | Полный runtime diagnostic export отсутствует |
+| Публичная композиция | [endpoint_containment.rs](../tests/endpoint_containment.rs), `public_revocation_entry_dispatches_containment_and_keeps_primary_failure` | Синтетический внешний адаптер |
+| Недоступность сырого bypass | `cargo test --doc --locked`, compile-fail `EndpointRevocation::execute` | Проверка видимости, не authentication |
+
+Прежние 9 тестов отзыва сохранены на приватном пути. Новый вход потребляет объект; после ошибки
+даже `TeardownObserved` не превращается в успех или разрешение. Intent не очищается. Panic/crash,
+реальные таймеры/отмена, durable recovery, native teardown и L5/L7 остаются открытыми.
 
 В L5/L7 использовать контролируемые authoritative DNS и два endpoint, непрерывные попытки direct
 DNS/обычного egress во время переходов, захват пакетов на старом и новом uplink и проверку

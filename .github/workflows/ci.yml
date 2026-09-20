@@ -188,6 +188,9 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets --locked
 
+      - name: Check public API doctests
+        run: cargo test --doc --locked
+
       - name: Check opt-in experiment without native execution
         run: |
           cargo clippy --all-targets --locked --features native-right-experiment -- -D warnings
@@ -228,6 +231,9 @@ jobs:
 
       - name: Run tests
         run: cargo test --all-targets --locked
+
+      - name: Check public API doctests
+        run: cargo test --doc --locked
 
       - name: Check opt-in experiment without native execution
         run: |
@@ -286,6 +292,9 @@ jobs:
 
       - name: Run tests
         run: cargo test --all-targets --locked
+
+      - name: Check public API doctests
+        run: cargo test --doc --locked
 
       - name: Check opt-in experiment without native execution
         run: |
