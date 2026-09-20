@@ -100,11 +100,11 @@
 | 71 | `[x]` | Допуск bootstrap и выбор первого endpoint | Реализует чистую начальную модель допуска, ограниченного ответа и однократного выбора с проверкой срока/контекста; resolver и системные действия не выполняет. | [#112](https://github.com/MaratGaZa/novaray-public/issues/112) | [#113](https://github.com/MaratGaZa/novaray-public/pull/113) |
 | 72 | `[x]` | Барьер отзыва старого endpoint перед заменой | Проверяет порядок intent, остановки транспорта, удаления исключения и established-state на recording-адаптере; нового разрешения не выдаёт. | [#114](https://github.com/MaratGaZa/novaray-public/issues/114) | [#115](https://github.com/MaratGaZa/novaray-public/pull/115) |
 | 73 | `[x]` | Обязательный containment после частичного отзыва | Связывает отзыв с обязательным teardown callback и отдельной проверкой результата; сохраняет первичную ошибку без заявления о системной защите. | [#116](https://github.com/MaratGaZa/novaray-public/issues/116) | [#117](https://github.com/MaratGaZa/novaray-public/pull/117) |
-| 74 | `[ ]` | Явное recovery при отказе до мутаций | Разделяет отсутствие собственных мутаций и неподтверждённую безопасность сети; требует recovery-оценку без расширения полномочий teardown. | [#118](https://github.com/MaratGaZa/novaray-public/issues/118) | TBD |
+| 74 | `[x]` | Явное recovery при отказе до мутаций | Разделяет отсутствие собственных мутаций и неподтверждённую безопасность сети; требует recovery-оценку без расширения полномочий teardown. | [#118](https://github.com/MaratGaZa/novaray-public/issues/118) | [#119](https://github.com/MaratGaZa/novaray-public/pull/119) |
 
-После слияния PR #117 задача 73 находится в `main`. Задача 74 / issue #118:
+После слияния PR #117 задача 73 находится в `main`. Задача 74 / issue #118 / PR #119:
 **Явное recovery при отказе до мутаций** — только core-классификация ошибок E04.
-Критерии проверяются отдельно; системные recovery, отзыв и teardown не доказаны.
+Локальные критерии выполнены, PR ожидает CI/review; системные recovery, отзыв и teardown не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
 не входят в текущую задачу. Следующая execution task требует отдельной команды владельца.
@@ -1116,7 +1116,7 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     новые grant, DNS, root, пакетное evidence или закрытие E04/Gate H. Timeout только сообщается
     адаптером, core не прерывает зависший callback. Откат — revert кода/docs без миграции данных.
 
-74. [ ] Явное recovery при отказе до мутаций — issue #118, PR TBD:
+74. [x] Явное recovery при отказе до мутаций — issue #118, PR #119:
     заменить неоднозначное NotRequired явным требованием recovery-оценки до мутаций;
     выделить DenyUnproven, остальные причины оставить StateUnverified с полной primary error.
     Зависимости: задача 73, FR-008/NFR-001, roadmap 6.1, ADR-003 Proposed.
@@ -1126,6 +1126,10 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     не меняется. Display оболочки не повторяет source; первичная причина доступна один раз в цепочке.
     Проверки: unit matrix и external integration, redaction/source, мутации, default/feature
     suites, doc-tests, fmt/strict Clippy, metadata/self-test, links, traceability, RU/EN и diff.
+    Локальное evidence: 3 новых unit tests и 1 integration; default 375 passed / 0 failed /
+    5 ignored, feature 391 / 0 / 5; 1 compile-fail doctest, fmt/strict Clippy обоих режимов.
+    Три временные мутации пойманы и восстановлены; metadata/self-test 14/58, links 54/0,
+    traceability 16/16/16. CI/review текущего head проверяются отдельно в PR.
     Не входят: реальное recovery/deny repair, native adapter, новые полномочия cleanup, root,
     DNS, системный lock/таймер или закрытие E04/Gate H. Откат — revert API/docs без миграции данных.
 
