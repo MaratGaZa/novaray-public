@@ -59,6 +59,13 @@ recording-адаптере порядок отзыва старого endpoint, 
 Системный caller/teardown, реальные deadlines, crash recovery и packet evidence отсутствуют.
 Статусы `FR-008`/`NFR-001` остаются `partial`; Gate H не закрыт.
 
+Дополнение задачи 74: `RecoveryRequiredBeforeMutation` заменяет прежний `NotRequired`;
+`DenyUnproven` отделён от `StateUnverified`, первичная причина и возможный intent сохранены.
+`pre_mutation_unproven_deny_requires_recovery_with_old_resources_present` и
+`pre_mutation_uncertainty_requires_assessment_and_preserves_journal_flags` проверяют L1-исходы,
+не выполнение recovery. Native deny repair, lifecycle consumer и packet evidence отсутствуют;
+`FR-008`/`NFR-001` остаются `partial`, Gate H открыт.
+
 ## Правила обновления
 
 1. Нормативные изменения сначала вносятся синхронно в обе SPEC; матрица обновляется в той же задаче.

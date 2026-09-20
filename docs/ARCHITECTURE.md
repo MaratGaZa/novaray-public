@@ -290,6 +290,12 @@ intent сохраняются при любом исходе; `TeardownObserved`
 Это recording-контракт, не native teardown: синхронный core не прерывает callback, timeout только
 сообщается адаптером. Native ownership, lifecycle lock, deadlines и crash recovery остаются открытыми.
 
+Задача 74 заменяет двусмысленный `NotRequired` на `RecoveryRequiredBeforeMutation`:
+`DenyUnproven` при неподтверждённом deny, иначе `StateUnverified` с сохранением primary error.
+Это обязательство вызвать внешнюю recovery-оценку, не no-action/safe исход. До мутаций core
+не добавляет teardown без проверки ownership/context; нормальное продолжение, grant/reconnect
+и direct DNS запрещены до отдельного recovery. Native recovery/deny repair по-прежнему отсутствует.
+
 ## 10. Disconnect и crash recovery
 
 Normal disconnect, engine/platform-service/UI crash, forced stop, power/network change, reboot and

@@ -170,16 +170,28 @@ pub enum ContainmentFailure {
     ResidualState,
 }
 
+/// Recovery assessment is required even though this attempt has not started network mutations.
+/// This classification never authorizes cleanup of resources with unverified ownership/context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreMutationRecovery {
+    /// Deny was Inactive or Unknown in a matching-scope observation, not proven protection.
+    DenyUnproven,
+    /// Other failures leave safety unverified; consult the primary stage/cause and journal flag.
+    StateUnverified,
+}
+
 /// No variant is a protected status, new grant, or authority to clear pending recovery intent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContainmentOutcome {
-    NotRequired,
+    /// No teardown dispatched. Caller must enter recovery assessment, not ordinary continuation,
+    /// reconnect or direct DNS. Actual recovery/deny repair remains a future native responsibility.
+    RecoveryRequiredBeforeMutation(PreMutationRecovery),
     TeardownObserved,
     RecoveryUnknown(ContainmentFailure),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-#[error("{primary}; containment: {containment:?}")]
+#[error("endpoint revocation failed; containment: {containment:?}")]
 pub struct RevocationContainmentError {
     #[source]
     pub primary: EndpointRevocationError,
@@ -283,7 +295,10 @@ impl EndpointRevocation {
                     Err(cause) => ContainmentOutcome::RecoveryUnknown(cause),
                 }
             } else {
-                ContainmentOutcome::NotRequired
+                ContainmentOutcome::RecoveryRequiredBeforeMutation(match primary.cause {
+                    RevocationFailure::DenyUnproven => PreMutationRecovery::DenyUnproven,
+                    _ => PreMutationRecovery::StateUnverified,
+                })
             };
             RevocationContainmentError {
                 primary,
@@ -782,7 +797,12 @@ mod tests {
                 assert_eq!(error.containment, ContainmentOutcome::TeardownObserved);
             } else {
                 assert!(adapter.containment_calls.is_empty());
-                assert_eq!(error.containment, ContainmentOutcome::NotRequired);
+                assert_eq!(
+                    error.containment,
+                    ContainmentOutcome::RecoveryRequiredBeforeMutation(
+                        PreMutationRecovery::StateUnverified,
+                    )
+                );
             }
         }
         let mut adapter = RecordingAdapter::new();
@@ -822,7 +842,11 @@ mod tests {
                         ContainmentOutcome::TeardownObserved
                     } else {
                         assert!(adapter.containment_calls.is_empty());
-                        ContainmentOutcome::NotRequired
+                        ContainmentOutcome::RecoveryRequiredBeforeMutation(if kind == 1 {
+                            PreMutationRecovery::DenyUnproven
+                        } else {
+                            PreMutationRecovery::StateUnverified
+                        })
                     }
                 );
             }
@@ -954,5 +978,130 @@ mod tests {
             source.downcast_ref::<EndpointRevocationError>(),
             Some(&error.primary)
         );
+    }
+
+    #[test]
+    fn pre_mutation_unproven_deny_requires_recovery_with_old_resources_present() {
+        for index in 0..2 {
+            for deny in [ObservedDeny::Inactive, ObservedDeny::Unknown] {
+                let mut adapter = RecordingAdapter::new();
+                adapter.observations[index].deny = deny;
+                let observation = adapter.observations[index];
+                assert_eq!(observation.transport, ObservedPresence::Present);
+                assert_eq!(observation.exception, ObservedPresence::Present);
+                assert_eq!(observation.established, ObservedPresence::Present);
+                let error = adapter.executor().execute(&mut adapter).unwrap_err();
+                assert_eq!(
+                    error.primary,
+                    EndpointRevocationError {
+                        stage: ORDER[index * 2],
+                        cause: RevocationFailure::DenyUnproven,
+                        journal_may_exist: index == 1,
+                        mutation_attempted: false,
+                    }
+                );
+                assert_eq!(
+                    error.containment,
+                    ContainmentOutcome::RecoveryRequiredBeforeMutation(
+                        PreMutationRecovery::DenyUnproven,
+                    )
+                );
+                assert_eq!(adapter.seen, ORDER[..=index * 2]);
+                assert_eq!(adapter.mutation_attempts, 0);
+                assert!(adapter.containment_calls.is_empty());
+                assert!(adapter.primary.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn pre_mutation_uncertainty_requires_assessment_and_preserves_journal_flags() {
+        for fault in 0..3 {
+            let mut adapter = RecordingAdapter::new();
+            adapter.fault = Some(fault);
+            let error = adapter.executor().execute(&mut adapter).unwrap_err();
+            assert_eq!(
+                error.primary,
+                EndpointRevocationError {
+                    stage: ORDER[fault],
+                    cause: RevocationFailure::AdapterFailed,
+                    journal_may_exist: fault > 0,
+                    mutation_attempted: false,
+                }
+            );
+            assert_eq!(
+                error.containment,
+                ContainmentOutcome::RecoveryRequiredBeforeMutation(
+                    PreMutationRecovery::StateUnverified,
+                )
+            );
+            assert_eq!(adapter.seen, ORDER[..=fault]);
+            assert_eq!(adapter.mutation_attempts, 0);
+            assert!(adapter.containment_calls.is_empty());
+        }
+        for index in 0..2 {
+            for field in 0..4 {
+                let mut adapter = RecordingAdapter::new();
+                let observation = &mut adapter.observations[index];
+                match field {
+                    0 => {
+                        observation.binding = binding([18001, 18002, 18003, 18004]);
+                        // A foreign snapshot must not be treated as proof of our deny state.
+                        observation.deny = ObservedDeny::Inactive;
+                    }
+                    1 => observation.transport = ObservedPresence::Unknown,
+                    2 => observation.exception = ObservedPresence::Unknown,
+                    _ => observation.established = ObservedPresence::Unknown,
+                }
+                let error = adapter.executor().execute(&mut adapter).unwrap_err();
+                assert_eq!(
+                    error.primary,
+                    EndpointRevocationError {
+                        stage: ORDER[index * 2],
+                        cause: if field == 0 {
+                            RevocationFailure::ContextChanged
+                        } else {
+                            RevocationFailure::UnknownState
+                        },
+                        journal_may_exist: index == 1,
+                        mutation_attempted: false,
+                    }
+                );
+                assert_eq!(
+                    error.containment,
+                    ContainmentOutcome::RecoveryRequiredBeforeMutation(
+                        PreMutationRecovery::StateUnverified,
+                    )
+                );
+                assert_eq!(adapter.seen, ORDER[..=index * 2]);
+                assert_eq!(adapter.mutation_attempts, 0);
+                assert!(adapter.containment_calls.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn containment_error_chain_displays_primary_once() {
+        for fault in [0, 1, 3] {
+            let mut adapter = RecordingAdapter::new();
+            adapter.fault = Some(fault);
+            let error = adapter.executor().execute(&mut adapter).unwrap_err();
+            let primary = error.primary.to_string();
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "endpoint revocation failed; containment: {:?}",
+                    error.containment,
+                )
+            );
+            assert!(!error.to_string().contains(&primary));
+            let source = std::error::Error::source(&error).unwrap();
+            assert_eq!(
+                source.downcast_ref::<EndpointRevocationError>(),
+                Some(&error.primary)
+            );
+            assert!(source.source().is_none());
+            assert_eq!(format!("{error}: {source}").matches(&primary).count(), 1);
+        }
     }
 }
