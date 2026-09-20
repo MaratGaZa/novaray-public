@@ -297,10 +297,38 @@ endpoint без подмены TLS/SNI/Reality identity и без скрытог
 | Часть E07/E08 | `current_context_change_invalidates_before_response_or_handoff`, `stale_responses_do_not_replace_current_request_or_consume_it` | Поколения вводит тест; нет kernel observation, сети, sleep/wake или cancellation реального resolver |
 | Redaction | `diagnostics_redact_addresses_ports_and_binding_generations` | Нет диагностического UI/export runtime |
 
-E04/E06/E09–E11 остаются без новой реализации. В частности, отсутствие метода rotation не
+Задача 71 не реализует E04/E06/E09–E11. В частности, отсутствие метода rotation не
 доказывает отзыв established flows. У модели нет IP-literal режима; адреса в тестах — фикстуры
 результатов разрешения. Валидация наблюдений не удостоверяет их источник или отсутствие race
 между выдачей данных и будущим системным действием.
+
+Частичное L1-evidence задачи 72, [endpoint_revocation.rs](../src/endpoint_revocation.rs):
+
+| Аспект E04 | Recording unit tests | Не доказано |
+|---|---|---|
+| Scope, порядок, однократность | `revocation_orders_scoped_callbacks_and_is_single_use` | Системный lifecycle lock, native executor |
+| Ошибка каждого callback и первичная причина | `every_callback_failure_stops_without_compensation_or_retry`, `adapter_panic_cannot_make_object_reusable_or_trigger_cleanup` | Durable journal, process crash, timeout/cancellation |
+| Контекст и deny на каждом чтении | `every_inspection_rechecks_all_binding_generations`, `inactive_or_unknown_deny_stops_at_every_inspection` | Kernel context, непрерывный deny между чтениями |
+| Неизвестность, неполный отзыв и регресс | `unknown_transport_exception_or_flows_never_passes`, `incomplete_or_regressed_revocation_prevents_completion`, `absent_rule_does_not_substitute_for_established_state_revocation` | Реальная очистка established flows и старого маршрута |
+| Диагностика | `revocation_diagnostics_redact_scope_and_expose_only_categories` | Полный diagnostic export runtime |
+
+Ни один E01–E11 не закрыт полностью. Обязательная будущая проверка Gate H рядом с E04/E07:
+после `SelectedEndpoint`/`Consumed`, но до установки нового правила, изменить binding или
+довести время до `valid_until`; исполнитель под lifecycle lock обязан отказать в новом grant.
+На L3 проверять отсутствие вызова установки, на L5/L7 — отсутствие нового разрешённого egress.
+Сам факт выдачи endpoint или результат `Observed` задачи 72 не заменяет эту проверку.
+Текущий срез не выдаёт новых разрешений и эту гонку не исполняет.
+
+Дополнительное обязательное evidence E04/Gate H для будущего вызывающего executor'а:
+вызвать ошибку на каждом этапе после попытки мутации, в том числе `StopTransport` и
+`RemoveException`, оставив старое исключение и живой транспорт/flows. На L3 доказать обязательный
+вызов полного teardown соединения, отсутствие нового grant/reconnect/direct DNS, сохранение intent
+до подтверждения cleanup, сохранение deny и первичной ошибки при отдельном сбое teardown.
+Проверить timeout/частичный отказ teardown: recovery/unknown, а не ложный успех или возврат
+старого разрешения. На L5/L7 проверить непрерывность deny и отсутствие старого разрешённого
+egress после подтверждённого teardown; отдельно измерить остаточный трафик между исходной ошибкой
+и завершением containment. Один `Err`, Active deny или возвращённый callback не доказывает
+отсутствие пакетов. Эти проверки **не выполнены**, caller/teardown в задаче 72 не реализованы.
 
 В L5/L7 использовать контролируемые authoritative DNS и два endpoint, непрерывные попытки direct
 DNS/обычного egress во время переходов, захват пакетов на старом и новом uplink и проверку

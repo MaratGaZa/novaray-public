@@ -532,6 +532,9 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 - [ ] Сохранять защиту при engine crash/reconnect.
   - [x] Задача 70 / issue #110 / PR #111: документировать DNS-bootstrap, закрепление endpoint и отказ
     при смене сети по [единому протоколу](../docs/ENDPOINT_BOOTSTRAP_PROTOCOL.md); runtime и Gate H остаются открытыми.
+  - [x] Задача 72 / issue #114 / PR #115: recording-adapter барьер отзыва старого endpoint;
+    без установки нового tuple, native adapter, durable recovery и packet-level evidence.
+    Обязательный caller teardown при частичном отказе с сохранением deny остаётся не реализован.
 - [ ] Не блокировать recovery/update без явного плана.
 - [ ] Проверить disable/uninstall cleanup.
 

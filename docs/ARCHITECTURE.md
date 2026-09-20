@@ -276,6 +276,13 @@ active/inherited/unknown deny; во втором случае resolver по upli
 capability, и будущий исполнитель должен перепроверять их на границе побочного эффекта.
 См. [точные ограничения initial-среза](./ENDPOINT_BOOTSTRAP_PROTOCOL.md#начальный-срез-задачи-71-2026-09-18).
 
+Задача 72 добавляет [EndpointRevocation](../src/endpoint_revocation.rs), изолированную
+recording-adapter последовательность отзыва старого endpoint. Intent предшествует остановке
+транспорта; после каждого шага проверяются deny, binding и отсутствие уже отозванных частей.
+Ошибки терминальны без слепого rollback, `Observed` не разрешает новое подключение. Системный
+lock, проверка на границе мутации, durable recovery и native adapter не реализованы.
+Network executor и текущие recovery-журналы не изменяются; это не packet-level E04 evidence.
+
 ## 10. Disconnect и crash recovery
 
 Normal disconnect, engine/platform-service/UI crash, forced stop, power/network change, reboot and
