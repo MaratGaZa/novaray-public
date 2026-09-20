@@ -50,8 +50,14 @@ recording-адаптере порядок отзыва старого endpoint, 
 одного лишь отсутствия firewall-правила без очистки established-state. Это частичный L1-срез E04,
 без native adapter, установки нового tuple, реального журнала, lock или packet evidence.
 Статусы `FR-008` и `NFR-001` остаются `partial`; Gate H и все полные E01–E11 остаются открытыми.
-Обязательный caller teardown после ошибки с mutation_attempted ещё отсутствует: остановка
-последовательности не доказывает отзыв оставшегося разрешения или системный fail-closed.
+Дополнение задачи 73: публичный потребляющий вход требует containment-адаптер, вызывает teardown
+после возвращённой ошибки с mutation_attempted и отдельно проверяет снимок полного соединения.
+Тесты `containment_dispatches_once_for_every_post_mutation_callback_error`,
+`containment_requires_every_owned_resource_absent` и
+`containment_failure_and_reported_timeout_preserve_primary_error` доказывают частичный L1-контракт.
+Первичная ошибка и intent сохраняются; `TeardownObserved` не означает защищённую сеть.
+Системный caller/teardown, реальные deadlines, crash recovery и packet evidence отсутствуют.
+Статусы `FR-008`/`NFR-001` остаются `partial`; Gate H не закрыт.
 
 ## Правила обновления
 

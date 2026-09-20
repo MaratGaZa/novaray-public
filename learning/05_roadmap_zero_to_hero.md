@@ -534,7 +534,9 @@ universal/Windows ARM64 binaries и дополнительные протоко�
     при смене сети по [единому протоколу](../docs/ENDPOINT_BOOTSTRAP_PROTOCOL.md); runtime и Gate H остаются открытыми.
   - [x] Задача 72 / issue #114 / PR #115: recording-adapter барьер отзыва старого endpoint;
     без установки нового tuple, native adapter, durable recovery и packet-level evidence.
-    Обязательный caller teardown при частичном отказе с сохранением deny остаётся не реализован.
+    Системный teardown при частичном отказе с сохранением deny остаётся не реализован.
+  - [x] Задача 73 / issue #116 / PR #117: обязательный containment после частичного отзыва;
+    core-композиция teardown callback и проверки результата, без native enforcement/таймера.
 - [ ] Не блокировать recovery/update без явного плана.
 - [ ] Проверить disable/uninstall cleanup.
 
