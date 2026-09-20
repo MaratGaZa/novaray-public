@@ -537,6 +537,8 @@ universal/Windows ARM64 binaries и дополнительные протоко�
     Системный teardown при частичном отказе с сохранением deny остаётся не реализован.
   - [x] Задача 73 / issue #116 / PR #117: обязательный containment после частичного отзыва;
     core-композиция teardown callback и проверки результата, без native enforcement/таймера.
+  - [ ] Задача 74 / issue #118: явное recovery при отказе до мутаций; отдельный DenyUnproven,
+    без автоматического расширения cleanup или заявления о выполненном системном recovery.
 - [ ] Не блокировать recovery/update без явного плана.
 - [ ] Проверить disable/uninstall cleanup.
 

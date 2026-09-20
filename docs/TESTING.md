@@ -347,6 +347,21 @@ egress после подтверждённого teardown; отдельно из
 даже `TeardownObserved` не превращается в успех или разрешение. Intent не очищается. Panic/crash,
 реальные таймеры/отмена, durable recovery, native teardown и L5/L7 остаются открытыми.
 
+Частичное L1-evidence задачи 74:
+
+| Проверка | Тест | Граница |
+|---|---|---|
+| Initial/pre-stop Inactive/Unknown deny при живых старых ресурсах | `pre_mutation_unproven_deny_requires_recovery_with_old_resources_present` | RecoveryRequiredBeforeMutation/DenyUnproven, без слепого teardown |
+| Ошибки чтения/intent, чужой контекст, Unknown ресурсов; journal flags | `pre_mutation_uncertainty_requires_assessment_and_preserves_journal_flags` | StateUnverified не является safe/no-action исходом |
+| Однократная первичная причина в цепочке | `containment_error_chain_displays_primary_once` | Source/primary сохранены, wrapper не дублирует primary Display |
+| Внешний consumer с неподтверждённым initial deny | `public_initial_unproven_deny_requires_recovery_not_blind_cleanup` в [integration test](../tests/endpoint_containment.rs) | Только типизированный сигнал, native recovery не вызывается |
+
+До закрытия Gate H нужны отдельные L3/L5/L7 проверки actual caller recovery при initial/pre-stop
+Inactive/Unknown deny с живыми old flows: не продолжать нормальный lifecycle, сохранить intent,
+доказать ownership/context перед разрешёнными recovery-операциями, восстановить проверяемую
+защиту и измерить остаточный egress. Эти проверки **не выполнены** задачей 74; отсутствие
+teardown callback до мутаций не означает безопасную сеть или отсутствие нужды во вмешательстве.
+
 В L5/L7 использовать контролируемые authoritative DNS и два endpoint, непрерывные попытки direct
 DNS/обычного egress во время переходов, захват пакетов на старом и новом uplink и проверку
 endpoint/tunnel reachability. Включить IPv4 и IPv6, TCP и UDP, старые established flows и потери

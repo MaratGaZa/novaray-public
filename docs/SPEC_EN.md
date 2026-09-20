@@ -443,13 +443,23 @@ snapshot.
   connection owner, active deny and absence of engine, transport, resources, all connection-owned
   endpoint exceptions/routes and established flows. Binding identifies the owner, not an unchanged
   current network: the native adapter must verify ownership across context changes.
-  The original error is always returned; a separate outcome is `NotRequired`, `TeardownObserved`
+  The original error is always returned; a separate outcome is `RecoveryRequiredBeforeMutation`, `TeardownObserved`
   or `RecoveryUnknown` with a cause. No outcome grants authority or a protected status; intent is
   retained even after observed cleanup. Failure/adapter-reported timeout, unknown, residual or
   foreign state leaves `RecoveryUnknown`.
   This is partial L1 evidence: synchronous core does not preempt blocked callbacks or handle
   panic/crash as returned errors. Native teardown, real deadlines/cancellation, system locking,
   durable recovery and packet evidence remain open; Gate H is not closed.
+- Failure before the first mutation must return `RecoveryRequiredBeforeMutation(PreMutationRecovery)`:
+  `DenyUnproven` for unproven deny, `StateUnverified` for other causes. Primary stage/cause and
+  `journal_may_exist` are retained. Both `Inactive` and `Unknown` fail to establish protection;
+  `DenyUnproven` does not claim the firewall is definitely disabled. Zero mutations by this attempt
+  does not mean a safe network or no work: the caller must route the failure to recovery assessment,
+  forbid ordinary continuation, new grants, reconnect and direct DNS, and retain possible intent
+  until separately verified recovery. Core does not call teardown before mutations: missing verified
+  ownership/context does not authorize blind cleanup. This is a typed requirement for the future
+  caller, not executed recovery or native deny repair. The wrapper Display describes containment;
+  the primary cause remains available through `primary`/`source` without duplication in an error chain.
 - The initial pure-core `EndpointBootstrap` must admit only explicitly acknowledged unprotected
   bootstrap without recovery/always-on and bind responses to session, request, profile and network
   generations. Limits: 64 records, 16 unique IPs, at most 30 seconds from start to endpoint handoff.
