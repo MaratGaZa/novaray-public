@@ -167,3 +167,78 @@ fn public_initial_unproven_deny_requires_recovery_not_blind_cleanup() {
         );
     }
 }
+
+#[test]
+fn public_diagnostic_records_preserve_categories_without_owner_or_policy() {
+    for deny in [ObservedDeny::Inactive, ObservedDeny::Active] {
+        let mut outputs = Vec::new();
+        for alternate_scope in [false, true] {
+            let mut adapter = ExternalAdapter::new(deny);
+            if alternate_scope {
+                let [session, request, profile, network] =
+                    [9001, 9002, 9003, 9004].map(|v| NonZeroU64::new(v).unwrap());
+                adapter.owner = BootstrapBinding::new(session, request, profile, network);
+                adapter.policy = KillSwitchAllowlist::new(
+                    "198.51.100.18:9443".parse().unwrap(),
+                    EndpointTransport::Udp,
+                    "en9".into(),
+                    "utun21".into(),
+                    TunnelIpFamily::Ipv4,
+                )
+                .unwrap();
+            }
+            let operation = EndpointRevocation::new(adapter.policy.clone(), adapter.owner);
+            let error = operation.execute(&mut adapter).unwrap_err();
+            let diagnostic = error.diagnostic();
+            let output = serde_json::to_string(&diagnostic).unwrap();
+            let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+            let attempted = deny == ObservedDeny::Active;
+            assert_eq!(
+                value["primary"]["stage"],
+                if attempted {
+                    "stop_transport"
+                } else {
+                    "initial_inspection"
+                }
+            );
+            assert_eq!(
+                value["primary"]["cause"],
+                if attempted {
+                    "adapter_failed"
+                } else {
+                    "deny_unproven"
+                }
+            );
+            assert_eq!(value["primary"]["mutation_attempted"], attempted);
+            assert_eq!(value["primary"]["journal_may_exist"], attempted);
+            assert_eq!(
+                value["containment"]["outcome"],
+                if attempted {
+                    "teardown_observed"
+                } else {
+                    "recovery_required_before_mutation"
+                }
+            );
+            let debug = format!("{diagnostic:?}");
+            for secret in [
+                "203.0.113.42",
+                "198.51.100.18",
+                "8443",
+                "9443",
+                "en7",
+                "en9",
+                "utun19",
+                "utun21",
+                "9001",
+                "9002",
+                "9003",
+                "9004",
+            ] {
+                assert!(!output.contains(secret));
+                assert!(!debug.contains(secret));
+            }
+            outputs.push(output);
+        }
+        assert_eq!(outputs[0], outputs[1]);
+    }
+}

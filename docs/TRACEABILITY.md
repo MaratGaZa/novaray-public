@@ -66,6 +66,17 @@ recording-адаптере порядок отзыва старого endpoint, 
 не выполнение recovery. Native deny repair, lifecycle consumer и packet evidence отсутствуют;
 `FR-008`/`NFR-001` остаются `partial`, Gate H открыт.
 
+Дополнение задачи 75: безопасная Serialize-only запись ошибки отзыва в
+[endpoint_revocation.rs](../src/endpoint_revocation.rs). Тесты
+`diagnostic_pre_mutation_json_preserves_primary_and_recovery`,
+`diagnostic_secondary_timeout_does_not_replace_primary_json` и
+`diagnostic_all_codes_flags_and_shapes_are_allowlisted_and_bounded` проверяют точный JSON,
+сохранение primary/containment, allowlisted поля и компактный предел 512 байт.
+`public_diagnostic_records_preserve_categories_without_owner_or_policy` в
+[integration test](../tests/endpoint_containment.rs) проверяет внешний consumer и независимость
+записи от owner/policy. Это L1-контракт сериализации, не logging sink, preview/export bundle,
+подлинность события или native recovery. `FR-010`/`NFR-005`/`NFR-001` остаются `partial`.
+
 ## Правила обновления
 
 1. Нормативные изменения сначала вносятся синхронно в обе SPEC; матрица обновляется в той же задаче.

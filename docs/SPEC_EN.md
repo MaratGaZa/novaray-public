@@ -443,9 +443,10 @@ snapshot.
   connection owner, active deny and absence of engine, transport, resources, all connection-owned
   endpoint exceptions/routes and established flows. Binding identifies the owner, not an unchanged
   current network: the native adapter must verify ownership across context changes.
-  The original error is always returned; a separate outcome is `RecoveryRequiredBeforeMutation`, `TeardownObserved`
-  or `RecoveryUnknown` with a cause. No outcome grants authority or a protected status; intent is
-  retained even after observed cleanup. Failure/adapter-reported timeout, unknown, residual or
+  The original error is always returned; a separate outcome is `RecoveryRequiredBeforeMutation`,
+  `TeardownObserved` or `RecoveryUnknown` with a cause. No outcome grants authority or a protected
+  status; intent is retained even after observed cleanup.
+  Failure/adapter-reported timeout, unknown, residual or
   foreign state leaves `RecoveryUnknown`.
   This is partial L1 evidence: synchronous core does not preempt blocked callbacks or handle
   panic/crash as returned errors. Native teardown, real deadlines/cancellation, system locking,
@@ -524,6 +525,19 @@ until a spike; a web UI or custom renderer is not the default.
 
 Display app, engine, and rules-database versions separately. Verify signed updates. Diagnostic export
 requires preview and redaction. Telemetry remains disabled until a separate privacy specification exists.
+
+Endpoint revocation diagnostics must preserve primary stage/cause and the secondary outcome,
+not just wrapper Display. `RevocationContainmentError::diagnostic()` returns an immutable
+Serialize-only record: `schema_version = 1`, `event = endpoint_revocation_failure`, `primary`
+with stage/cause/journal_may_exist/mutation_attempted and `containment` with outcome/detail.
+Enum codes use snake_case; nested containment failures use cause/detail. Values come only
+from typed fields, without traversing/formatting arbitrary sources, messages, scopes, addresses,
+owner/session/correlation IDs, paths or policy payloads. Record fields are private; there is no
+public constructor or Deserialize. Compact `serde_json::to_string` output is bounded to 512 bytes
+for this version; this bound does not apply to pretty/custom serializers. The record conveys error
+values without authenticating their origin or consistency and is not a command, capability or
+recovery token. This is an L1 serialization contract, not a production sink, UI/CLI/IPC consumer or
+complete bundle export. Whole-bundle preview/redaction, runtime diagnostics and Gate H remain open.
 
 ### FR-011 — Shared core and platform contracts
 

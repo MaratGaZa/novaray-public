@@ -369,6 +369,23 @@ endpoint/tunnel reachability. Включить IPv4 и IPv6, TCP и UDP, ста�
 До native реализации нужны принятые границы resolver и конечные retry/time budgets, подтверждённые
 интерфейсы и отдельные DHCP/NDP/bootstrap-link правила. Эта таблица не разрешает запуск эксперимента.
 
+### Диагностическая запись ошибки отзыва (задача 75)
+
+L1-evidence в [endpoint_revocation.rs](../src/endpoint_revocation.rs):
+
+| Проверка | Тест | Граница |
+|---|---|---|
+| Точный JSON первичного отказа и требования recovery | `diagnostic_pre_mutation_json_preserves_primary_and_recovery` | Только проекция типизированной ошибки |
+| Вторичный timeout не заменяет stage/cause первичного отказа | `diagnostic_secondary_timeout_does_not_replace_primary_json` | Не таймер и не доказательство cleanup |
+| Полный набор ключей, кодов и флагов; компактный JSON не более 512 байт | `diagnostic_all_codes_flags_and_shapes_are_allowlisted_and_bounded` | 2904 сочетания текущей схемы; pretty/custom serialization не ограничивается |
+| Внешний consumer и отсутствие owner/policy | `public_diagnostic_records_preserve_categories_without_owner_or_policy` в [integration test](../tests/endpoint_containment.rs) | Синтетические scope; сравниваются одинаковые категории при разных данных |
+| Невозможность десериализовать запись | `cargo test --doc --locked`, compile-fail `RevocationDiagnostic` | Не входной command/recovery token |
+
+Запись не проверяет подлинность события или семантическую согласованность произвольно созданной
+ошибки. Матрица включает все комбинации, а не только достижимые executor-состояния. Существующие
+Display/source, порядок отзыва и containment не меняются. Logging sink, UI/CLI consumer, preview,
+bundle export, native recovery и L5/L7 evidence отсутствуют; Gate H остаётся открытым.
+
 ## 5. Test environments
 
 ### Fast CI

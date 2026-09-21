@@ -454,9 +454,10 @@ Per-app routing является одной из двух главных фун�
   исходного соединения, active deny и отсутствие engine, transport, ресурсов, всех принадлежащих
   соединению endpoint-исключений/маршрутов и established flows. Binding обозначает владельца,
   а не неизменность текущей сети: native-адаптер обязан проверять владение при смене контекста.
-  Исходная ошибка возвращается всегда; отдельный результат — `RecoveryRequiredBeforeMutation`, `TeardownObserved`
-  либо `RecoveryUnknown` с причиной. Ни один исход не выдаёт разрешение или статус «защищено»;
-  intent не очищается даже после наблюдаемой очистки. Ошибка/сообщённый адаптером timeout,
+  Исходная ошибка возвращается всегда; отдельный результат — `RecoveryRequiredBeforeMutation`,
+  `TeardownObserved` либо `RecoveryUnknown` с причиной. Ни один исход не выдаёт разрешение
+  или статус «защищено»; intent не очищается даже после наблюдаемой очистки.
+  Ошибка/сообщённый адаптером timeout,
   неизвестное, остаточное или чужое состояние оставляют `RecoveryUnknown`.
   Это частичное L1-evidence: синхронный core не прерывает зависший callback и не обрабатывает
   panic/crash как возвращённую ошибку. Native teardown, реальные сроки/отмена, системный lock,
@@ -547,6 +548,19 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
 - Обновления подписываются и проверяются.
 - Экспорт diagnostic bundle требует preview и redaction secrets/IP/UUID по политике.
 - Telemetry по умолчанию выключена до появления отдельной privacy specification.
+- Диагностика ошибки отзыва endpoint должна сохранять первичные stage/cause и вторичный исход,
+  а не ограничиваться wrapper Display. `RevocationContainmentError::diagnostic()` возвращает
+  неизменяемую Serialize-only запись: `schema_version = 1`, `event = endpoint_revocation_failure`,
+  `primary` с stage/cause/journal_may_exist/mutation_attempted и `containment` с outcome/detail.
+  Имена enum-кодов — snake_case; вложенная ошибка containment имеет cause/detail. Значения
+  берутся только из типизированных полей, без обхода/форматирования произвольного source,
+  message, scope, адресов, owner/session/correlation ID, путей или policy payload.
+  Поля записи приватны, публичного конструктора и Deserialize нет. Компактная сериализация
+  через `serde_json::to_string` ограничена 512 байтами для текущей версии; предел не относится
+  к pretty/custom serializer. Запись передаёт значения ошибки, не удостоверяет их происхождение
+  или согласованность и не является командой, capability или recovery token.
+  Это L1-контракт сериализации, не production sink, UI/CLI/IPC consumer или готовый bundle export.
+  Preview/redaction всего bundle, runtime-диагностика и Gate H остаются открытыми.
 
 ### FR-011. Общий core и platform contracts
 

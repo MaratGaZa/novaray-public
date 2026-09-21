@@ -156,6 +156,8 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 - [ ] Добавить connection-attempt correlation ID.
 - [ ] Реализовать redaction UUID, keys, tokens, endpoint по policy.
 - [ ] Добавить bounded rotating logs и user-visible diagnostic events.
+  - [ ] Задача 75 / issue #120: Serialize-only запись ошибки отзыва с primary и containment,
+    без секретов; production sink, UI/CLI consumer и полный bundle export не реализуются.
 - [ ] Запретить secret-bearing types реализовывать небезопасный `Debug`.
 
 ### 1.5. Quality baseline
