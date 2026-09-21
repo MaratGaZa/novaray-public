@@ -246,6 +246,30 @@ Per-app packet evidence обязательно перед включением �
 | Route manager | no-op success | any actual route/DNS behavior |
 | Integration-style | in-memory module composition, JSON schema compilation & validation against examples, supervisor process tests, secure runtime config (0600) lifecycle, engine artifact verification & SHA-256 validation, full mock engine lifecycle and TCP proxy request/response | real engine/server/network/OS/UI |
 
+### Ранний SIGTERM CLI (задача 77)
+
+`test_cli_start_sigterm_early_before_ready_stops_cleanly_and_cleans_up` использует настоящий CLI
+и отдельный Python mock-процесс. Mock атомарно публикует checkpoint (PID и путь прочитанного
+runtime-конфига) и **никогда не открывает readiness-порт**. Фиксированный sleep до bind и поиск
+по общему temp-каталогу удалены; `TMPDIR` дочернего CLI изолирован в каталоге теста.
+Ожидание checkpoint ограничено 15 секундами, проверяет ранний выход CLI и сообщает stdout/stderr
+на отказе. Это deadline harness, а не изменение production readiness timeout (5 секунд).
+Проверяются успешный выход, сообщение `SIGTERM во время инициализации`, отсутствие сообщения
+готовности, удаление точного runtime-конфига и исчезновение mock PID **до** fallback cleanup.
+
+`test_cli_start_sigterm_early_after_delayed_exec` задерживает exec CLI на 2,2 секунды, сохраняя PID:
+это контролируемая проверка запуска за пределами прежнего окна, не объяснение всех прошлых flake.
+`test_cli_pre_ready_wait_reports_exit_and_deadline` проверяет exit 7 даже при наличии checkpoint
+и timeout при живом процессе. `test_cli_pre_ready_guard_reaps_child_and_removes_temp_on_unwind`
+проверяет cleanup при panic. RAII посылает SIGKILL только выделенной группе процессов фикстуры,
+затем reap прямого ребёнка и удаление temp; watchdog mock ограничен 30 секундами.
+Mock не выходит сам при смерти родителя, чтобы не скрывать отсутствие production cleanup.
+
+Повторные прогоны должны отдельно фиксировать idle и контролируемую CPU-нагрузку; успешная серия
+не доказывает отсутствие всех scheduler/port flakes. В локальном baseline до правки 10/10 прошли;
+сообщённое reviewer падение 1/10 независимо не воспроизведено. Scope: L3 unprivileged CLI/mock,
+не реальный engine/server, Windows signal semantics, VPN packet flow или закрытие Gate H.
+
 Дополнение задачи 68 (L1/L3): `kill_switch_order_rejected_before_any_side_effects` проверяет
 перестановку apply_order у firewall/route и firewall/DNS после JSON roundtrip, нулевые вызовы
 адаптера, журнала и start gate. `kill_switch_order_uses_apply_order_not_vector_position` проверяет
