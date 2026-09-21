@@ -103,10 +103,11 @@
 | 74 | `[x]` | Явное recovery при отказе до мутаций | Разделяет отсутствие собственных мутаций и неподтверждённую безопасность сети; требует recovery-оценку без расширения полномочий teardown. | [#118](https://github.com/MaratGaZa/novaray-public/issues/118) | [#119](https://github.com/MaratGaZa/novaray-public/pull/119) |
 | 75 | `[x]` | Безопасная диагностическая запись ошибки отзыва | Сохраняет primary stage/cause и containment в ограниченной Serialize-only записи без секретов и произвольных сообщений. | [#120](https://github.com/MaratGaZa/novaray-public/issues/120) | [#121](https://github.com/MaratGaZa/novaray-public/pull/121) |
 | 76 | `[x]` | Ограниченный буфер диагностики ошибок отзыва | Накапливает только безопасные записи в памяти с FIFO, точным учётом вытеснений и неизменяемым снимком; не пишет файлы и не выполняет recovery. | [#122](https://github.com/MaratGaZa/novaray-public/issues/122) | [#123](https://github.com/MaratGaZa/novaray-public/pull/123) |
-| 77 | `[ ]` | Синхронизация теста раннего SIGTERM | Заменяет временное окно наблюдаемым pre-ready handshake mock-движка; проверяет отмену, cleanup и ограниченные диагностируемые ожидания. | [#124](https://github.com/MaratGaZa/novaray-public/issues/124) | TBD |
+| 77 | `[x]` | Синхронизация теста раннего SIGTERM | Заменяет временное окно наблюдаемым pre-ready handshake mock-движка; проверяет отмену, cleanup и ограниченные диагностируемые ожидания. | [#124](https://github.com/MaratGaZa/novaray-public/issues/124) | [#125](https://github.com/MaratGaZa/novaray-public/pull/125) |
 
-После слияния PR #123 задача 76 находится в `main`. Задача 77 / issue #124:
+После слияния PR #123 задача 76 находится в `main`. Задача 77 / issue #124 / PR #125:
 **Синхронизация теста раннего SIGTERM** — только тестовый harness и evidence.
+Локальные критерии выполнены; CI/review текущего head остаются отдельным допуском.
 Production CLI, signal handling и readiness timeout не меняются; persistent logging backend,
 bundle export и recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
@@ -1181,7 +1182,7 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     preview/export bundle, secure erase, подлинность события, native/root/recovery или Gate H.
     Откат: revert нового API/docs, без миграции persistent-формата или изменения состояния ОС.
 
-77. [ ] Синхронизация теста раннего SIGTERM — issue #124, PR TBD:
+77. [x] Синхронизация теста раннего SIGTERM — issue #124, PR #125:
     заменить двухсекундный поиск runtime-конфига в общем temp-каталоге явным handshake
     mock-движка, который ещё не готов; сигнал должен проверять именно отмену инициализации.
     Зависимости: задача 13 (CLI), задача 76 / PR #123, roadmap 1.5; замечание review PR #123.
@@ -1190,6 +1191,11 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Проверки: намеренно задержанный старт дольше прежнего окна; negative wait paths,
     повторные idle/load прогоны, default/feature suites, doctests, fmt/strict Clippy,
     metadata/self-test, ссылки, traceability, diff. Частоту flake не выводить из одного прогона.
+    Локальное evidence: 17 CLI tests; 389 default / 405 feature passed, по 5 ignored;
+    5 doctests, fmt и strict Clippy обоих режимов прошли. Два ранних сценария: 20 idle + 20 load
+    прогонов (4 CPU workers), 80/80 test cases. Три мутации пойманы и восстановлены.
+    Baseline до правки 10/10 passed: конкретное падение reviewer независимо не воспроизведено.
+    Ссылки 54/0, traceability 16/16/16; metadata/self-test проверяются с реальным PR #125.
     Не входят: изменение production-команд, таймаутов или signal handling, соседние CLI-тесты,
     реальный engine/server, системная сеть или Gate H. Откат: revert test/docs без мутаций ОС.
 

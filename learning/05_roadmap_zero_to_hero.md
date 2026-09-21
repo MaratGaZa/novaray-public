@@ -165,7 +165,7 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 
 ### 1.5. Quality baseline
 
-- [ ] Задача 77 / issue #124: синхронизировать ранний SIGTERM через pre-ready handshake,
+- [x] Задача 77 / issue #124 / PR #125: синхронизировать ранний SIGTERM через pre-ready handshake,
   проверить отмену/cleanup, задержанный старт и повторные прогоны; production CLI не менять.
 - [x] Текущие unit/integration-style тесты проходят.
 - [x] Исправить строгий Clippy (`Default` для `ProcessSupervisor` и `RouteManager`).
