@@ -102,11 +102,12 @@
 | 73 | `[x]` | Обязательный containment после частичного отзыва | Связывает отзыв с обязательным teardown callback и отдельной проверкой результата; сохраняет первичную ошибку без заявления о системной защите. | [#116](https://github.com/MaratGaZa/novaray-public/issues/116) | [#117](https://github.com/MaratGaZa/novaray-public/pull/117) |
 | 74 | `[x]` | Явное recovery при отказе до мутаций | Разделяет отсутствие собственных мутаций и неподтверждённую безопасность сети; требует recovery-оценку без расширения полномочий teardown. | [#118](https://github.com/MaratGaZa/novaray-public/issues/118) | [#119](https://github.com/MaratGaZa/novaray-public/pull/119) |
 | 75 | `[x]` | Безопасная диагностическая запись ошибки отзыва | Сохраняет primary stage/cause и containment в ограниченной Serialize-only записи без секретов и произвольных сообщений. | [#120](https://github.com/MaratGaZa/novaray-public/issues/120) | [#121](https://github.com/MaratGaZa/novaray-public/pull/121) |
+| 76 | `[x]` | Ограниченный буфер диагностики ошибок отзыва | Накапливает только безопасные записи в памяти с FIFO, точным учётом вытеснений и неизменяемым снимком; не пишет файлы и не выполняет recovery. | [#122](https://github.com/MaratGaZa/novaray-public/issues/122) | [#123](https://github.com/MaratGaZa/novaray-public/pull/123) |
 
-После слияния PR #119 задача 74 находится в `main`. Задача 75 / issue #120 / PR #121:
-**Безопасная диагностическая запись ошибки отзыва** — только core-контракт сериализации.
-Локальные критерии выполнены, PR ожидает CI/review; production sink, bundle export
-и системный recovery не доказаны.
+После слияния PR #121 задача 75 находится в `main`. Задача 76 / issue #122 / PR #123:
+**Ограниченный буфер диагностики ошибок отзыва** — только core-хранилище в памяти.
+Локальные критерии выполнены, PR ожидает CI/review; persistent logging backend,
+bundle export и recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
 не входят в текущую задачу. Следующая execution task требует отдельной команды владельца.
@@ -1159,6 +1160,25 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Не входят: logging backend, UI/CLI/IPC consumer, bundle preview/export, generic error formatter,
     native/root/network, реальное recovery или закрытие Gate H. Откат — revert API/docs;
     форматы существующих recovery-журналов и состояние ОС не меняются.
+
+76. [x] Ограниченный буфер диагностики ошибок отзыва — issue #122, PR #123:
+    сохранять только diagnostic-проекции ошибок отзыва в буфере 1–64 записей; новые записи
+    вытесняют старейшую при заполнении, точный u64-счётчик отражает каждую потерю, включая повторы.
+    Зависимости: задача 75, FR-010/NFR-005/NFR-001, roadmap 1.4; ADR-003 остаётся Proposed.
+    Критерии: невалидная вместимость отклоняется до allocation; переполнение счётчика не меняет
+    буфер; clear очищает записи/счётчик и сохраняет вместимость. Заимствованный Serialize-only
+    снимок имеет фиксированные поля и предел compact JSON 33 KiB; нет произвольных строк/секретов.
+    Проверки: все вместимости, FIFO/повторы/точные потери, переполнение, clear/reuse, snapshot,
+    внешний consumer реальных возвращённых ошибок, redaction, compile-fail и мутации; полные
+    default/feature suites, doctests, fmt/Clippy, metadata/self-test, links/traceability и diff.
+    Локальное evidence: 6 новых модульных тестов и 1 интеграционный; основной прогон 386 passed /
+    0 failed / 5 ignored, с экспериментальной feature 402 / 0 / 5; 5 compile-fail doctest.
+    Fmt и строгий Clippy обоих режимов прошли; четыре временные мутации пойманы и восстановлены.
+    Ссылки 54/0, traceability 16/16/16; метаданные и self-test проверяются с фактическим PR #123.
+    CI/review текущего head остаются отдельным допуском.
+    Не входят: файлы/ротация/persistent logging, автоматическая runtime-инструментация, UI/CLI,
+    preview/export bundle, secure erase, подлинность события, native/root/recovery или Gate H.
+    Откат: revert нового API/docs, без миграции persistent-формата или изменения состояния ОС.
 
 ## 7. Зависимости
 

@@ -326,6 +326,14 @@ capability. Production sink, UI/CLI consumer и диагностический b
 добавлении любого исходного enum-варианта. Это защищает JSON и Debug записи от автоматического
 наследования новых payload, сохраняя wire-схему версии 1.
 
+Задача 76 добавляет отдельный [буфер диагностики](../src/revocation_diagnostics.rs): только
+ограниченное in-memory хранение проекций задачи 75. Вместимость 1–64, FIFO, точный счётчик потерь
+с отказом до изменения при u64-overflow; clear логически очищает записи/счётчик без secure erase.
+Заимствованный Serialize-only snapshot не копирует исходные ошибки, context или сообщения и
+не допускает мутацию буфера при использовании. Предел compact JSON — 33 KiB, не общий RAM/RSS
+бюджет. Нет автоматического runtime consumer, файловой ротации или bundle preview/export.
+Запись/её сохранение не удостоверяют событие и не меняют network/recovery state.
+
 ## 12. Readiness criteria
 
 macOS implementation is ready to begin only after ADR-001—004 spikes. Windows implementation is

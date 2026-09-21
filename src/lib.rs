@@ -23,6 +23,7 @@ pub mod parser;
 pub mod platform_contract;
 pub mod platform_helper;
 pub mod recovery_journal;
+pub mod revocation_diagnostics;
 #[cfg(feature = "native-right-experiment")]
 pub mod right_experiment;
 pub mod routing;

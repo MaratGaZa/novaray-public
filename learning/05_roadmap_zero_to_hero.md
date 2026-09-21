@@ -159,6 +159,8 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   - [x] Задача 75 / issue #120 / PR #121: Serialize-only запись ошибки отзыва с primary и containment,
     с приватной проекцией и исчерпывающим выбором кодов; production sink, UI/CLI consumer
     и полный bundle export не реализуются.
+  - [x] Задача 76 / issue #122 / PR #123: ограниченный in-memory буфер безопасных записей, FIFO,
+    точный учёт вытеснений и неизменяемый снимок; без файлового backend и runtime-инструментации.
 - [ ] Запретить secret-bearing types реализовывать небезопасный `Debug`.
 
 ### 1.5. Quality baseline
