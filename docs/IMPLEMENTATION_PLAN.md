@@ -101,10 +101,12 @@
 | 72 | `[x]` | Барьер отзыва старого endpoint перед заменой | Проверяет порядок intent, остановки транспорта, удаления исключения и established-state на recording-адаптере; нового разрешения не выдаёт. | [#114](https://github.com/MaratGaZa/novaray-public/issues/114) | [#115](https://github.com/MaratGaZa/novaray-public/pull/115) |
 | 73 | `[x]` | Обязательный containment после частичного отзыва | Связывает отзыв с обязательным teardown callback и отдельной проверкой результата; сохраняет первичную ошибку без заявления о системной защите. | [#116](https://github.com/MaratGaZa/novaray-public/issues/116) | [#117](https://github.com/MaratGaZa/novaray-public/pull/117) |
 | 74 | `[x]` | Явное recovery при отказе до мутаций | Разделяет отсутствие собственных мутаций и неподтверждённую безопасность сети; требует recovery-оценку без расширения полномочий teardown. | [#118](https://github.com/MaratGaZa/novaray-public/issues/118) | [#119](https://github.com/MaratGaZa/novaray-public/pull/119) |
+| 75 | `[x]` | Безопасная диагностическая запись ошибки отзыва | Сохраняет primary stage/cause и containment в ограниченной Serialize-only записи без секретов и произвольных сообщений. | [#120](https://github.com/MaratGaZa/novaray-public/issues/120) | [#121](https://github.com/MaratGaZa/novaray-public/pull/121) |
 
-После слияния PR #117 задача 73 находится в `main`. Задача 74 / issue #118 / PR #119:
-**Явное recovery при отказе до мутаций** — только core-классификация ошибок E04.
-Локальные критерии выполнены, PR ожидает CI/review; системные recovery, отзыв и teardown не доказаны.
+После слияния PR #119 задача 74 находится в `main`. Задача 75 / issue #120 / PR #121:
+**Безопасная диагностическая запись ошибки отзыва** — только core-контракт сериализации.
+Локальные критерии выполнены, PR ожидает CI/review; production sink, bundle export
+и системный recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
 не входят в текущую задачу. Следующая execution task требует отдельной команды владельца.
@@ -1132,6 +1134,31 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     traceability 16/16/16. CI/review текущего head проверяются отдельно в PR.
     Не входят: реальное recovery/deny repair, native adapter, новые полномочия cleanup, root,
     DNS, системный lock/таймер или закрытие E04/Gate H. Откат — revert API/docs без миграции данных.
+
+75. [x] Безопасная диагностическая запись ошибки отзыва — issue #120, PR #121:
+    добавить diagnostic() с неизменяемой Serialize-only записью версии 1 и фиксированным event.
+    Зависимости: задача 74, FR-010/NFR-005/NFR-001, roadmap 1.4; ADR-003 остаётся Proposed.
+    Критерии: primary stage/cause/flags и containment/detail сохраняются отдельно; только
+    allowlisted поля и snake_case коды, без произвольного Display/source или чувствительных данных.
+    Allowlist закрепляется приватной проекцией и исчерпывающими production-match, не только
+    списками в тестах: новый enum-вариант без выбранного кода должен останавливать компиляцию.
+    Компактный serde_json не более 512 байт на всех текущих сочетаниях; запись не имеет публичных
+    полей/конструктора/Deserialize и не является авторизацией или подтверждением события ОС.
+    Проверки: golden JSON, полная матрица кодов/формы/размера, внешний consumer и redaction,
+    compile-fail, мутации, default/feature suites, fmt/Clippy, metadata/self-test, links, traceability.
+    Локальное evidence: 3 новых модульных теста и 1 интеграционный; 2904 сочетания JSON-контракта.
+    Основной прогон: 379 passed / 0 failed / 5 ignored; с экспериментальной feature: 395 / 0 / 5.
+    Два compile-fail doctest, fmt и строгий Clippy обоих режимов прошли. Две временные мутации
+    пойманы (3 отказа тестов каждая) и восстановлены; ссылки 54/0, traceability 16/16/16.
+    Метаданные и self-test проверяются с фактическим PR #121; CI/review остаются отдельным допуском.
+    Уточнение по review PR #121 (2026-09-21): доменные Serialize заменены приватными wire-проекциями.
+    Все шесть исходных enum преобразуются исчерпывающе без wildcard; мутации нового unit-варианта
+    и шести SocketAddr-вариантов отклонены E0004. Новый compile-fail запрещает прямой Serialize
+    доменной ошибки (проверен обратной мутацией). Повторные прогоны: 379/395 passed, по 5 ignored,
+    3 doctest; JSON версии 1 и статусы сохранены. CI нового head проверяется заново.
+    Не входят: logging backend, UI/CLI/IPC consumer, bundle preview/export, generic error formatter,
+    native/root/network, реальное recovery или закрытие Gate H. Откат — revert API/docs;
+    форматы существующих recovery-журналов и состояние ОС не меняются.
 
 ## 7. Зависимости
 

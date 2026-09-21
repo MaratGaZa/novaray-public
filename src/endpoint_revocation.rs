@@ -4,6 +4,7 @@
 //! reviewed lifecycle locking, authentic observations, durable snapshot/recovery and checks at each
 //! mutation boundary. There is no native adapter, timer, retry or automatic compensation here.
 
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::endpoint_bootstrap::BootstrapBinding;
@@ -196,6 +197,158 @@ pub struct RevocationContainmentError {
     #[source]
     pub primary: EndpointRevocationError,
     pub containment: ContainmentOutcome,
+}
+
+/// Allowlisted diagnostic values, not proof of OS state or authority to perform recovery.
+/// Compact serde_json output for version 1 is at most 512 bytes; pretty/custom formats are excluded.
+/// This record never formats Display/source or carries scope, identities or arbitrary messages.
+/// There is deliberately no deserialization path:
+/// ```compile_fail,E0277
+/// use novaray_core::endpoint_revocation::RevocationDiagnostic;
+/// let _: RevocationDiagnostic = serde_json::from_str("{}").unwrap();
+/// ```
+/// Domain errors must be projected rather than serialized directly:
+/// ```compile_fail,E0277
+/// use novaray_core::endpoint_revocation::EndpointRevocationError;
+/// fn require_serialize<T: serde::Serialize>() {}
+/// require_serialize::<EndpointRevocationError>();
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct RevocationDiagnostic {
+    schema_version: u8,
+    event: &'static str,
+    primary: DiagnosticPrimary,
+    containment: DiagnosticContainment,
+}
+
+// Keep domain payloads outside both Serialize and Debug of the diagnostic record. Exhaustive
+// matches deliberately make additions to domain enums require a reviewed wire-code decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+struct DiagnosticPrimary {
+    stage: &'static str,
+    cause: &'static str,
+    journal_may_exist: bool,
+    mutation_attempted: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "outcome", content = "detail", rename_all = "snake_case")]
+enum DiagnosticContainment {
+    RecoveryRequiredBeforeMutation(&'static str),
+    TeardownObserved,
+    RecoveryUnknown(DiagnosticContainmentFailure),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+struct DiagnosticContainmentFailure {
+    cause: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<&'static str>,
+}
+
+impl RevocationStage {
+    const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::Admission => "admission",
+            Self::InitialInspection => "initial_inspection",
+            Self::RecordIntent => "record_intent",
+            Self::PreStopInspection => "pre_stop_inspection",
+            Self::StopTransport => "stop_transport",
+            Self::TransportInspection => "transport_inspection",
+            Self::RemoveException => "remove_exception",
+            Self::ExceptionInspection => "exception_inspection",
+            Self::ClearEstablished => "clear_established",
+            Self::FinalInspection => "final_inspection",
+            Self::RecordObservation => "record_observation",
+        }
+    }
+}
+
+impl RevocationFailure {
+    const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::AlreadyAttempted => "already_attempted",
+            Self::AdapterFailed => "adapter_failed",
+            Self::ContextChanged => "context_changed",
+            Self::DenyUnproven => "deny_unproven",
+            Self::UnknownState => "unknown_state",
+            Self::RevocationUnproven => "revocation_unproven",
+        }
+    }
+}
+
+impl ContainmentAdapterError {
+    const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::Failed => "failed",
+            Self::TimedOut => "timed_out",
+        }
+    }
+}
+
+impl PreMutationRecovery {
+    const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::DenyUnproven => "deny_unproven",
+            Self::StateUnverified => "state_unverified",
+        }
+    }
+}
+
+impl ContainmentFailure {
+    const fn diagnostic(self) -> DiagnosticContainmentFailure {
+        let (cause, detail) = match self {
+            Self::Teardown(error) => ("teardown", Some(error.diagnostic_code())),
+            Self::Inspection(error) => ("inspection", Some(error.diagnostic_code())),
+            Self::WrongOwner => ("wrong_owner", None),
+            Self::DenyUnproven => ("deny_unproven", None),
+            Self::UnknownState => ("unknown_state", None),
+            Self::ResidualState => ("residual_state", None),
+        };
+        DiagnosticContainmentFailure { cause, detail }
+    }
+}
+
+impl ContainmentOutcome {
+    const fn diagnostic(self) -> DiagnosticContainment {
+        match self {
+            Self::RecoveryRequiredBeforeMutation(reason) => {
+                DiagnosticContainment::RecoveryRequiredBeforeMutation(reason.diagnostic_code())
+            }
+            Self::TeardownObserved => DiagnosticContainment::TeardownObserved,
+            Self::RecoveryUnknown(failure) => {
+                DiagnosticContainment::RecoveryUnknown(failure.diagnostic())
+            }
+        }
+    }
+}
+
+impl RevocationContainmentError {
+    /// Prefer this record over wrapper Display for diagnostic serialization. It copies only typed
+    /// categories/flags; it does not validate whether the supplied error actually occurred.
+    pub fn diagnostic(&self) -> RevocationDiagnostic {
+        let Self {
+            primary,
+            containment,
+        } = *self;
+        let EndpointRevocationError {
+            stage,
+            cause,
+            journal_may_exist,
+            mutation_attempted,
+        } = primary;
+        RevocationDiagnostic {
+            schema_version: 1,
+            event: "endpoint_revocation_failure",
+            primary: DiagnosticPrimary {
+                stage: stage.diagnostic_code(),
+                cause: cause.diagnostic_code(),
+                journal_may_exist,
+                mutation_attempted,
+            },
+            containment: containment.diagnostic(),
+        }
+    }
 }
 
 /// Single-use orchestration. Observed is not a grant, a durable recovery token or packet evidence.
@@ -1103,5 +1256,141 @@ mod tests {
             assert!(source.source().is_none());
             assert_eq!(format!("{error}: {source}").matches(&primary).count(), 1);
         }
+    }
+
+    #[test]
+    fn diagnostic_pre_mutation_json_preserves_primary_and_recovery() {
+        let mut adapter = RecordingAdapter::new();
+        adapter.observations[0].deny = ObservedDeny::Unknown;
+        let error = adapter.executor().execute(&mut adapter).unwrap_err();
+        assert_eq!(
+            serde_json::to_string(&error.diagnostic()).unwrap(),
+            r#"{"schema_version":1,"event":"endpoint_revocation_failure","primary":{"stage":"initial_inspection","cause":"deny_unproven","journal_may_exist":false,"mutation_attempted":false},"containment":{"outcome":"recovery_required_before_mutation","detail":"deny_unproven"}}"#
+        );
+        assert_eq!(adapter.seen, [RevocationStage::InitialInspection]);
+        assert!(adapter.containment_calls.is_empty());
+    }
+
+    #[test]
+    fn diagnostic_secondary_timeout_does_not_replace_primary_json() {
+        let mut adapter = RecordingAdapter::new();
+        adapter.fault = Some(5);
+        adapter.teardown_result = Err(ContainmentAdapterError::TimedOut);
+        let error = adapter.executor().execute(&mut adapter).unwrap_err();
+        assert_eq!(
+            serde_json::to_string(&error.diagnostic()).unwrap(),
+            r#"{"schema_version":1,"event":"endpoint_revocation_failure","primary":{"stage":"remove_exception","cause":"adapter_failed","journal_may_exist":true,"mutation_attempted":true},"containment":{"outcome":"recovery_unknown","detail":{"cause":"teardown","detail":"timed_out"}}}"#
+        );
+        assert_eq!(adapter.containment_calls, ["teardown"]);
+    }
+
+    #[test]
+    fn diagnostic_all_codes_flags_and_shapes_are_allowlisted_and_bounded() {
+        use serde_json::json;
+        let stages = [
+            (RevocationStage::Admission, "admission"),
+            (RevocationStage::InitialInspection, "initial_inspection"),
+            (RevocationStage::RecordIntent, "record_intent"),
+            (RevocationStage::PreStopInspection, "pre_stop_inspection"),
+            (RevocationStage::StopTransport, "stop_transport"),
+            (RevocationStage::TransportInspection, "transport_inspection"),
+            (RevocationStage::RemoveException, "remove_exception"),
+            (RevocationStage::ExceptionInspection, "exception_inspection"),
+            (RevocationStage::ClearEstablished, "clear_established"),
+            (RevocationStage::FinalInspection, "final_inspection"),
+            (RevocationStage::RecordObservation, "record_observation"),
+        ];
+        let causes = [
+            (RevocationFailure::AlreadyAttempted, "already_attempted"),
+            (RevocationFailure::AdapterFailed, "adapter_failed"),
+            (RevocationFailure::ContextChanged, "context_changed"),
+            (RevocationFailure::DenyUnproven, "deny_unproven"),
+            (RevocationFailure::UnknownState, "unknown_state"),
+            (RevocationFailure::RevocationUnproven, "revocation_unproven"),
+        ];
+        let mut outcomes = vec![
+            (
+                ContainmentOutcome::RecoveryRequiredBeforeMutation(
+                    PreMutationRecovery::DenyUnproven,
+                ),
+                json!({"outcome":"recovery_required_before_mutation","detail":"deny_unproven"}),
+            ),
+            (
+                ContainmentOutcome::RecoveryRequiredBeforeMutation(
+                    PreMutationRecovery::StateUnverified,
+                ),
+                json!({"outcome":"recovery_required_before_mutation","detail":"state_unverified"}),
+            ),
+            (
+                ContainmentOutcome::TeardownObserved,
+                json!({"outcome":"teardown_observed"}),
+            ),
+        ];
+        for (failure, code) in [
+            (ContainmentFailure::WrongOwner, "wrong_owner"),
+            (ContainmentFailure::DenyUnproven, "deny_unproven"),
+            (ContainmentFailure::UnknownState, "unknown_state"),
+            (ContainmentFailure::ResidualState, "residual_state"),
+        ] {
+            outcomes.push((
+                ContainmentOutcome::RecoveryUnknown(failure),
+                json!({"outcome":"recovery_unknown","detail":{"cause":code}}),
+            ));
+        }
+        for (fault, fault_code) in [
+            (ContainmentAdapterError::Failed, "failed"),
+            (ContainmentAdapterError::TimedOut, "timed_out"),
+        ] {
+            for (failure, code) in [
+                (ContainmentFailure::Teardown(fault), "teardown"),
+                (ContainmentFailure::Inspection(fault), "inspection"),
+            ] {
+                outcomes.push((ContainmentOutcome::RecoveryUnknown(failure),
+                    json!({"outcome":"recovery_unknown","detail":{"cause":code,"detail":fault_code}})));
+            }
+        }
+        let mut checked = 0;
+        for (stage, stage_code) in stages {
+            for (cause, cause_code) in causes {
+                for journal_may_exist in [false, true] {
+                    for mutation_attempted in [false, true] {
+                        for (containment, expected) in &outcomes {
+                            let error = RevocationContainmentError {
+                                primary: EndpointRevocationError {
+                                    stage,
+                                    cause,
+                                    journal_may_exist,
+                                    mutation_attempted,
+                                },
+                                containment: *containment,
+                            };
+                            let diagnostic = error.diagnostic();
+                            let compact = serde_json::to_string(&diagnostic).unwrap();
+                            assert!(
+                                compact.len() <= 512,
+                                "compact diagnostic exceeded its bound"
+                            );
+                            let value: serde_json::Value = serde_json::from_str(&compact).unwrap();
+                            assert_eq!(
+                                value,
+                                json!({
+                                    "schema_version":1,
+                                    "event":"endpoint_revocation_failure",
+                                    "primary": {
+                                        "stage":stage_code, "cause":cause_code,
+                                        "journal_may_exist":journal_may_exist,
+                                        "mutation_attempted":mutation_attempted,
+                                    },
+                                    "containment":expected,
+                                })
+                            );
+                            assert_eq!(diagnostic, error.diagnostic());
+                            checked += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(checked, 2904);
     }
 }

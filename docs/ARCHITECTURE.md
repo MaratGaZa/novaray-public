@@ -314,6 +314,18 @@ delete unknown user/network state. Residue is assessed with a semantic pre/post 
 - Logs and diagnostics redact credentials and sensitive identifiers.
 - Signing credentials are absent from baseline pull-request CI.
 
+Задача 75 добавляет `RevocationContainmentError::diagnostic()`: неизменяемую Serialize-only
+запись версии 1 с фиксированным event, типизированными primary stage/cause/flags и отдельным
+containment/detail. Только allowlisted коды; произвольные Display/source messages, owner и policy
+не копируются. Компактный `serde_json` ограничен 512 байтами для текущей схемы, что проверяется
+полной матрицей вариантов. Запись не удостоверяет происхождение ошибки и не является recovery
+capability. Production sink, UI/CLI consumer и диагностический bundle остаются нереализованными.
+
+После review PR #121 доменные ошибки не реализуют Serialize: запись хранит приватные code/flag
+проекции. Исчерпывающие production-match без wildcard требуют пересмотреть безопасный код при
+добавлении любого исходного enum-варианта. Это защищает JSON и Debug записи от автоматического
+наследования новых payload, сохраняя wire-схему версии 1.
+
 ## 12. Readiness criteria
 
 macOS implementation is ready to begin only after ADR-001—004 spikes. Windows implementation is
