@@ -1,7 +1,9 @@
 use novaray_core::endpoint_bootstrap::BootstrapBinding;
 use novaray_core::endpoint_revocation::*;
 use novaray_core::kill_switch::{EndpointTransport, KillSwitchAllowlist, TunnelIpFamily};
-use novaray_core::revocation_diagnostics::RevocationDiagnosticBuffer;
+use novaray_core::revocation_diagnostics::{
+    execute_revocation_with_diagnostics, RevocationDiagnosticBuffer,
+};
 use std::num::NonZeroU64;
 
 struct ExternalAdapter {
@@ -305,6 +307,87 @@ fn public_buffer_retains_returned_errors_without_mutating_them_or_the_adapter() 
             snapshots.push(snapshot);
         }
         scope_outputs.push(snapshots);
+    }
+    assert_eq!(scope_outputs[0], scope_outputs[1]);
+}
+
+#[test]
+fn public_recorded_execution_preserves_failure_calls_and_scope_independence() {
+    let mut scope_outputs = Vec::new();
+    for alternate_scope in [false, true] {
+        let mut buffer = RevocationDiagnosticBuffer::new(1).unwrap();
+        let mut outputs = Vec::new();
+        for (index, deny) in [ObservedDeny::Inactive, ObservedDeny::Active]
+            .into_iter()
+            .enumerate()
+        {
+            let mut adapter = ExternalAdapter::new(deny);
+            if alternate_scope {
+                let [session, request, profile, network] =
+                    [9001, 9002, 9003, 9004].map(|v| NonZeroU64::new(v).unwrap());
+                adapter.owner = BootstrapBinding::new(session, request, profile, network);
+                adapter.policy = KillSwitchAllowlist::new(
+                    "198.51.100.18:9443".parse().unwrap(),
+                    EndpointTransport::Udp,
+                    "en9".into(),
+                    "utun21".into(),
+                    TunnelIpFamily::Ipv4,
+                )
+                .unwrap();
+            }
+            let operation = EndpointRevocation::new(adapter.policy.clone(), adapter.owner);
+            let error = execute_revocation_with_diagnostics(operation, &mut adapter, &mut buffer)
+                .unwrap_err();
+            assert_eq!(error.recording_error, None);
+            assert_eq!(
+                adapter.calls,
+                if deny == ObservedDeny::Active {
+                    vec![
+                        "inspect",
+                        "intent",
+                        "inspect",
+                        "stop",
+                        "teardown",
+                        "inspect_cleanup",
+                    ]
+                } else {
+                    vec!["inspect"]
+                }
+            );
+            assert_eq!(buffer.len(), 1);
+            assert_eq!(buffer.dropped_records(), index as u64);
+            let snapshot = serde_json::to_string(&buffer.snapshot()).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&snapshot).unwrap(),
+                serde_json::json!({"schema_version":1,"capacity":1,"dropped_records":index,
+                    "records":[serde_json::to_value(error.revocation.diagnostic()).unwrap()]})
+            );
+            let source = std::error::Error::source(&error).unwrap();
+            assert_eq!(
+                source.downcast_ref::<RevocationContainmentError>(),
+                Some(&error.revocation)
+            );
+            let diagnostic_debug = format!("{:?}", buffer.snapshot());
+            for secret in [
+                "203.0.113.42",
+                "198.51.100.18",
+                "8443",
+                "9443",
+                "en7",
+                "en9",
+                "utun19",
+                "utun21",
+                "9001",
+                "9002",
+                "9003",
+                "9004",
+            ] {
+                assert!(!snapshot.contains(secret));
+                assert!(!diagnostic_debug.contains(secret));
+            }
+            outputs.push(snapshot);
+        }
+        scope_outputs.push(outputs);
     }
     assert_eq!(scope_outputs[0], scope_outputs[1]);
 }

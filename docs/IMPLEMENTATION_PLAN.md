@@ -104,12 +104,12 @@
 | 75 | `[x]` | Безопасная диагностическая запись ошибки отзыва | Сохраняет primary stage/cause и containment в ограниченной Serialize-only записи без секретов и произвольных сообщений. | [#120](https://github.com/MaratGaZa/novaray-public/issues/120) | [#121](https://github.com/MaratGaZa/novaray-public/pull/121) |
 | 76 | `[x]` | Ограниченный буфер диагностики ошибок отзыва | Накапливает только безопасные записи в памяти с FIFO, точным учётом вытеснений и неизменяемым снимком; не пишет файлы и не выполняет recovery. | [#122](https://github.com/MaratGaZa/novaray-public/issues/122) | [#123](https://github.com/MaratGaZa/novaray-public/pull/123) |
 | 77 | `[x]` | Синхронизация теста раннего SIGTERM | Заменяет временное окно наблюдаемым pre-ready handshake mock-движка; проверяет отмену, cleanup и ограниченные диагностируемые ожидания. | [#124](https://github.com/MaratGaZa/novaray-public/issues/124) | [#125](https://github.com/MaratGaZa/novaray-public/pull/125) |
+| 78 | `[x]` | Запись результата отзыва в буфер диагностики | Связывает обязательный containment с одной попыткой безопасной записи; сохраняет первичную ошибку при отказе буфера. | [#126](https://github.com/MaratGaZa/novaray-public/issues/126) | [#127](https://github.com/MaratGaZa/novaray-public/pull/127) |
 
-После слияния PR #123 задача 76 находится в `main`. Задача 77 / issue #124 / PR #125:
-**Синхронизация теста раннего SIGTERM** — только тестовый harness и evidence.
-Локальные критерии выполнены; CI/review текущего head остаются отдельным допуском.
-Production CLI, signal handling и readiness timeout не меняются; persistent logging backend,
-bundle export и recovery не доказаны.
+После слияния PR #125 задача 77 находится в `main`. Задача 78 / issue #126 / PR #127:
+**Запись результата отзыва в буфер диагностики** — opt-in core-композиция, без новых системных
+операций. Локальные критерии выполнены; CI/review текущего head остаются отдельным допуском.
+Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
 не входят в текущую задачу. Следующая execution task требует отдельной команды владельца.
@@ -1198,6 +1198,20 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Ссылки 54/0, traceability 16/16/16; metadata/self-test проверяются с реальным PR #125.
     Не входят: изменение production-команд, таймаутов или signal handling, соседние CLI-тесты,
     реальный engine/server, системная сеть или Gate H. Откат: revert test/docs без мутаций ОС.
+
+78. [x] Запись результата отзыва в буфер диагностики — issue #126, PR #127:
+    связать публичный containment-enforcing execute с одной попыткой diagnostic record после
+    возвращённого отказа. Успех не меняет буфер; error сохраняет revocation и вторичный отказ записи.
+    Зависимости: задачи 73–76, baseline задачи 77; roadmap 1.4, FR-010/NFR-005; Gate H открыт.
+    Критерии: consume-once, порядок containment до записи, исходная ошибка/source не меняются;
+    overflow не мешает containment, не очищает буфер, не вызывает retry или ложный успех.
+    Проверки: success/pre-mutation/post-mutation/containment failure, FIFO/full/overflow,
+    точные callback sequences, external consumer, redaction, мутации, default/feature suites,
+    doctests, fmt/strict Clippy, metadata/self-test, links/traceability и diff.
+    Evidence: 394 default / 410 feature passed, 5 ignored, 7 doctests; четыре мутации пойманы,
+    fmt и strict Clippy в обоих режимах чистые. Это L1/L3 core/recording, не native evidence.
+    Не входят: общий logger, часы/файлы, UI/CLI/IPC, native/root, panic/crash capture,
+    реальное recovery или Gate H. Откат: revert additive API/tests/docs, без persistent migration.
 
 ## 7. Зависимости
 
