@@ -103,10 +103,11 @@
 | 74 | `[x]` | Явное recovery при отказе до мутаций | Разделяет отсутствие собственных мутаций и неподтверждённую безопасность сети; требует recovery-оценку без расширения полномочий teardown. | [#118](https://github.com/MaratGaZa/novaray-public/issues/118) | [#119](https://github.com/MaratGaZa/novaray-public/pull/119) |
 | 75 | `[x]` | Безопасная диагностическая запись ошибки отзыва | Сохраняет primary stage/cause и containment в ограниченной Serialize-only записи без секретов и произвольных сообщений. | [#120](https://github.com/MaratGaZa/novaray-public/issues/120) | [#121](https://github.com/MaratGaZa/novaray-public/pull/121) |
 | 76 | `[x]` | Ограниченный буфер диагностики ошибок отзыва | Накапливает только безопасные записи в памяти с FIFO, точным учётом вытеснений и неизменяемым снимком; не пишет файлы и не выполняет recovery. | [#122](https://github.com/MaratGaZa/novaray-public/issues/122) | [#123](https://github.com/MaratGaZa/novaray-public/pull/123) |
+| 77 | `[ ]` | Синхронизация теста раннего SIGTERM | Заменяет временное окно наблюдаемым pre-ready handshake mock-движка; проверяет отмену, cleanup и ограниченные диагностируемые ожидания. | [#124](https://github.com/MaratGaZa/novaray-public/issues/124) | TBD |
 
-После слияния PR #121 задача 75 находится в `main`. Задача 76 / issue #122 / PR #123:
-**Ограниченный буфер диагностики ошибок отзыва** — только core-хранилище в памяти.
-Локальные критерии выполнены, PR ожидает CI/review; persistent logging backend,
+После слияния PR #123 задача 76 находится в `main`. Задача 77 / issue #124:
+**Синхронизация теста раннего SIGTERM** — только тестовый harness и evidence.
+Production CLI, signal handling и readiness timeout не меняются; persistent logging backend,
 bundle export и recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
@@ -1179,6 +1180,18 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Не входят: файлы/ротация/persistent logging, автоматическая runtime-инструментация, UI/CLI,
     preview/export bundle, secure erase, подлинность события, native/root/recovery или Gate H.
     Откат: revert нового API/docs, без миграции persistent-формата или изменения состояния ОС.
+
+77. [ ] Синхронизация теста раннего SIGTERM — issue #124, PR TBD:
+    заменить двухсекундный поиск runtime-конфига в общем temp-каталоге явным handshake
+    mock-движка, который ещё не готов; сигнал должен проверять именно отмену инициализации.
+    Зависимости: задача 13 (CLI), задача 76 / PR #123, roadmap 1.5; замечание review PR #123.
+    Критерии: success exit, точный runtime-конфиг удалён, mock-процесс завершён, готовность не
+    объявлена; ожидания имеют deadline, early-exit диагностику и RAII cleanup на отказе.
+    Проверки: намеренно задержанный старт дольше прежнего окна; negative wait paths,
+    повторные idle/load прогоны, default/feature suites, doctests, fmt/strict Clippy,
+    metadata/self-test, ссылки, traceability, diff. Частоту flake не выводить из одного прогона.
+    Не входят: изменение production-команд, таймаутов или signal handling, соседние CLI-тесты,
+    реальный engine/server, системная сеть или Gate H. Откат: revert test/docs без мутаций ОС.
 
 ## 7. Зависимости
 

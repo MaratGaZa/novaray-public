@@ -221,9 +221,13 @@ if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-c":
 }
 
 #[cfg(unix)]
-fn create_slow_mock_engine(dir: &Path) -> PathBuf {
-    let py_path = dir.join("slow_mock_engine.py");
-    let script = r#"import sys, socket, time, json, os
+fn create_pre_ready_mock_engine(dir: &Path) -> PathBuf {
+    let py_path = dir.join("pre_ready_mock_engine.py");
+    let script = r#"import sys, time, json, os
+
+if len(sys.argv) >= 4 and sys.argv[1] == "--delay-cli":
+    time.sleep(float(sys.argv[2]))
+    os.execv(sys.argv[3], sys.argv[3:])
 
 if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-test":
     sys.stdout.write("Configuration OK\n")
@@ -234,19 +238,16 @@ if len(sys.argv) >= 3 and sys.argv[1] == "run" and sys.argv[2] == "-c":
     config_path = sys.argv[-1]
     with open(config_path) as f:
         cfg = json.load(f)
-    socks_port = cfg["inbounds"][0]["port"]
+    checkpoint = os.environ["NOVARAY_TEST_CHECKPOINT"]
+    with open(checkpoint + ".tmp", "x") as f:
+        json.dump({"pid": os.getpid(), "config": config_path}, f)
+    os.replace(checkpoint + ".tmp", checkpoint)
 
-    time.sleep(2.0)
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('127.0.0.1', socks_port))
-    s.listen(128)
-    print(f"Xray started on port {socks_port}")
-    sys.stdout.flush()
-
-    for _ in range(120):
-        time.sleep(0.5)
+    # Never bind or announce readiness. Parent cancellation is the only successful path.
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        time.sleep(0.05)
+    sys.exit(90)
 "#;
     let unix_script = format!("#!/usr/bin/env python3\n{}", script);
     std::fs::write(&py_path, unix_script).unwrap();
@@ -920,16 +921,149 @@ fn test_cli_start_port_in_use_fails_fast_with_engine_error_exit_4() {
 #[test]
 #[cfg(unix)]
 fn test_cli_start_sigterm_early_before_ready_stops_cleanly_and_cleans_up() {
+    assert_early_sigterm_cleanup(false);
+}
+
+#[test]
+#[cfg(unix)]
+fn test_cli_start_sigterm_early_after_delayed_exec() {
+    assert_early_sigterm_cleanup(true);
+}
+
+// Own the entire fixture process group, including a preflight child on assertion failure.
+#[cfg(unix)]
+struct EarlyCliGuard(ChildGuard);
+
+#[cfg(unix)]
+impl EarlyCliGuard {
+    fn spawn(command: &mut Command) -> Self {
+        use std::os::unix::process::CommandExt;
+        Self(ChildGuard::new(command.process_group(0).spawn().unwrap()))
+    }
+}
+
+#[cfg(unix)]
+impl Drop for EarlyCliGuard {
+    fn drop(&mut self) {
+        // The child was started as leader of a new group belonging only to this fixture.
+        unsafe { libc::kill(-(self.0.id() as libc::pid_t), libc::SIGKILL) };
+        // ChildGuard then kills/reaps the direct child, even during unwinding.
+    }
+}
+
+#[cfg(unix)]
+fn wait_for_pre_ready_checkpoint(
+    child: &mut ChildGuard,
+    checkpoint: &Path,
+    timeout: std::time::Duration,
+) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if let Some(status) = child
+            .0
+            .as_mut()
+            .unwrap()
+            .try_wait()
+            .map_err(|e| e.to_string())?
+        {
+            return Err(format!("CLI exited before checkpoint: {status}"));
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err("deadline expired waiting for pre-ready checkpoint".into());
+        }
+        match std::fs::metadata(checkpoint) {
+            Ok(metadata) if metadata.is_file() => return Ok(()),
+            Ok(_) => return Err("checkpoint is not a file".into()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("checkpoint inspection failed: {e}")),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn test_cli_pre_ready_wait_reports_exit_and_deadline() {
+    let temp_dir = create_temp_dir();
+    let checkpoint = temp_dir.join("checkpoint.json");
+    let mut exited = EarlyCliGuard::spawn(Command::new("/bin/sh").args(["-c", "exit 7"]));
+    exited
+        .0
+        .wait_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    std::fs::write(&checkpoint, "{}").unwrap();
+    let error = wait_for_pre_ready_checkpoint(
+        &mut exited.0,
+        &checkpoint,
+        std::time::Duration::from_secs(5),
+    )
+    .unwrap_err();
+    assert!(error.contains("CLI exited before checkpoint"), "{error}");
+    assert!(error.contains('7'), "{error}");
+    std::fs::remove_file(&checkpoint).unwrap();
+    let mut stalled = EarlyCliGuard::spawn(Command::new("/bin/sh").args(["-c", "exec sleep 30"]));
+    let error = wait_for_pre_ready_checkpoint(
+        &mut stalled.0,
+        &checkpoint,
+        std::time::Duration::from_millis(50),
+    )
+    .unwrap_err();
+    assert_eq!(error, "deadline expired waiting for pre-ready checkpoint");
+}
+
+#[test]
+#[cfg(unix)]
+fn test_cli_pre_ready_guard_reaps_child_and_removes_temp_on_unwind() {
+    let temp_dir = create_temp_dir();
+    let temp_path = temp_dir.0.clone();
+    let guard = EarlyCliGuard::spawn(Command::new("/bin/sh").args(["-c", "exec sleep 30"]));
+    let pid = guard.0.id();
+    assert_eq!(
+        unsafe { libc::getpgid(pid as libc::pid_t) },
+        pid as libc::pid_t
+    );
+    let result = std::panic::catch_unwind(move || {
+        let _temp_dir = temp_dir;
+        let _guard = guard;
+        panic!("injected assertion failure");
+    });
+    assert!(result.is_err());
+    assert_eq!(unsafe { libc::kill(pid as libc::pid_t, 0) }, -1);
+    assert_eq!(
+        std::io::Error::last_os_error().raw_os_error(),
+        Some(libc::ESRCH)
+    );
+    assert!(!temp_path.exists());
+}
+
+#[cfg(unix)]
+fn assert_early_sigterm_cleanup(delayed_exec: bool) {
     let bin = get_novaray_core_bin();
     let temp_dir = create_temp_dir();
     let (socks_port, http_port) = allocate_test_ports();
 
     let (config_path, settings_path) = create_valid_test_configs(&temp_dir, socks_port, http_port);
-    let mock_bin = create_slow_mock_engine(&temp_dir);
+    let mock_bin = create_pre_ready_mock_engine(&temp_dir);
     let mock_sha256 = sha256_file(&mock_bin);
+    let checkpoint = temp_dir.join("checkpoint.json");
+    let stdout_path = temp_dir.join("stdout.txt");
+    let stderr_path = temp_dir.join("stderr.txt");
+    let diagnostics = || {
+        format!(
+            "stdout={}\nstderr={}",
+            std::fs::read_to_string(&stdout_path).unwrap_or_default(),
+            std::fs::read_to_string(&stderr_path).unwrap_or_default()
+        )
+    };
 
-    // Запускаем CLI сервис с медленным стартом движка (2 сек до бинда)
-    let child = Command::new(&bin)
+    let mut command = if delayed_exec {
+        let mut wrapper = Command::new(&mock_bin);
+        wrapper.args(["--delay-cli", "2.2"]).arg(&bin);
+        wrapper
+    } else {
+        Command::new(&bin)
+    };
+    command
         .args([
             "start",
             "-c",
@@ -943,62 +1077,78 @@ fn test_cli_start_sigterm_early_before_ready_stops_cleanly_and_cleans_up() {
             "--timeout-secs",
             "30",
         ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("CLI процесс должен успешно запуститься");
-
-    let mut guard = ChildGuard::new(child);
-    let cli_pid = guard.id();
-
-    // Даем CLI войти в start_with_options и создать runtime-конфиг, но до готовности движка
-    let mut temp_runtime_configs_before = Vec::new();
-    let find_start = std::time::Instant::now();
-    while find_start.elapsed() < std::time::Duration::from_secs(2) {
-        temp_runtime_configs_before = std::fs::read_dir(std::env::temp_dir())
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                name.starts_with(&format!("novaray_runtime_config_{}_", cli_pid))
-                    && name.ends_with(".json")
-            })
-            .collect();
-        if !temp_runtime_configs_before.is_empty() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        .env("TMPDIR", temp_dir.as_ref())
+        .env("NOVARAY_TEST_CHECKPOINT", &checkpoint)
+        .stdout(std::fs::File::create(&stdout_path).unwrap())
+        .stderr(std::fs::File::create(&stderr_path).unwrap());
+    let started_at = std::time::Instant::now();
+    let mut guard = EarlyCliGuard::spawn(&mut command);
+    let cli_pid = guard.0.id();
+    wait_for_pre_ready_checkpoint(
+        &mut guard.0,
+        &checkpoint,
+        std::time::Duration::from_secs(15),
+    )
+    .unwrap_or_else(|e| panic!("{e}; {}", diagnostics()));
+    if delayed_exec {
+        assert!(started_at.elapsed() >= std::time::Duration::from_secs(2));
     }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Checkpoint {
+        pid: u32,
+        config: PathBuf,
+    }
+    let observed: Checkpoint =
+        serde_json::from_slice(&std::fs::read(&checkpoint).unwrap()).unwrap();
+    assert_ne!(observed.pid, cli_pid);
+    assert!(observed.pid > 1);
+    assert_eq!(observed.config.parent().unwrap(), temp_dir.as_ref());
+    assert!(observed.config.is_file());
+    assert!(observed
+        .config
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .starts_with(&format!("novaray_runtime_config_{cli_pid}_")));
     assert!(
-        !temp_runtime_configs_before.is_empty(),
-        "Файл runtime-конфигурации для CLI PID {} должен появиться на диске до готовности",
-        cli_pid
+        std::net::TcpStream::connect(("127.0.0.1", socks_port)).is_err(),
+        "fixture became ready"
     );
-
-    // Отправляем SIGTERM ДО появления строки готовности
-    unsafe {
-        libc::kill(cli_pid as libc::pid_t, libc::SIGTERM);
-    }
+    assert_eq!(
+        unsafe { libc::kill(cli_pid as libc::pid_t, libc::SIGTERM) },
+        0
+    );
 
     let status = guard
+        .0
         .wait_timeout(std::time::Duration::from_secs(5))
-        .expect("CLI процесс должен завершиться в течение 5 секунд");
-
+        .unwrap_or_else(|e| panic!("CLI shutdown: {e}; {}", diagnostics()));
+    assert!(status.success(), "status={status}; {}", diagnostics());
+    let stdout = std::fs::read_to_string(&stdout_path).unwrap();
     assert!(
-        status.success(),
-        "CLI процесс должен завершиться с кодом 0 после раннего SIGTERM, получен: {:?}",
-        status
+        stdout.contains("SIGTERM во время инициализации"),
+        "{}",
+        diagnostics()
     );
-
-    // Проверяем, что runtime-конфиги удалены после раннего прерывания
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    for entry in temp_runtime_configs_before {
+    assert!(!stdout.contains("успешно запущен"), "{}", diagnostics());
+    assert!(
+        !observed.config.exists(),
+        "runtime config survived CLI exit"
+    );
+    // Observe production cleanup before the guard's fallback group kill can hide a leak.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while unsafe { libc::kill(observed.pid as libc::pid_t, 0) } == 0 {
         assert!(
-            !entry.path().exists(),
-            "Файл runtime-конфигурации {:?} должен быть удален после ранней остановки",
-            entry.path()
+            std::time::Instant::now() < deadline,
+            "mock engine survived CLI exit; {}",
+            diagnostics()
         );
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
-
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    assert_eq!(
+        std::io::Error::last_os_error().raw_os_error(),
+        Some(libc::ESRCH)
+    );
 }
