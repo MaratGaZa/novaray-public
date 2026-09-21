@@ -157,7 +157,8 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 - [ ] Реализовать redaction UUID, keys, tokens, endpoint по policy.
 - [ ] Добавить bounded rotating logs и user-visible diagnostic events.
   - [x] Задача 75 / issue #120 / PR #121: Serialize-only запись ошибки отзыва с primary и containment,
-    без секретов; production sink, UI/CLI consumer и полный bundle export не реализуются.
+    с приватной проекцией и исчерпывающим выбором кодов; production sink, UI/CLI consumer
+    и полный bundle export не реализуются.
 - [ ] Запретить secret-bearing types реализовывать небезопасный `Debug`.
 
 ### 1.5. Quality baseline

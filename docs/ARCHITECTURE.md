@@ -321,6 +321,11 @@ containment/detail. Только allowlisted коды; произвольные 
 полной матрицей вариантов. Запись не удостоверяет происхождение ошибки и не является recovery
 capability. Production sink, UI/CLI consumer и диагностический bundle остаются нереализованными.
 
+После review PR #121 доменные ошибки не реализуют Serialize: запись хранит приватные code/flag
+проекции. Исчерпывающие production-match без wildcard требуют пересмотреть безопасный код при
+добавлении любого исходного enum-варианта. Это защищает JSON и Debug записи от автоматического
+наследования новых payload, сохраняя wire-схему версии 1.
+
 ## 12. Readiness criteria
 
 macOS implementation is ready to begin only after ADR-001—004 spikes. Windows implementation is

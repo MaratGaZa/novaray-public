@@ -90,8 +90,7 @@ pub enum RevocationState {
     Blocked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RevocationStage {
     Admission,
     InitialInspection,
@@ -106,8 +105,7 @@ pub enum RevocationStage {
     RecordObservation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RevocationFailure {
     AlreadyAttempted,
     AdapterFailed,
@@ -117,7 +115,7 @@ pub enum RevocationFailure {
     RevocationUnproven,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("endpoint revocation stopped at {stage:?}: {cause:?}")]
 pub struct EndpointRevocationError {
     pub stage: RevocationStage,
@@ -127,8 +125,7 @@ pub struct EndpointRevocationError {
 }
 
 /// Adapter-reported categories only: synchronous core cannot preempt a blocked callback.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContainmentAdapterError {
     Failed,
     TimedOut,
@@ -164,8 +161,7 @@ pub trait EndpointContainmentAdapter: EndpointRevocationAdapter {
     ) -> Result<ContainmentObservation, ContainmentAdapterError>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(tag = "cause", content = "detail", rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContainmentFailure {
     Teardown(ContainmentAdapterError),
     Inspection(ContainmentAdapterError),
@@ -177,8 +173,7 @@ pub enum ContainmentFailure {
 
 /// Recovery assessment is required even though this attempt has not started network mutations.
 /// This classification never authorizes cleanup of resources with unverified ownership/context.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreMutationRecovery {
     /// Deny was Inactive or Unknown in a matching-scope observation, not proven protection.
     DenyUnproven,
@@ -187,8 +182,7 @@ pub enum PreMutationRecovery {
 }
 
 /// No variant is a protected status, new grant, or authority to clear pending recovery intent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(tag = "outcome", content = "detail", rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContainmentOutcome {
     /// No teardown dispatched. Caller must enter recovery assessment, not ordinary continuation,
     /// reconnect or direct DNS. Actual recovery/deny repair remains a future native responsibility.
@@ -213,23 +207,146 @@ pub struct RevocationContainmentError {
 /// use novaray_core::endpoint_revocation::RevocationDiagnostic;
 /// let _: RevocationDiagnostic = serde_json::from_str("{}").unwrap();
 /// ```
+/// Domain errors must be projected rather than serialized directly:
+/// ```compile_fail,E0277
+/// use novaray_core::endpoint_revocation::EndpointRevocationError;
+/// fn require_serialize<T: serde::Serialize>() {}
+/// require_serialize::<EndpointRevocationError>();
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct RevocationDiagnostic {
     schema_version: u8,
     event: &'static str,
-    primary: EndpointRevocationError,
-    containment: ContainmentOutcome,
+    primary: DiagnosticPrimary,
+    containment: DiagnosticContainment,
+}
+
+// Keep domain payloads outside both Serialize and Debug of the diagnostic record. Exhaustive
+// matches deliberately make additions to domain enums require a reviewed wire-code decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+struct DiagnosticPrimary {
+    stage: &'static str,
+    cause: &'static str,
+    journal_may_exist: bool,
+    mutation_attempted: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "outcome", content = "detail", rename_all = "snake_case")]
+enum DiagnosticContainment {
+    RecoveryRequiredBeforeMutation(&'static str),
+    TeardownObserved,
+    RecoveryUnknown(DiagnosticContainmentFailure),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+struct DiagnosticContainmentFailure {
+    cause: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<&'static str>,
+}
+
+impl RevocationStage {
+    const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::Admission => "admission",
+            Self::InitialInspection => "initial_inspection",
+            Self::RecordIntent => "record_intent",
+            Self::PreStopInspection => "pre_stop_inspection",
+            Self::StopTransport => "stop_transport",
+            Self::TransportInspection => "transport_inspection",
+            Self::RemoveException => "remove_exception",
+            Self::ExceptionInspection => "exception_inspection",
+            Self::ClearEstablished => "clear_established",
+            Self::FinalInspection => "final_inspection",
+            Self::RecordObservation => "record_observation",
+        }
+    }
+}
+
+impl RevocationFailure {
+    const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::AlreadyAttempted => "already_attempted",
+            Self::AdapterFailed => "adapter_failed",
+            Self::ContextChanged => "context_changed",
+            Self::DenyUnproven => "deny_unproven",
+            Self::UnknownState => "unknown_state",
+            Self::RevocationUnproven => "revocation_unproven",
+        }
+    }
+}
+
+impl ContainmentAdapterError {
+    const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::Failed => "failed",
+            Self::TimedOut => "timed_out",
+        }
+    }
+}
+
+impl PreMutationRecovery {
+    const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::DenyUnproven => "deny_unproven",
+            Self::StateUnverified => "state_unverified",
+        }
+    }
+}
+
+impl ContainmentFailure {
+    const fn diagnostic(self) -> DiagnosticContainmentFailure {
+        let (cause, detail) = match self {
+            Self::Teardown(error) => ("teardown", Some(error.diagnostic_code())),
+            Self::Inspection(error) => ("inspection", Some(error.diagnostic_code())),
+            Self::WrongOwner => ("wrong_owner", None),
+            Self::DenyUnproven => ("deny_unproven", None),
+            Self::UnknownState => ("unknown_state", None),
+            Self::ResidualState => ("residual_state", None),
+        };
+        DiagnosticContainmentFailure { cause, detail }
+    }
+}
+
+impl ContainmentOutcome {
+    const fn diagnostic(self) -> DiagnosticContainment {
+        match self {
+            Self::RecoveryRequiredBeforeMutation(reason) => {
+                DiagnosticContainment::RecoveryRequiredBeforeMutation(reason.diagnostic_code())
+            }
+            Self::TeardownObserved => DiagnosticContainment::TeardownObserved,
+            Self::RecoveryUnknown(failure) => {
+                DiagnosticContainment::RecoveryUnknown(failure.diagnostic())
+            }
+        }
+    }
 }
 
 impl RevocationContainmentError {
     /// Prefer this record over wrapper Display for diagnostic serialization. It copies only typed
     /// categories/flags; it does not validate whether the supplied error actually occurred.
     pub fn diagnostic(&self) -> RevocationDiagnostic {
+        let Self {
+            primary,
+            containment,
+        } = *self;
+        let EndpointRevocationError {
+            stage,
+            cause,
+            journal_may_exist,
+            mutation_attempted,
+        } = primary;
         RevocationDiagnostic {
             schema_version: 1,
             event: "endpoint_revocation_failure",
-            primary: self.primary,
-            containment: self.containment,
+            primary: DiagnosticPrimary {
+                stage: stage.diagnostic_code(),
+                cause: cause.diagnostic_code(),
+                journal_may_exist,
+                mutation_attempted,
+            },
+            containment: containment.diagnostic(),
         }
     }
 }

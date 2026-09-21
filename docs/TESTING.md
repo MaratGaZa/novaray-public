@@ -380,6 +380,14 @@ L1-evidence в [endpoint_revocation.rs](../src/endpoint_revocation.rs):
 | Полный набор ключей, кодов и флагов; компактный JSON не более 512 байт | `diagnostic_all_codes_flags_and_shapes_are_allowlisted_and_bounded` | 2904 сочетания текущей схемы; pretty/custom serialization не ограничивается |
 | Внешний consumer и отсутствие owner/policy | `public_diagnostic_records_preserve_categories_without_owner_or_policy` в [integration test](../tests/endpoint_containment.rs) | Синтетические scope; сравниваются одинаковые категории при разных данных |
 | Невозможность десериализовать запись | `cargo test --doc --locked`, compile-fail `RevocationDiagnostic` | Не входной command/recovery token |
+| Запрет прямой сериализации доменной ошибки | `cargo test --doc --locked`, второй compile-fail `RevocationDiagnostic` | Только приватная проекция кодов и флагов |
+
+После review PR #121 allowlist закреплён исчерпывающими production-match для всех шести исходных
+enum, а не полнотой рукописных массивов теста. Проверка мутациями: новый unit-вариант
+`RevocationFailure` даёт E0004; добавление SocketAddr-варианта в каждый исходный enum даёт шесть
+E0004 в преобразованиях. Мутации восстановлены. Диагностическая запись не хранит доменные enum,
+поэтому их payload не наследуется ни JSON, ни Debug. Матрица 2904 проверяет прежнюю wire-схему;
+она сама по себе не обеспечивает полноту будущих вариантов.
 
 Запись не проверяет подлинность события или семантическую согласованность произвольно созданной
 ошибки. Матрица включает все комбинации, а не только достижимые executor-состояния. Существующие

@@ -76,6 +76,9 @@ recording-адаптере порядок отзыва старого endpoint, 
 [integration test](../tests/endpoint_containment.rs) проверяет внешний consumer и независимость
 записи от owner/policy. Это L1-контракт сериализации, не logging sink, preview/export bundle,
 подлинность события или native recovery. `FR-010`/`NFR-005`/`NFR-001` остаются `partial`.
+Follow-up PR #121: приватные wire-проекции и исчерпывающие production-match отделяют запись от
+доменных payload; compile-fail запрещает прямой Serialize доменной ошибки. Добавление новых
+unit/SocketAddr-вариантов проверено мутациями с E0004; исходная JSON-матрица сохранена.
 
 ## Правила обновления
 

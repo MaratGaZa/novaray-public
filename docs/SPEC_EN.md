@@ -532,8 +532,12 @@ Serialize-only record: `schema_version = 1`, `event = endpoint_revocation_failur
 with stage/cause/journal_may_exist/mutation_attempted and `containment` with outcome/detail.
 Enum codes use snake_case; nested containment failures use cause/detail. Values come only
 from typed fields, without traversing/formatting arbitrary sources, messages, scopes, addresses,
-owner/session/correlation IDs, paths or policy payloads. Record fields are private; there is no
-public constructor or Deserialize. Compact `serde_json::to_string` output is bounded to 512 bytes
+owner/session/correlation IDs, paths or policy payloads. The record stores private code/flag
+projections rather than domain errors. Production conversion uses exhaustive matches without
+wildcards for every source enum, so a new variant requires an explicit safe-code decision.
+Domain errors do not implement Serialize; future payloads are not automatically included in
+either diagnostic JSON or diagnostic Debug. Fields are private, with no public constructor or
+Deserialize. Compact `serde_json::to_string` output is bounded to 512 bytes
 for this version; this bound does not apply to pretty/custom serializers. The record conveys error
 values without authenticating their origin or consistency and is not a command, capability or
 recovery token. This is an L1 serialization contract, not a production sink, UI/CLI/IPC consumer or
