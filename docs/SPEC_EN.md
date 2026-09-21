@@ -543,6 +543,20 @@ values without authenticating their origin or consistency and is not a command, 
 recovery token. This is an L1 serialization contract, not a production sink, UI/CLI/IPC consumer or
 complete bundle export. Whole-bundle preview/redaction, runtime diagnostics and Gate H remain open.
 
+`RevocationDiagnosticBuffer` retains only Task 75 revocation-error projections in memory.
+Capacity 1–64 is validated before storage allocation. Records are ordered oldest to newest;
+a full append evicts exactly one oldest record, without coalescing duplicates.
+`dropped_records: u64` counts evictions exactly since the last clear; overflow rejects the append
+before changing records or counters. A buffer failure must not replace the primary network error.
+A borrowed immutable Serialize-only snapshot contains only `schema_version = 1`, `capacity`,
+`dropped_records`, `records`; each record keeps its v1 format. Compact serde_json snapshot output
+is bounded to 33 KiB (64 records of at most 512 bytes plus separators and envelope); pretty/custom
+formats are excluded. Arbitrary messages, identifiers, clocks, policy and paths are not accepted.
+`clear()` removes accessible records and resets the counter without changing capacity; this is
+logical clearing, not secure memory erasure. There is no Deserialize, event attestation or recovery
+authority. This is only L1 in-memory storage: automatic runtime recording, rotating files,
+persistent backend, UI/CLI consumer and bundle preview/export are not implemented; Gate H stays open.
+
 ### FR-011 — Shared core and platform contracts
 
 - The Rust core is the source of truth for policy, profiles, state machine, and engine-neutral diagnostics.

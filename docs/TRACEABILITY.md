@@ -80,6 +80,16 @@ Follow-up PR #121: приватные wire-проекции и исчерпыв�
 доменных payload; compile-fail запрещает прямой Serialize доменной ошибки. Добавление новых
 unit/SocketAddr-вариантов проверено мутациями с E0004; исходная JSON-матрица сохранена.
 
+Дополнение задачи 76: [revocation_diagnostics.rs](../src/revocation_diagnostics.rs) реализует
+ограниченное in-memory хранение типизированных записей, не persistent logging или bundle export.
+`every_capacity_retains_fifo_and_counts_every_eviction` проверяет FIFO и точное число потерь
+для всех вместимостей; `counter_overflow_rejects_append_without_any_state_change` — атомарный отказ;
+`clear_resets_records_and_loss_count_but_preserves_capacity` — очистку и повторное использование.
+Внешний тест `public_buffer_retains_returned_errors_without_mutating_them_or_the_adapter`
+в [endpoint_containment.rs](../tests/endpoint_containment.rs) связывает returned errors и буфер.
+Это L1 evidence, не runtime instrumentation, privacy всего bundle или native recovery;
+`FR-010`/`NFR-005`/`NFR-001` остаются `partial`, Gate H открыт.
+
 ## Правила обновления
 
 1. Нормативные изменения сначала вносятся синхронно в обе SPEC; матрица обновляется в той же задаче.

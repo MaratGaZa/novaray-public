@@ -394,6 +394,26 @@ E0004 в преобразованиях. Мутации восстановлен
 Display/source, порядок отзыва и containment не меняются. Logging sink, UI/CLI consumer, preview,
 bundle export, native recovery и L5/L7 evidence отсутствуют; Gate H остаётся открытым.
 
+### Ограниченное хранение диагностики (задача 76)
+
+L1-evidence в [revocation_diagnostics.rs](../src/revocation_diagnostics.rs):
+
+| Проверка | Тест | Граница |
+|---|---|---|
+| Вместимость 1–64, отказ для 0/65/usize::MAX, точные поля пустого снимка | `capacity_is_validated_and_empty_snapshot_has_exact_fields` | Не общий бюджет RAM/RSS |
+| FIFO и точные потери после каждого append для каждой вместимости | `every_capacity_retains_fifo_and_counts_every_eviction` | Не проверка файловой ротации |
+| Повторы хранятся и учитываются отдельно | `repeated_events_are_not_coalesced_or_silently_lost` | Нет дедупликации |
+| Последнее допустимое увеличение u64; отказ без изменения при overflow | `counter_overflow_rejects_append_without_any_state_change` | Ошибка буфера не заменяет network failure |
+| Очистка записей/счётчика, сохранение вместимости, повторное использование | `clear_resets_records_and_loss_count_but_preserves_capacity` | Логическое удаление, не secure erase |
+| Предел compact JSON 33 KiB на полном буфере; envelope + 64 × 512 + separators | `compact_snapshot_stays_bounded_at_max_capacity_and_counter` | Pretty/custom encoding не ограничивается |
+| Реальные returned errors recording-адаптера, primary/callbacks неизменны, scope не влияет | `public_buffer_retains_returned_errors_without_mutating_them_or_the_adapter` в [integration test](../tests/endpoint_containment.rs) | Нет native caller |
+| Заимствованный snapshot запрещает мутацию, Deserialize отсутствует | Два compile-fail `RevocationDiagnosticSnapshot`, `cargo test --doc --locked` | Не authenticated log/recovery token |
+
+Вход ограничен `RevocationContainmentError::diagnostic()`; старые golden JSON и исчерпывающие
+production-проекции задачи 75 сохраняются. Нет файлов, автоматической инструментации runtime,
+UI/CLI sink, preview/export bundle, timestamps/session IDs или native recovery.
+Полный observability pipeline и Gate H остаются открытыми.
+
 ## 5. Test environments
 
 ### Fast CI
