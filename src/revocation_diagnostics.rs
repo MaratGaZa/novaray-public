@@ -1,5 +1,5 @@
 //! Bounded, opt-in in-memory retention of allowlisted revocation diagnostics.
-//! No runtime instrumentation, persistent logging, event authentication or recovery authority.
+//! Opt-in execution composition; no global runtime instrumentation, persistent logging or authority.
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -7,7 +7,10 @@ use std::fmt;
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::endpoint_revocation::{RevocationContainmentError, RevocationDiagnostic};
+use crate::endpoint_revocation::{
+    EndpointContainmentAdapter, EndpointRevocation, RevocationContainmentError,
+    RevocationDiagnostic,
+};
 
 pub const MAX_REVOCATION_DIAGNOSTIC_RECORDS: usize = 64;
 pub const MAX_REVOCATION_SNAPSHOT_JSON_BYTES: usize = 33 * 1024;
@@ -18,6 +21,47 @@ pub enum RevocationDiagnosticBufferError {
     InvalidCapacity,
     #[error("revocation diagnostic loss counter is exhausted; record was not retained")]
     CounterExhausted,
+}
+
+/// The original failure remains authoritative even if diagnostic retention fails.
+/// Raw domain errors are deliberately not a serialization surface:
+/// ```compile_fail,E0277
+/// use novaray_core::revocation_diagnostics::RecordedRevocationError;
+/// fn serializable<T: serde::Serialize>() {}
+/// serializable::<RecordedRevocationError>();
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("endpoint revocation failed; diagnostic recording error: {recording_error:?}")]
+pub struct RecordedRevocationError {
+    #[source]
+    pub revocation: RevocationContainmentError,
+    /// None means the diagnostic was retained, never that revocation succeeded.
+    pub recording_error: Option<RevocationDiagnosticBufferError>,
+}
+
+/// Consume once, finish mandatory containment, then attempt to retain a returned failure once.
+/// Success does not touch diagnostics. No retry, buffer reset, panic interception or native work.
+/// ```compile_fail,E0382
+/// use novaray_core::endpoint_revocation::{EndpointRevocation, EndpointContainmentAdapter};
+/// use novaray_core::revocation_diagnostics::{execute_revocation_with_diagnostics, RevocationDiagnosticBuffer};
+/// fn retry(operation: EndpointRevocation, adapter: &mut impl EndpointContainmentAdapter,
+///          buffer: &mut RevocationDiagnosticBuffer) {
+///     let _ = execute_revocation_with_diagnostics(operation, adapter, buffer);
+///     let _ = execute_revocation_with_diagnostics(operation, adapter, buffer);
+/// }
+/// ```
+pub fn execute_revocation_with_diagnostics(
+    operation: EndpointRevocation,
+    adapter: &mut impl EndpointContainmentAdapter,
+    buffer: &mut RevocationDiagnosticBuffer,
+) -> Result<(), RecordedRevocationError> {
+    operation.execute(adapter).map_err(|revocation| {
+        let recording_error = buffer.record(&revocation).err();
+        RecordedRevocationError {
+            revocation,
+            recording_error,
+        }
+    })
 }
 
 pub struct RevocationDiagnosticBuffer {
@@ -265,5 +309,252 @@ mod tests {
         }))
         .unwrap();
         assert!(envelope.len() + 64 * 512 + 63 <= MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+    }
+
+    use crate::endpoint_bootstrap::BootstrapBinding;
+    use crate::endpoint_revocation::{
+        ContainmentObservation, EndpointContainmentAdapter, EndpointRevocationAdapter,
+        ObservedDeny, ObservedPresence, RevocationAdapterError, RevocationObservation,
+        RevocationScope,
+    };
+    use crate::kill_switch::{EndpointTransport, KillSwitchAllowlist, TunnelIpFamily};
+    use std::num::NonZeroU64;
+
+    struct RecordingAdapter {
+        calls: Vec<&'static str>,
+        fail_at: Option<usize>,
+        panic_at: Option<usize>,
+        containment_mode: u8,
+        stopped: bool,
+        removed: bool,
+        cleared: bool,
+    }
+
+    impl RecordingAdapter {
+        fn new(fail_at: Option<usize>, containment_mode: u8) -> Self {
+            Self {
+                calls: Vec::new(),
+                fail_at,
+                panic_at: None,
+                containment_mode,
+                stopped: false,
+                removed: false,
+                cleared: false,
+            }
+        }
+
+        fn call(&mut self, name: &'static str) -> Result<(), RevocationAdapterError> {
+            let index = self.calls.len();
+            self.calls.push(name);
+            assert_ne!(self.panic_at, Some(index), "injected adapter panic");
+            if self.fail_at == Some(index) {
+                Err(RevocationAdapterError)
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl EndpointRevocationAdapter for RecordingAdapter {
+        fn inspect(
+            &mut self,
+            scope: &RevocationScope,
+        ) -> Result<RevocationObservation, RevocationAdapterError> {
+            self.call("inspect")?;
+            let presence = |absent| {
+                if absent {
+                    ObservedPresence::Absent
+                } else {
+                    ObservedPresence::Present
+                }
+            };
+            Ok(RevocationObservation {
+                binding: scope.binding(),
+                deny: ObservedDeny::Active,
+                transport: presence(self.stopped),
+                exception: presence(self.removed),
+                established: presence(self.cleared),
+            })
+        }
+        fn record_intent(
+            &mut self,
+            _: &RevocationScope,
+            _: &RevocationObservation,
+        ) -> Result<(), RevocationAdapterError> {
+            self.call("intent")
+        }
+        fn stop_transport(&mut self, _: &RevocationScope) -> Result<(), RevocationAdapterError> {
+            self.stopped = true;
+            self.call("stop")
+        }
+        fn remove_exception(&mut self, _: &RevocationScope) -> Result<(), RevocationAdapterError> {
+            self.removed = true;
+            self.call("remove")
+        }
+        fn clear_established(&mut self, _: &RevocationScope) -> Result<(), RevocationAdapterError> {
+            self.cleared = true;
+            self.call("clear")
+        }
+        fn record_observed_revocation(
+            &mut self,
+            _: &RevocationScope,
+            _: &RevocationObservation,
+        ) -> Result<(), RevocationAdapterError> {
+            self.call("observed")
+        }
+    }
+
+    impl EndpointContainmentAdapter for RecordingAdapter {
+        fn teardown_connection(
+            &mut self,
+            _: &RevocationScope,
+            _: &EndpointRevocationError,
+        ) -> Result<(), ContainmentAdapterError> {
+            self.call("teardown").unwrap();
+            if self.containment_mode == 1 {
+                Err(ContainmentAdapterError::TimedOut)
+            } else {
+                Ok(())
+            }
+        }
+        fn inspect_connection_after_teardown(
+            &mut self,
+            scope: &RevocationScope,
+        ) -> Result<ContainmentObservation, ContainmentAdapterError> {
+            self.call("inspect_cleanup").unwrap();
+            if self.containment_mode == 2 {
+                return Err(ContainmentAdapterError::Failed);
+            }
+            Ok(ContainmentObservation {
+                owner: scope.binding(),
+                deny: ObservedDeny::Active,
+                engine: ObservedPresence::Absent,
+                transport: ObservedPresence::Absent,
+                resources: ObservedPresence::Absent,
+                exceptions: ObservedPresence::Absent,
+                established: ObservedPresence::Absent,
+            })
+        }
+    }
+
+    fn operation() -> EndpointRevocation {
+        let [session, request, profile, network] =
+            [1, 2, 3, 4].map(|v| NonZeroU64::new(v).unwrap());
+        EndpointRevocation::new(
+            KillSwitchAllowlist::new(
+                "203.0.113.42:8443".parse().unwrap(),
+                EndpointTransport::Tcp,
+                "en7".into(),
+                "utun19".into(),
+                TunnelIpFamily::Ipv4,
+            )
+            .unwrap(),
+            BootstrapBinding::new(session, request, profile, network),
+        )
+    }
+
+    #[test]
+    fn recorded_success_leaves_even_exhausted_buffer_unchanged() {
+        for counter in [0, u64::MAX] {
+            let mut buffer = RevocationDiagnosticBuffer::new(1).unwrap();
+            buffer.record(&error(0)).unwrap();
+            buffer.dropped_records = counter;
+            let before = serde_json::to_string(&buffer.snapshot()).unwrap();
+            let mut adapter = RecordingAdapter::new(None, 0);
+            assert_eq!(
+                execute_revocation_with_diagnostics(operation(), &mut adapter, &mut buffer),
+                Ok(())
+            );
+            assert_eq!(
+                adapter.calls,
+                [
+                    "inspect", "intent", "inspect", "stop", "inspect", "remove", "inspect",
+                    "clear", "inspect", "observed"
+                ]
+            );
+            assert_eq!(serde_json::to_string(&buffer.snapshot()).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn recorded_failures_preserve_execute_result_and_final_containment_once() {
+        for fail_at in 0..10 {
+            for mode in 0..3 {
+                let mut baseline = RecordingAdapter::new(Some(fail_at), mode);
+                let expected = operation().execute(&mut baseline).unwrap_err();
+                let mut adapter = RecordingAdapter::new(Some(fail_at), mode);
+                let mut buffer = RevocationDiagnosticBuffer::new(1).unwrap();
+                buffer.record(&error(0)).unwrap();
+                buffer.dropped_records = 17;
+                let actual =
+                    execute_revocation_with_diagnostics(operation(), &mut adapter, &mut buffer)
+                        .unwrap_err();
+                assert_eq!(actual.revocation, expected);
+                assert_eq!(actual.recording_error, None);
+                assert_eq!(adapter.calls, baseline.calls);
+                assert_eq!(buffer.dropped_records(), 18);
+                assert_eq!(buffer.records, VecDeque::from([expected.diagnostic()]));
+                let source = std::error::Error::source(&actual).unwrap();
+                assert_eq!(
+                    source.downcast_ref::<RevocationContainmentError>(),
+                    Some(&expected)
+                );
+                let primary = source.source().unwrap();
+                assert_eq!(
+                    primary.downcast_ref::<EndpointRevocationError>(),
+                    Some(&expected.primary)
+                );
+                assert!(!actual.to_string().contains(&expected.primary.to_string()));
+            }
+        }
+    }
+
+    #[test]
+    fn exhausted_recording_never_preempts_containment_or_replaces_failure() {
+        for fail_at in 0..10 {
+            for mode in 0..3 {
+                let mut baseline = RecordingAdapter::new(Some(fail_at), mode);
+                let expected = operation().execute(&mut baseline).unwrap_err();
+                let mut adapter = RecordingAdapter::new(Some(fail_at), mode);
+                let mut buffer = RevocationDiagnosticBuffer::new(1).unwrap();
+                buffer.record(&error(0)).unwrap();
+                buffer.dropped_records = u64::MAX;
+                let before = serde_json::to_string(&buffer.snapshot()).unwrap();
+                let actual =
+                    execute_revocation_with_diagnostics(operation(), &mut adapter, &mut buffer)
+                        .unwrap_err();
+                assert_eq!(actual.revocation, expected);
+                assert_eq!(
+                    actual.recording_error,
+                    Some(RevocationDiagnosticBufferError::CounterExhausted)
+                );
+                assert_eq!(adapter.calls, baseline.calls);
+                assert_eq!(serde_json::to_string(&buffer.snapshot()).unwrap(), before);
+                assert_eq!(
+                    std::error::Error::source(&actual)
+                        .unwrap()
+                        .downcast_ref::<RevocationContainmentError>(),
+                    Some(&expected)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn adapter_panic_is_not_converted_to_a_recorded_result() {
+        let mut buffer = RevocationDiagnosticBuffer::new(1).unwrap();
+        buffer.record(&error(0)).unwrap();
+        let before = serde_json::to_string(&buffer.snapshot()).unwrap();
+        let mut adapter = RecordingAdapter::new(Some(3), 0);
+        adapter.panic_at = Some(4);
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = execute_revocation_with_diagnostics(operation(), &mut adapter, &mut buffer);
+        }));
+        assert!(panic.is_err());
+        assert_eq!(
+            adapter.calls,
+            ["inspect", "intent", "inspect", "stop", "teardown"]
+        );
+        assert_eq!(serde_json::to_string(&buffer.snapshot()).unwrap(), before);
     }
 }

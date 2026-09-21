@@ -576,8 +576,17 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   не входят в предел. Произвольные сообщения, identifiers, часы, policy и пути не принимаются.
   `clear()` удаляет доступные записи и обнуляет счётчик без смены вместимости; это логическая
   очистка, не secure erase памяти. Нет Deserialize, удостоверения события или recovery authority.
-  Это только L1-хранилище в памяти: автоматическая запись из runtime, файловая ротация, persistent
-  backend, UI/CLI consumer и preview/export bundle не реализуются, Gate H остаётся открытым.
+  Сам буфер — только L1-хранилище; он не подключает автоматическую запись всех runtime-ошибок.
+- Opt-in `execute_revocation_with_diagnostics` должен однократно поглощать операцию и вызывать
+  существующий `EndpointRevocation::execute`, не обходя обязательный containment. Успех не меняет
+  буфер. Каждый возвращённый отказ после завершения execute/containment вызывает ровно одну
+  попытку сохранить diagnostic-проекцию. `RecordedRevocationError` сохраняет исходную ошибку
+  отзыва целиком в `revocation` (и source chain), а отказ буфера отдельно в `recording_error`;
+  `None` означает успешное сохранение, не успех отзыва. Исчерпанный счётчик не блокирует
+  исполнение/containment, не очищает буфер, не вызывает retry и не подменяет network failure.
+  Wire-схемы v1 и redaction не меняются; raw wrapper не сериализуется. Panic/crash/зависший
+  callback не перехватываются. Это только core-композиция с recording-адаптером: реальный
+  network executor, файловая ротация, persistent backend, UI/CLI, bundle export и Gate H открыты.
 
 ### FR-011. Общий core и platform contracts
 

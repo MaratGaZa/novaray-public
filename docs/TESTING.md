@@ -438,6 +438,29 @@ production-проекции задачи 75 сохраняются. Нет фа�
 UI/CLI sink, preview/export bundle, timestamps/session IDs или native recovery.
 Полный observability pipeline и Gate H остаются открытыми.
 
+### Запись результата отзыва (задача 78)
+
+L1/L3 recording evidence в [revocation_diagnostics.rs](../src/revocation_diagnostics.rs):
+
+- `recorded_success_leaves_even_exhausted_buffer_unchanged`: точная успешная callback sequence,
+  полный/исчерпанный буфер не препятствует операции и остаётся побайтово неизменным.
+- `recorded_failures_preserve_execute_result_and_final_containment_once`: отказ на каждом из
+  10 callback-шагов, три исхода containment; результат/source и вызовы совпадают с прямым execute,
+  записывается именно окончательный исход, полный буфер вытесняет одну запись (не две).
+- `exhausted_recording_never_preempts_containment_or_replaces_failure`: та же матрица со счётчиком
+  u64::MAX, первичный результат и callback sequence сохраняются; CounterExhausted отдельно,
+  snapshot побайтово прежний, без retry/clear.
+- `adapter_panic_is_not_converted_to_a_recorded_result`: panic в teardown распространяется наружу,
+  фиктивная завершённая diagnostic-запись не создаётся; crash supervision остаётся внешним.
+- `public_recorded_execution_preserves_failure_calls_and_scope_independence` в
+  [integration test](../tests/endpoint_containment.rs): внешний consumer получает исходную ошибку,
+  snapshot v1 с одной записью, exact losses/callbacks и одинаковый JSON для двух разных scopes.
+- Два compile-fail doctest: operation нельзя использовать повторно, raw wrapper не Serialize.
+
+Это явный opt-in вызов, не автоматическая регистрация всех runtime failures. Нет реального
+network/native adapter, файла/clock, UI/CLI, bundle export или L5/L7 evidence. Успешная запись
+не превращает отказ в успех и не удостоверяет безопасность сети. Gate H остаётся открытым.
+
 ## 5. Test environments
 
 ### Fast CI

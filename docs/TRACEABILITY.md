@@ -90,6 +90,16 @@ unit/SocketAddr-вариантов проверено мутациями с E000
 Это L1 evidence, не runtime instrumentation, privacy всего bundle или native recovery;
 `FR-010`/`NFR-005`/`NFR-001` остаются `partial`, Gate H открыт.
 
+Задача 78 / issue #126 добавляет opt-in core-композицию
+`execute_revocation_with_diagnostics` в [revocation_diagnostics.rs](../src/revocation_diagnostics.rs).
+`recorded_failures_preserve_execute_result_and_final_containment_once` и
+`exhausted_recording_never_preempts_containment_or_replaces_failure` доказывают запись после
+containment без подмены исходной ошибки или остановки safety-пути из-за диагностики.
+`public_recorded_execution_preserves_failure_calls_and_scope_independence` в
+[endpoint_containment.rs](../tests/endpoint_containment.rs) связывает публичные API и snapshot v1.
+Только L1/L3 recording evidence: нет runtime/UI/CLI wiring, persistent logging или native recovery.
+`FR-010`/`NFR-005`/`NFR-001` остаются `partial`, Gate H открыт.
+
 ## Правила обновления
 
 1. Нормативные изменения сначала вносятся синхронно в обе SPEC; матрица обновляется в той же задаче.

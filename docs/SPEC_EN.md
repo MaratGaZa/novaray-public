@@ -554,8 +554,18 @@ is bounded to 33 KiB (64 records of at most 512 bytes plus separators and envelo
 formats are excluded. Arbitrary messages, identifiers, clocks, policy and paths are not accepted.
 `clear()` removes accessible records and resets the counter without changing capacity; this is
 logical clearing, not secure memory erasure. There is no Deserialize, event attestation or recovery
-authority. This is only L1 in-memory storage: automatic runtime recording, rotating files,
-persistent backend, UI/CLI consumer and bundle preview/export are not implemented; Gate H stays open.
+authority. The buffer itself is only L1 storage; it does not wire automatic capture of all runtime errors.
+
+Opt-in `execute_revocation_with_diagnostics` must consume the operation once and call the existing
+`EndpointRevocation::execute`, without bypassing mandatory containment. Success leaves the buffer
+unchanged. Every returned failure triggers exactly one diagnostic-record attempt after execute and
+containment finish. `RecordedRevocationError` preserves the complete original error in `revocation`
+(and the source chain), with a separate `recording_error` for buffer rejection; `None` means retention
+succeeded, not that revocation succeeded. An exhausted counter must not block execution/containment,
+clear the buffer, retry or replace the network failure. Wire v1 and redaction stay unchanged; the raw
+wrapper is not serializable. Panics, crashes and blocked callbacks are not intercepted. This is only
+core composition with a recording adapter: real network executor integration, rotating files,
+persistent backend, UI/CLI, bundle export and Gate H remain open.
 
 ### FR-011 — Shared core and platform contracts
 

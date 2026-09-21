@@ -334,6 +334,14 @@ capability. Production sink, UI/CLI consumer и диагностический b
 бюджет. Нет автоматического runtime consumer, файловой ротации или bundle preview/export.
 Запись/её сохранение не удостоверяют событие и не меняют network/recovery state.
 
+Задача 78 связывает модули в opt-in `execute_revocation_with_diagnostics`: consuming-вызов
+публичного containment-enforcing `EndpointRevocation::execute`, затем одна попытка buffer.record
+только для возвращённой ошибки. `RecordedRevocationError` сохраняет исходный revocation error
+как source, а отказ записи — отдельным `recording_error`. Переполнение диагностики не блокирует
+containment и не разрешает retry/clear; успех не меняет буфер. Raw error не сериализуется,
+безопасные записи/snapshot сохраняют wire v1. Это core orchestration, не подключение к реальному
+network executor, UI/CLI или persistent sink; panic/crash не перехватываются, Gate H открыт.
+
 ## 12. Readiness criteria
 
 macOS implementation is ready to begin only after ADR-001—004 spikes. Windows implementation is
