@@ -1,7 +1,7 @@
 //! Bounded, opt-in in-memory retention of allowlisted revocation diagnostics.
 //! Opt-in execution composition; no global runtime instrumentation, persistent logging or authority.
 
-use std::collections::VecDeque;
+use std::collections::{TryReserveError, VecDeque};
 use std::fmt;
 use std::io::{self, Write};
 
@@ -108,6 +108,8 @@ pub struct RevocationDiagnosticSnapshot<'a> {
 pub enum RevocationPreviewError {
     #[error("revocation diagnostic JSON exceeds the preview size limit")]
     SizeLimitExceeded,
+    #[error("revocation diagnostic preview allocation failed")]
+    AllocationFailed,
     #[error("revocation diagnostic JSON encoding failed")]
     SerializationFailed,
 }
@@ -151,34 +153,55 @@ impl fmt::Debug for RevocationDiagnosticPreview {
 
 impl RevocationDiagnosticSnapshot<'_> {
     /// Encode only this allowlisted snapshot; no caller-supplied payload or serializer.
-    /// Errors expose neither partial output nor raw serializer messages. No external I/O.
+    /// Errors expose neither partial output nor raw serializer/allocator messages. No external I/O.
+    /// Only payload reservation is fallible; allocator abort and other allocations are not caught.
     pub fn encode_json(&self) -> Result<RevocationDiagnosticPreview, RevocationPreviewError> {
         encode_preview(self, MAX_REVOCATION_SNAPSHOT_JSON_BYTES)
     }
 }
 
+type PreviewReservation = fn(&mut Vec<u8>, usize) -> Result<(), TryReserveError>;
+
 struct PreviewWriter {
     bytes: Vec<u8>,
     limit: usize,
-    exceeded: bool,
+    failure: Option<RevocationPreviewError>,
+    reserve: PreviewReservation,
 }
 
 impl PreviewWriter {
     fn new(limit: usize) -> Self {
         Self {
-            bytes: Vec::with_capacity(limit),
-            limit,
-            exceeded: false,
+            bytes: Vec::new(),
+            limit: limit.min(MAX_REVOCATION_SNAPSHOT_JSON_BYTES),
+            failure: None,
+            reserve: Vec::try_reserve_exact,
         }
     }
 }
 
 impl Write for PreviewWriter {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        // Reject the entire chunk before copying; keep rejection latched for later writes.
-        if self.exceeded || bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
-            self.exceeded = true;
-            return Err(io::Error::other("diagnostic preview size limit exceeded"));
+        // Keep the first failure; later writes must neither reserve nor copy.
+        if self.failure.is_some() {
+            return Err(io::ErrorKind::Other.into());
+        }
+        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+            self.failure = Some(RevocationPreviewError::SizeLimitExceeded);
+            return Err(io::ErrorKind::Other.into());
+        }
+        // The capped limit and preceding budget check bound both additions below.
+        let required = self.bytes.len() + bytes.len();
+        if required > self.bytes.capacity() {
+            let target = required
+                .max(self.bytes.capacity().saturating_mul(2))
+                .max(256)
+                .min(self.limit);
+            let additional = target - self.bytes.len();
+            if (self.reserve)(&mut self.bytes, additional).is_err() {
+                self.failure = Some(RevocationPreviewError::AllocationFailed);
+                return Err(io::ErrorKind::OutOfMemory.into());
+            }
         }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
@@ -193,11 +216,19 @@ fn encode_preview(
     value: &impl Serialize,
     limit: usize,
 ) -> Result<RevocationDiagnosticPreview, RevocationPreviewError> {
-    let mut writer = PreviewWriter::new(limit);
-    match serde_json::to_writer(&mut writer, value) {
-        Ok(()) => Ok(RevocationDiagnosticPreview { json: writer.bytes }),
-        Err(_) if writer.exceeded => Err(RevocationPreviewError::SizeLimitExceeded),
-        Err(_) => Err(RevocationPreviewError::SerializationFailed),
+    encode_with_writer(value, PreviewWriter::new(limit))
+}
+
+fn encode_with_writer(
+    value: &impl Serialize,
+    mut writer: PreviewWriter,
+) -> Result<RevocationDiagnosticPreview, RevocationPreviewError> {
+    let result = serde_json::to_writer(&mut writer, value);
+    // A serializer cannot turn a latched writer failure into success by swallowing its error.
+    match (writer.failure, result) {
+        (Some(failure), _) => Err(failure),
+        (None, Ok(())) => Ok(RevocationDiagnosticPreview { json: writer.bytes }),
+        (None, Err(_)) => Err(RevocationPreviewError::SerializationFailed),
     }
 }
 
@@ -440,6 +471,153 @@ mod tests {
             assert_eq!(preview.as_bytes(), expected);
             assert!(serde_json::from_slice::<serde_json::Value>(preview.as_bytes()).is_ok());
         }
+    }
+
+    #[test]
+    fn preview_allocation_starts_empty_and_caps_private_limits() {
+        for limit in [0, 1, MAX_REVOCATION_SNAPSHOT_JSON_BYTES, usize::MAX] {
+            let writer = PreviewWriter::new(limit);
+            assert_eq!(writer.bytes.capacity(), 0);
+            assert_eq!(writer.limit, limit.min(MAX_REVOCATION_SNAPSHOT_JSON_BYTES));
+        }
+        let buffer = RevocationDiagnosticBuffer::new(1).unwrap();
+        let preview = buffer.snapshot().encode_json().unwrap();
+        assert!(preview.json.capacity() < MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+        assert_eq!(
+            encode_preview(&buffer.snapshot(), usize::MAX)
+                .unwrap()
+                .as_bytes(),
+            preview.as_bytes()
+        );
+        let oversized = "x".repeat(MAX_REVOCATION_SNAPSHOT_JSON_BYTES + 1);
+        assert_eq!(
+            encode_preview(&oversized, usize::MAX).unwrap_err(),
+            RevocationPreviewError::SizeLimitExceeded
+        );
+    }
+
+    #[test]
+    fn preview_allocation_grows_geometrically_with_bounded_requests() {
+        fn checked_reserve(bytes: &mut Vec<u8>, additional: usize) -> Result<(), TryReserveError> {
+            let target = bytes.len() + additional;
+            assert!(target <= MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+            assert_eq!(
+                target,
+                bytes
+                    .capacity()
+                    .saturating_mul(2)
+                    .clamp(256, MAX_REVOCATION_SNAPSHOT_JSON_BYTES)
+            );
+            bytes.try_reserve_exact(additional)
+        }
+        let mut writer = PreviewWriter::new(usize::MAX);
+        writer.reserve = checked_reserve;
+        writer.write_all(b"").unwrap();
+        assert_eq!(writer.bytes.capacity(), 0);
+        let mut reservations = 0;
+        for _ in 0..MAX_REVOCATION_SNAPSHOT_JSON_BYTES {
+            let before = writer.bytes.capacity();
+            writer.write_all(b"x").unwrap();
+            reservations += usize::from(writer.bytes.capacity() != before);
+        }
+        assert!(reservations <= 9, "growth must not reserve once per byte");
+        assert_eq!(writer.bytes.len(), MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+        assert!(writer.write_all(b"x").is_err());
+        assert_eq!(
+            writer.failure,
+            Some(RevocationPreviewError::SizeLimitExceeded)
+        );
+    }
+
+    fn reject_reservation(_: &mut Vec<u8>, _: usize) -> Result<(), TryReserveError> {
+        // Deterministic capacity overflow, not an attempt to exhaust the host allocator.
+        Vec::<u8>::new().try_reserve_exact(usize::MAX)
+    }
+
+    fn unexpected_reservation(_: &mut Vec<u8>, _: usize) -> Result<(), TryReserveError> {
+        panic!("reservation must not be attempted")
+    }
+
+    #[test]
+    fn preview_allocation_failure_preserves_chunk_and_latches_first_cause() {
+        for partial in [false, true] {
+            let mut writer = PreviewWriter::new(MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+            if partial {
+                writer.write_all(&[b'x'; 256]).unwrap();
+                // Fill any extra allocator capacity so the next byte requires reserve.
+                writer.bytes.resize(writer.bytes.capacity(), b'x');
+            }
+            let before = writer.bytes.clone();
+            let capacity = writer.bytes.capacity();
+            writer.reserve = reject_reservation;
+            assert!(writer.write_all(b"y").is_err());
+            assert_eq!(
+                writer.failure,
+                Some(RevocationPreviewError::AllocationFailed)
+            );
+            assert_eq!(writer.bytes, before);
+            assert_eq!(writer.bytes.capacity(), capacity);
+            writer.reserve = unexpected_reservation;
+            for chunk in [
+                b"".as_slice(),
+                b"z",
+                &[b'z'; MAX_REVOCATION_SNAPSHOT_JSON_BYTES + 1],
+            ] {
+                assert!(writer.write(chunk).is_err());
+                assert_eq!(
+                    writer.failure,
+                    Some(RevocationPreviewError::AllocationFailed)
+                );
+                assert_eq!(writer.bytes, before);
+            }
+        }
+    }
+
+    #[test]
+    fn preview_size_rejection_precedes_reservation_and_stays_primary() {
+        let mut writer = PreviewWriter::new(1);
+        writer.reserve = unexpected_reservation;
+        assert!(writer.write(b"xx").is_err());
+        assert!(writer.write(b"x").is_err());
+        assert_eq!(
+            writer.failure,
+            Some(RevocationPreviewError::SizeLimitExceeded)
+        );
+        assert_eq!(writer.bytes.capacity(), 0);
+        assert!(writer.bytes.is_empty());
+    }
+
+    #[test]
+    fn preview_encoding_reservation_failures_are_redacted_and_leave_snapshot_unchanged() {
+        fn reject_after_first(
+            bytes: &mut Vec<u8>,
+            additional: usize,
+        ) -> Result<(), TryReserveError> {
+            if bytes.is_empty() {
+                bytes.try_reserve_exact(additional)
+            } else {
+                reject_reservation(bytes, additional)
+            }
+        }
+        let mut buffer = RevocationDiagnosticBuffer::new(64).unwrap();
+        for index in 0..64 {
+            buffer.record(&error(index)).unwrap();
+        }
+        let before = serde_json::to_vec(&buffer.snapshot()).unwrap();
+        for reserve in [reject_reservation as PreviewReservation, reject_after_first] {
+            let mut writer = PreviewWriter::new(MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+            writer.reserve = reserve;
+            let failure = encode_with_writer(&buffer.snapshot(), writer).unwrap_err();
+            assert_eq!(failure, RevocationPreviewError::AllocationFailed);
+            assert_eq!(
+                failure.to_string(),
+                "revocation diagnostic preview allocation failed"
+            );
+            assert_eq!(format!("{failure:?}"), "AllocationFailed");
+            assert!(std::error::Error::source(&failure).is_none());
+            assert_eq!(serde_json::to_vec(&buffer.snapshot()).unwrap(), before);
+        }
+        assert_eq!(buffer.snapshot().encode_json().unwrap().as_bytes(), before);
     }
 
     #[test]

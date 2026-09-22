@@ -486,6 +486,29 @@ L1/L3 evidence в [revocation_diagnostics.rs](../src/revocation_diagnostics.rs) 
 export, UI preview/consent, полной redaction bundle, native evidence или общего RAM/RSS gate.
 Очистка source buffer не отзывает копию; Gate H и requirement statuses остаются открытыми/partial.
 
+### Резервирование памяти preview (задача 80)
+
+Пять L1-тестов в [revocation_diagnostics.rs](../src/revocation_diagnostics.rs):
+
+- `preview_allocation_starts_empty_and_caps_private_limits`: нулевая начальная capacity,
+  небольшой preview без eager reserve 33 KiB, clamp `usize::MAX`, прежний JSON и oversized refusal.
+- `preview_allocation_grows_geometrically_with_bounded_requests`: весь лимит по одному байту,
+  не более девяти reserve, каждый запрос ограничен 33 KiB; пустая порция не аллоцирует.
+- `preview_allocation_failure_preserves_chunk_and_latches_first_cause`: отказ первой/последующей
+  reserve до копирования порции, прежние bytes/capacity, запрет retry даже для пустой порции.
+- `preview_size_rejection_precedes_reservation_and_stays_primary`: слишком большая порция
+  отвергается до reserve, следующий вызов не заменяет первичную категорию.
+- `preview_encoding_reservation_failures_are_redacted_and_leave_snapshot_unchanged`: инъекция
+  до/после частичного JSON через тот же encoder возвращает только AllocationFailed без bytes,
+  сообщения аллокатора или source; исходный буфер неизменен и пригоден для следующего preview.
+
+Инъекция получает настоящий `TryReserveError` через детерминированный capacity overflow
+отдельного пустого Vec, не через нехватку памяти хоста. Прежние v1/unit/integration/doctests
+сохранены. Проверяются запрошенные размеры reserve, не внутреннее округление аллокатора.
+Публичного настраиваемого лимита нет; новый вариант ошибки требует обновить exhaustive match
+внешнего consumer. Это не доказательство обработки allocator abort, всех allocations serializer,
+общего OOM/DoS, total RSS или native/Gate H поведения.
+
 ## 5. Test environments
 
 ### Fast CI

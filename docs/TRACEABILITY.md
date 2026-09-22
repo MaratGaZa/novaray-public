@@ -100,6 +100,16 @@ containment без подмены исходной ошибки или оста�
 Только L1/L3 recording evidence: нет runtime/UI/CLI wiring, persistent logging или native recovery.
 `FR-010`/`NFR-005`/`NFR-001` остаются `partial`, Gate H открыт.
 
+Задача 80 / issue #130 проверяет fallible allocation того же preview:
+`preview_allocation_starts_empty_and_caps_private_limits`,
+`preview_allocation_grows_geometrically_with_bounded_requests`,
+`preview_allocation_failure_preserves_chunk_and_latches_first_cause`,
+`preview_size_rejection_precedes_reservation_and_stays_primary` и
+`preview_encoding_reservation_failures_are_redacted_and_leave_snapshot_unchanged` в
+[revocation_diagnostics.rs](../src/revocation_diagnostics.rs). Это L1-инъекция отказа reserve,
+не исчерпание памяти хоста или защита от allocator abort. FR-010/NFR-005/NFR-001 остаются
+`partial`; нет нового runtime/export/native evidence, Gate H открыт.
+
 Задача 79 / issue #128 добавляет подготовку owned compact JSON-preview через
 `RevocationDiagnosticSnapshot::encode_json()` в [revocation_diagnostics.rs](../src/revocation_diagnostics.rs).
 `preview_matches_v1_for_every_capacity_and_outlives_buffer`,

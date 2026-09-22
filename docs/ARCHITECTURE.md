@@ -351,6 +351,14 @@ Preview переживает clear/drop буфера и может устаре�
 подтверждение пользовательского просмотра/согласия, полный bundle или право на export/recovery.
 Реальный UI/CLI/IPC consumer, filesystem sink и Gate H остаются открытыми.
 
+Задача 80 заменяет eager allocation writer на пустой Vec и постепенный `try_reserve_exact`.
+Проверка размера предшествует reserve, reserve предшествует копированию; запросы capacity растут
+геометрически (начальная цель до 256 байт), но не выше внутреннего clamp 33 KiB. Приватная
+reservation function позволяет детерминированно проверять отказ; публичный API её не принимает.
+Первый отказ размера/резервирования защёлкивается, `AllocationFailed` не содержит allocator error
+или partial bytes. Wire v1 и immutable ownership не меняются. Ограничиваются JSON и запрошенная
+capacity, не округление аллокатора, RSS, другие allocations или аварийное завершение при OOM.
+
 ## 12. Readiness criteria
 
 macOS implementation is ready to begin only after ADR-001—004 spikes. Windows implementation is
