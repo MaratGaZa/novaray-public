@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 use std::fmt;
+use std::io::{self, Write};
 
 use serde::Serialize;
 use thiserror::Error;
@@ -101,6 +102,103 @@ pub struct RevocationDiagnosticSnapshot<'a> {
     capacity: usize,
     dropped_records: u64,
     records: &'a VecDeque<RevocationDiagnostic>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum RevocationPreviewError {
+    #[error("revocation diagnostic JSON exceeds the preview size limit")]
+    SizeLimitExceeded,
+    #[error("revocation diagnostic JSON encoding failed")]
+    SerializationFailed,
+}
+
+/// Owned compact JSON, not a live view or permission to export diagnostics.
+/// Buffer clear/drop does not revoke this copy or securely erase its bytes.
+/// External bytes cannot construct a preview:
+/// ```compile_fail,E0277
+/// use novaray_core::revocation_diagnostics::RevocationDiagnosticPreview;
+/// let _: RevocationDiagnosticPreview = serde_json::from_str("{}").unwrap();
+/// ```
+/// There is no public raw-byte constructor:
+/// ```compile_fail,E0451
+/// use novaray_core::revocation_diagnostics::RevocationDiagnosticPreview;
+/// let _ = RevocationDiagnosticPreview { json: Vec::new() };
+/// ```
+/// The bytes cannot be changed through the public API:
+/// ```compile_fail,E0594
+/// use novaray_core::revocation_diagnostics::RevocationDiagnosticBuffer;
+/// let buffer = RevocationDiagnosticBuffer::new(1).unwrap();
+/// let preview = buffer.snapshot().encode_json().unwrap();
+/// preview.as_bytes()[0] = b' ';
+/// ```
+pub struct RevocationDiagnosticPreview {
+    json: Vec<u8>,
+}
+
+impl RevocationDiagnosticPreview {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.json
+    }
+}
+
+impl fmt::Debug for RevocationDiagnosticPreview {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RevocationDiagnosticPreview")
+            .field("byte_len", &self.json.len())
+            .finish()
+    }
+}
+
+impl RevocationDiagnosticSnapshot<'_> {
+    /// Encode only this allowlisted snapshot; no caller-supplied payload or serializer.
+    /// Errors expose neither partial output nor raw serializer messages. No external I/O.
+    pub fn encode_json(&self) -> Result<RevocationDiagnosticPreview, RevocationPreviewError> {
+        encode_preview(self, MAX_REVOCATION_SNAPSHOT_JSON_BYTES)
+    }
+}
+
+struct PreviewWriter {
+    bytes: Vec<u8>,
+    limit: usize,
+    exceeded: bool,
+}
+
+impl PreviewWriter {
+    fn new(limit: usize) -> Self {
+        Self {
+            bytes: Vec::with_capacity(limit),
+            limit,
+            exceeded: false,
+        }
+    }
+}
+
+impl Write for PreviewWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        // Reject the entire chunk before copying; keep rejection latched for later writes.
+        if self.exceeded || bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+            self.exceeded = true;
+            return Err(io::Error::other("diagnostic preview size limit exceeded"));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn encode_preview(
+    value: &impl Serialize,
+    limit: usize,
+) -> Result<RevocationDiagnosticPreview, RevocationPreviewError> {
+    let mut writer = PreviewWriter::new(limit);
+    match serde_json::to_writer(&mut writer, value) {
+        Ok(()) => Ok(RevocationDiagnosticPreview { json: writer.bytes }),
+        Err(_) if writer.exceeded => Err(RevocationPreviewError::SizeLimitExceeded),
+        Err(_) => Err(RevocationPreviewError::SerializationFailed),
+    }
 }
 
 impl RevocationDiagnosticBuffer {
@@ -309,6 +407,128 @@ mod tests {
         }))
         .unwrap();
         assert!(envelope.len() + 64 * 512 + 63 <= MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+    }
+
+    #[test]
+    fn preview_matches_v1_for_every_capacity_and_outlives_buffer() {
+        for capacity in 1..=MAX_REVOCATION_DIAGNOSTIC_RECORDS {
+            let mut buffer = RevocationDiagnosticBuffer::new(capacity).unwrap();
+            let empty = buffer.snapshot().encode_json().unwrap();
+            assert_eq!(
+                empty.as_bytes(),
+                serde_json::to_vec(&buffer.snapshot()).unwrap()
+            );
+            for index in 0..(capacity * 2 + 3) {
+                buffer.record(&error(index)).unwrap();
+            }
+            buffer.dropped_records = u64::MAX;
+            let expected = serde_json::to_vec(&buffer.snapshot()).unwrap();
+            let preview = buffer.snapshot().encode_json().unwrap();
+            assert_eq!(preview.as_bytes(), expected);
+            assert!(preview.as_bytes().len() <= MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+            assert_eq!(
+                format!("{preview:?}"),
+                format!(
+                    "RevocationDiagnosticPreview {{ byte_len: {} }}",
+                    expected.len()
+                )
+            );
+            assert_eq!(serde_json::to_vec(&buffer.snapshot()).unwrap(), expected);
+            buffer.clear();
+            buffer.record(&error(90)).unwrap();
+            drop(buffer);
+            assert_eq!(preview.as_bytes(), expected);
+            assert!(serde_json::from_slice::<serde_json::Value>(preview.as_bytes()).is_ok());
+        }
+    }
+
+    #[test]
+    fn preview_writer_checks_before_copy_and_latches_overflow() {
+        let mut exact = PreviewWriter::new(4);
+        exact.write_all(b"1234").unwrap();
+        assert_eq!(exact.write(b"").unwrap(), 0);
+        assert!(exact.write(b"5").is_err());
+        assert_eq!(exact.bytes, b"1234");
+
+        let mut partial = PreviewWriter::new(4);
+        partial.write_all(b"1").unwrap();
+        assert!(partial.write(b"2345").is_err());
+        assert_eq!(partial.bytes, b"1");
+        assert!(partial.write(b"2").is_err());
+        assert_eq!(partial.bytes, b"1");
+
+        let mut zero = PreviewWriter::new(0);
+        assert_eq!(zero.write(b"").unwrap(), 0);
+        assert!(zero.write(b"x").is_err());
+        assert!(zero.bytes.is_empty());
+    }
+
+    #[test]
+    fn preview_exact_limit_succeeds_and_smaller_limits_preserve_buffer() {
+        for capacity in [1, MAX_REVOCATION_DIAGNOSTIC_RECORDS] {
+            let mut buffer = RevocationDiagnosticBuffer::new(capacity).unwrap();
+            for index in 0..(capacity + 3) {
+                buffer.record(&error(index)).unwrap();
+            }
+            let snapshot = buffer.snapshot();
+            let expected = serde_json::to_vec(&snapshot).unwrap();
+            for limit in [0, 1, expected.len() - 1] {
+                assert_eq!(
+                    encode_preview(&snapshot, limit).unwrap_err(),
+                    RevocationPreviewError::SizeLimitExceeded
+                );
+                assert_eq!(serde_json::to_vec(&buffer.snapshot()).unwrap(), expected);
+            }
+            for limit in [expected.len(), expected.len() + 1] {
+                assert_eq!(
+                    encode_preview(&snapshot, limit).unwrap().as_bytes(),
+                    expected
+                );
+                assert_eq!(serde_json::to_vec(&buffer.snapshot()).unwrap(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn preview_public_encoder_rejects_oversized_internal_snapshot() {
+        // Deliberately exceed the buffer contract to guard future schema/storage growth.
+        let records = VecDeque::from(vec![
+            error(1).diagnostic();
+            MAX_REVOCATION_DIAGNOSTIC_RECORDS * 4
+        ]);
+        let snapshot = RevocationDiagnosticSnapshot {
+            schema_version: 1,
+            capacity: records.len(),
+            dropped_records: 0,
+            records: &records,
+        };
+        assert!(serde_json::to_vec(&snapshot).unwrap().len() > MAX_REVOCATION_SNAPSHOT_JSON_BYTES);
+        assert_eq!(
+            snapshot.encode_json().unwrap_err(),
+            RevocationPreviewError::SizeLimitExceeded
+        );
+    }
+
+    #[test]
+    fn preview_serializer_failure_returns_only_a_category_not_partial_output() {
+        struct RejectAfterElement;
+        impl Serialize for RejectAfterElement {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                use serde::ser::{Error, SerializeSeq};
+                let mut seq = serializer.serialize_seq(Some(2))?;
+                seq.serialize_element("PRIVATE-PARTIAL-DATA")?;
+                Err(S::Error::custom("PRIVATE-SERIALIZER-ERROR"))
+            }
+        }
+        let error =
+            encode_preview(&RejectAfterElement, MAX_REVOCATION_SNAPSHOT_JSON_BYTES).unwrap_err();
+        assert_eq!(error, RevocationPreviewError::SerializationFailed);
+        assert_eq!(
+            error.to_string(),
+            "revocation diagnostic JSON encoding failed"
+        );
+        assert_eq!(format!("{error:?}"), "SerializationFailed");
+        assert!(std::error::Error::source(&error).is_none());
     }
 
     use crate::endpoint_bootstrap::BootstrapBinding;

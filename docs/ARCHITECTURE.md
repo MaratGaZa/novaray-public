@@ -342,6 +342,15 @@ containment и не разрешает retry/clear; успех не меняет
 безопасные записи/snapshot сохраняют wire v1. Это core orchestration, не подключение к реальному
 network executor, UI/CLI или persistent sink; panic/crash не перехватываются, Gate H открыт.
 
+Задача 79 добавляет `RevocationDiagnosticSnapshot::encode_json()` в том же модуле.
+Приватный writer реализует `std::io::Write` только над памятью: проверяет 33 KiB до копирования
+порции, не открывает файлов и не принимает внешние sinks. Возвращается собственный immutable
+`RevocationDiagnosticPreview`, а не ссылка на изменяемый буфер; as_bytes выдаёт только `&[u8]`,
+Debug — длину. При отказе нет partial output или raw serializer error. Compact wire v1 сохранён.
+Preview переживает clear/drop буфера и может устареть; это не live view, secure erase,
+подтверждение пользовательского просмотра/согласия, полный bundle или право на export/recovery.
+Реальный UI/CLI/IPC consumer, filesystem sink и Gate H остаются открытыми.
+
 ## 12. Readiness criteria
 
 macOS implementation is ready to begin only after ADR-001—004 spikes. Windows implementation is

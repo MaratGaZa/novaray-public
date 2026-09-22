@@ -100,6 +100,16 @@ containment без подмены исходной ошибки или оста�
 Только L1/L3 recording evidence: нет runtime/UI/CLI wiring, persistent logging или native recovery.
 `FR-010`/`NFR-005`/`NFR-001` остаются `partial`, Gate H открыт.
 
+Задача 79 / issue #128 добавляет подготовку owned compact JSON-preview через
+`RevocationDiagnosticSnapshot::encode_json()` в [revocation_diagnostics.rs](../src/revocation_diagnostics.rs).
+`preview_matches_v1_for_every_capacity_and_outlives_buffer`,
+`preview_exact_limit_succeeds_and_smaller_limits_preserve_buffer`,
+`preview_public_encoder_rejects_oversized_internal_snapshot` и
+`public_preview_owns_scope_independent_v1_bytes_without_adapter_calls` в
+[endpoint_containment.rs](../tests/endpoint_containment.rs) проверяют v1, границу размера,
+отказы и отделение lifetime от source buffer. Это только L1/L3 encoder/recording evidence,
+не UI/consent, полный bundle export или native recovery; FR-010/NFR-005/NFR-001 остаются partial.
+
 ## Правила обновления
 
 1. Нормативные изменения сначала вносятся синхронно в обе SPEC; матрица обновляется в той же задаче.

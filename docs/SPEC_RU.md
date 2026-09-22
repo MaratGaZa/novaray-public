@@ -588,6 +588,20 @@ macOS UI следует ADR-001. Для Windows рекомендуется WinUI
   callback не перехватываются. Это только core-композиция с recording-адаптером: реальный
   network executor, файловая ротация, persistent backend, UI/CLI, bundle export и Gate H открыты.
 
+- `RevocationDiagnosticSnapshot::encode_json()` подготавливает собственный неизменяемый
+  `RevocationDiagnosticPreview` с compact JSON снимка v1. Результат побайтово совпадает с прежней
+  compact-сериализацией; FIFO, повторы и счётчик потерь сохраняются. Приватный writer в памяти
+  проверяет предел `MAX_REVOCATION_SNAPSHOT_JSON_BYTES` (33 KiB) до добавления каждой порции;
+  превышение даёт `SizeLimitExceeded`, другой отказ сериализации — `SerializationFailed`.
+  Ошибка не содержит исходного текста serializer или данных; частичные байты не возвращаются.
+  Успех и отказ не меняют буфер. Preview доступен только как `&[u8]`, без публичного конструктора,
+  Deserialize или mutable access; Debug показывает только длину. Он остаётся прежним после
+  изменения/clear/drop буфера: это копия данных, не live view, разрешение на export или recovery.
+  Очистка буфера не отзывает выданную копию и не является secure erase. Предел относится к JSON,
+  не общему RAM/RSS; panic/OOM/crash не перехватываются. Произвольные serializers/payloads,
+  файлы/stdout, UI/CLI/IPC, согласие пользователя и preview/redaction полного bundle не входят
+  в этот core API; FR-010/NFR-005 остаются partial, Gate H открыт.
+
 ### FR-011. Общий core и platform contracts
 
 - Rust core является источником истины для policy, profiles, state machine и engine-neutral diagnostics.

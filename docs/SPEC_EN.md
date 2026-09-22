@@ -567,6 +567,20 @@ wrapper is not serializable. Panics, crashes and blocked callbacks are not inter
 core composition with a recording adapter: real network executor integration, rotating files,
 persistent backend, UI/CLI, bundle export and Gate H remain open.
 
+`RevocationDiagnosticSnapshot::encode_json()` prepares an owned immutable
+`RevocationDiagnosticPreview` containing compact snapshot JSON v1. Its bytes match the existing
+compact serialization, preserving FIFO, duplicates and loss accounting. A private in-memory writer
+checks `MAX_REVOCATION_SNAPSHOT_JSON_BYTES` (33 KiB) before appending each chunk; overflow returns
+`SizeLimitExceeded`, other serialization failures return `SerializationFailed`. Errors contain no
+raw serializer messages or data; partial bytes are never returned. Success and failure leave the
+buffer unchanged. The preview exposes only `&[u8]`, with no public constructor, Deserialize or
+mutable access; Debug reports only length. It remains unchanged after buffer mutation/clear/drop:
+copied data, not a live view, export permission or recovery authority. Clearing the buffer cannot
+revoke an issued copy and is not secure erase. The bound covers JSON, not total RAM/RSS;
+panic/OOM/crash are not intercepted. Arbitrary serializers/payloads, files/stdout, UI/CLI/IPC,
+user consent and whole-bundle preview/redaction are outside this core API; FR-010/NFR-005 remain
+partial and Gate H remains open.
+
 ### FR-011 — Shared core and platform contracts
 
 - The Rust core is the source of truth for policy, profiles, state machine, and engine-neutral diagnostics.
