@@ -391,3 +391,43 @@ fn public_recorded_execution_preserves_failure_calls_and_scope_independence() {
     }
     assert_eq!(scope_outputs[0], scope_outputs[1]);
 }
+
+#[test]
+fn public_preview_owns_scope_independent_v1_bytes_without_adapter_calls() {
+    let mut previews = Vec::new();
+    for alternate_scope in [false, true] {
+        let mut adapter = ExternalAdapter::new(ObservedDeny::Active);
+        if alternate_scope {
+            let [session, request, profile, network] =
+                [9001, 9002, 9003, 9004].map(|v| NonZeroU64::new(v).unwrap());
+            adapter.owner = BootstrapBinding::new(session, request, profile, network);
+            adapter.policy = KillSwitchAllowlist::new(
+                "198.51.100.18:9443".parse().unwrap(),
+                EndpointTransport::Udp,
+                "en9".into(),
+                "utun21".into(),
+                TunnelIpFamily::Ipv4,
+            )
+            .unwrap();
+        }
+        let operation = EndpointRevocation::new(adapter.policy.clone(), adapter.owner);
+        let mut buffer = RevocationDiagnosticBuffer::new(1).unwrap();
+        let error =
+            execute_revocation_with_diagnostics(operation, &mut adapter, &mut buffer).unwrap_err();
+        buffer.record(&error.revocation).unwrap();
+        let calls = adapter.calls.clone();
+        let expected = serde_json::to_vec(&buffer.snapshot()).unwrap();
+        let preview = buffer.snapshot().encode_json().unwrap();
+        assert_eq!(preview.as_bytes(), expected);
+        assert_eq!(buffer.len(), 1);
+        assert_eq!(buffer.dropped_records(), 1);
+        assert_eq!(adapter.calls, calls);
+        buffer.clear();
+        drop(buffer);
+        drop(adapter);
+        assert_eq!(preview.as_bytes(), expected);
+        previews.push(preview);
+    }
+    assert_eq!(previews[0].as_bytes(), previews[1].as_bytes());
+    assert_eq!(format!("{:?}", previews[0]), format!("{:?}", previews[1]));
+}

@@ -461,6 +461,31 @@ L1/L3 recording evidence в [revocation_diagnostics.rs](../src/revocation_diagno
 network/native adapter, файла/clock, UI/CLI, bundle export или L5/L7 evidence. Успешная запись
 не превращает отказ в успех и не удостоверяет безопасность сети. Gate H остаётся открытым.
 
+### Ограниченное кодирование preview (задача 79)
+
+L1/L3 evidence в [revocation_diagnostics.rs](../src/revocation_diagnostics.rs) и
+[external-consumer test](../tests/endpoint_containment.rs):
+
+- `preview_matches_v1_for_every_capacity_and_outlives_buffer`: все 64 вместимости,
+  пустой/переполненный FIFO, u64::MAX, побайтовое совпадение со старым compact JSON,
+  неизменность буфера, Debug только с длиной и жизнь preview после record/clear/drop.
+- `preview_writer_checks_before_copy_and_latches_overflow`: exact limit, one-over,
+  отказ до копирования всей порции, отсутствие возобновления после превышения.
+- `preview_exact_limit_succeeds_and_smaller_limits_preserve_buffer`: ошибка encoder при
+  уменьшенном тестовом лимите, точный предел допускается; исходный снимок не меняется.
+- `preview_public_encoder_rejects_oversized_internal_snapshot`: заведомо oversized внутренний
+  fixture (недостижим через публичный buffer) проверяет production-лимит именно encode_json,
+  а не только helper writer. Это защита от будущего роста схемы/хранилища.
+- `preview_serializer_failure_returns_only_a_category_not_partial_output`: private serializer
+  пишет часть данных и отказывает; caller получает только SerializationFailed без source/payload.
+- `public_preview_owns_scope_independent_v1_bytes_without_adapter_calls`: настоящий returned
+  error recording-адаптера, два разных scope, независимые одинаковые bytes, без новых callback.
+- Три compile-fail doctest: Deserialize, прямое создание из bytes и мутация через as_bytes запрещены.
+
+Приватные synthetic serializers и уменьшенные лимиты не являются публичным API. Нет файлового
+export, UI preview/consent, полной redaction bundle, native evidence или общего RAM/RSS gate.
+Очистка source buffer не отзывает копию; Gate H и requirement statuses остаются открытыми/partial.
+
 ## 5. Test environments
 
 ### Fast CI
