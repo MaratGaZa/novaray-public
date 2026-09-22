@@ -106,11 +106,12 @@
 | 77 | `[x]` | Синхронизация теста раннего SIGTERM | Заменяет временное окно наблюдаемым pre-ready handshake mock-движка; проверяет отмену, cleanup и ограниченные диагностируемые ожидания. | [#124](https://github.com/MaratGaZa/novaray-public/issues/124) | [#125](https://github.com/MaratGaZa/novaray-public/pull/125) |
 | 78 | `[x]` | Запись результата отзыва в буфер диагностики | Связывает обязательный containment с одной попыткой безопасной записи; сохраняет первичную ошибку при отказе буфера. | [#126](https://github.com/MaratGaZa/novaray-public/issues/126) | [#127](https://github.com/MaratGaZa/novaray-public/pull/127) |
 | 79 | `[x]` | Ограниченный JSON-preview диагностики в памяти | Готовит неизменяемые байты снимка v1 с проверкой лимита до записи и без частичного результата при отказе. | [#128](https://github.com/MaratGaZa/novaray-public/issues/128) | [#129](https://github.com/MaratGaZa/novaray-public/pull/129) |
+| 80 | `[ ]` | Отказоустойчивое выделение памяти JSON-preview | Резервирует payload постепенно и fallible, сохраняет первый отказ без частичных байтов; не гарантирует защиту всего процесса от OOM. | [#130](https://github.com/MaratGaZa/novaray-public/issues/130) | TBD |
 
-После слияния PR #127 задача 78 находится в `main`. Задача 79 / issue #128 / PR #129
-реализована и проверена локально: **Ограниченный JSON-preview диагностики в памяти**.
-Это только подготовка данных для будущего потребителя, без файлового sink, UI или системных
-операций; CI и независимое review PR остаются отдельными проверками перед merge.
+После слияния PR #129 задача 79 находится в `main`. Следующая задача 80 / issue #130:
+**Отказоустойчивое выделение памяти JSON-preview** — только поведение in-memory encoder,
+без файлового sink, UI или системных операций. CI и независимое review остаются отдельными
+проверками перед merge.
 Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
@@ -1231,6 +1232,17 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     копирование до проверки и публичное поле. Это L1/L3, не системное evidence.
     Не входят: UI/CLI/IPC, файлы/stdout, полный bundle, согласие на экспорт, native/root/recovery.
     Откат: revert additive API/tests/docs, без persistent migration.
+
+80. [ ] Отказоустойчивое выделение памяти JSON-preview — issue #130, PR TBD:
+    убрать eager allocation предела; резервировать payload постепенно через fallible reserve.
+    Зависимости: задачи 75–79, roadmap 1.4/1.5, FR-010/NFR-005/NFR-001 остаются partial.
+    Критерии: clamp внутреннего лимита до арифметики, bounded geometric reserve до копирования,
+    типизированный AllocationFailed, первый отказ защёлкнут, без retry/partial output.
+    Проверки: пустой/полный снимок, usize::MAX, exact-limit/one-over, injected reserve failure
+    до/после частичного output, прежние v1/integration/doctests, мутации, default/feature,
+    fmt/Clippy, metadata/self-test, links/traceability/mirrors и diff.
+    Не входят: configurable public limit, глобальная OOM/DoS-защита, abort аллокатора,
+    файловый/UI/CLI export, native/root или Gate H. Откат: revert encoder/tests/docs без миграции.
 
 ## 7. Зависимости
 

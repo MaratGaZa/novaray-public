@@ -571,12 +571,19 @@ persistent backend, UI/CLI, bundle export and Gate H remain open.
 `RevocationDiagnosticPreview` containing compact snapshot JSON v1. Its bytes match the existing
 compact serialization, preserving FIFO, duplicates and loss accounting. A private in-memory writer
 checks `MAX_REVOCATION_SNAPSHOT_JSON_BYTES` (33 KiB) before appending each chunk; overflow returns
-`SizeLimitExceeded`, other serialization failures return `SerializationFailed`. Errors contain no
-raw serializer messages or data; partial bytes are never returned. Success and failure leave the
+`SizeLimitExceeded`, payload reservation failure returns `AllocationFailed`, and other serialization
+failures return `SerializationFailed`. Errors contain no raw serializer messages or data;
+partial bytes are never returned. Success and failure leave the
 buffer unchanged. The preview exposes only `&[u8]`, with no public constructor, Deserialize or
 mutable access; Debug reports only length. It remains unchanged after buffer mutation/clear/drop:
 copied data, not a live view, export permission or recovery authority. Clearing the buffer cannot
-revoke an issued copy and is not secure erase. The bound covers JSON, not total RAM/RSS;
+revoke an issued copy and is not secure erase. The writer starts without allocation; before copying
+it checks size and, when necessary, performs fallible reserve with geometric requested capacity
+growth capped at 33 KiB. The private limit is also capped at this constant before arithmetic and
+reserve; there is no configurable public limit. The first size/reserve failure is latched, with
+no retry or partial result. Errors contain no allocator messages. Reservation failure is tested
+with deterministic injection, not host memory exhaustion. Allocator abort, other serializer
+allocations and total RSS are not bounded by this contract. The bound covers JSON, not total RAM/RSS;
 panic/OOM/crash are not intercepted. Arbitrary serializers/payloads, files/stdout, UI/CLI/IPC,
 user consent and whole-bundle preview/redaction are outside this core API; FR-010/NFR-005 remain
 partial and Gate H remains open.
