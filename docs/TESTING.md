@@ -671,5 +671,7 @@ L1 `duplicate_query_*` в `src/parser.rs` проверяют все 14 крит�
 L3 `public_import_rejects_security_overrides_without_exposing_uri_data` в
 [`parser_query_policy.rs`](../tests/parser_query_policy.rs) вызывает публичный importer:
 сообщения и цепочка ошибок не зависят от credentials, адреса или имени профиля.
+Проверять consumer с `RUST_BACKTRACE=0` и `RUST_BACKTRACE=1`: `anyhow::Error` может добавлять
+стек в `Debug`, поэтому сравниваются два scope, а не весь Debug с коротким Display.
 Это не fuzz/property coverage всего URI parser, не полная redaction, не IPv6/IDN acceptance
 и не packet-level evidence. Родительские пункты roadmap и Gate H остаются открытыми.

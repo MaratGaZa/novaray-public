@@ -323,8 +323,10 @@ of being ignored.
 Each critical key (`flow`, `security`, `type`, `headerType`, `sni`, `pbk`, `sid`, `fp`,
 `encryption`, `host`, `path`, `serviceName`, `authority`, `mode`) may occur at most once.
 Duplicates are checked by decoded name before interpreting query values; identical and empty
-values are not exceptions. Duplicate errors contain only a category and the canonical name,
-not the URI, values, or server address. Distinct aliases retain existing conflict checks;
+values are not exceptions. Duplicate error messages (`Display`) contain only a category and the
+canonical name, not the URI, values, or server address. Standard `Debug` rendering of
+`anyhow::Error` may add a backtrace and is not a diagnostic export format.
+Distinct aliases retain existing conflict checks;
 unknown keys remain ignored. This is not full importer-error redaction, a URI size limit,
 or evidence of network security.
 
