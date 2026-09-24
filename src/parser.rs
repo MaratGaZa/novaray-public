@@ -25,6 +25,23 @@ const CRITICAL_QUERY_KEYS: [&str; 14] = [
     "mode",
 ];
 
+fn reject_duplicate_critical_query_keys(url: &Url) -> Result<()> {
+    let mut seen = [false; CRITICAL_QUERY_KEYS.len()];
+    // Scan decoded keys before interpreting any values, including invalid or empty ones.
+    for (key, _) in url.query_pairs() {
+        if let Some(index) = CRITICAL_QUERY_KEYS.iter().position(|known| *known == key) {
+            if seen[index] {
+                return Err(anyhow!(
+                    "Повтор критичного query-параметра '{}'",
+                    CRITICAL_QUERY_KEYS[index]
+                ));
+            }
+            seen[index] = true;
+        }
+    }
+    Ok(())
+}
+
 fn mis_cased_critical_query_key(key: &str) -> Option<&'static str> {
     CRITICAL_QUERY_KEYS
         .iter()
@@ -53,6 +70,8 @@ impl VlessParser {
                 url.scheme()
             ));
         }
+
+        reject_duplicate_critical_query_keys(&url)?;
 
         let uuid = url.username().to_string();
         if uuid.trim().is_empty() {
@@ -252,6 +271,126 @@ fn set_transport_value(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn duplicate_query_matrix_rejects_every_critical_key_before_values() {
+        // Keep the public contract independent of the implementation's key list.
+        for key in [
+            "flow",
+            "security",
+            "type",
+            "headerType",
+            "sni",
+            "pbk",
+            "sid",
+            "fp",
+            "encryption",
+            "host",
+            "path",
+            "serviceName",
+            "authority",
+            "mode",
+        ] {
+            let bare = format!("vless://test@edge.example:443?{key}&{key}");
+            assert_eq!(
+                VlessParser::parse_uri(&bare).unwrap_err().to_string(),
+                format!("Повтор критичного query-параметра '{key}'")
+            );
+            for (first, second) in [
+                ("private-a", "private-b"),
+                ("same", "same"),
+                ("", ""),
+                ("", "value"),
+                ("value", ""),
+            ] {
+                for (left, right) in [(first, second), (second, first)] {
+                    let uri = format!("vless://private-credential@private.example:443?{key}={left}&ignored=between&{key}={right}#private-name");
+                    let error = VlessParser::parse_uri(&uri).unwrap_err();
+                    assert_eq!(
+                        error.to_string(),
+                        format!("Повтор критичного query-параметра '{key}'")
+                    );
+                    assert!(error.source().is_none());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn duplicate_query_decodes_key_spellings_before_comparison() {
+        for key in CRITICAL_QUERY_KEYS {
+            let encoded: String = key.bytes().map(|byte| format!("%{byte:02X}")).collect();
+            for (first, second) in [
+                (key, encoded.as_str()),
+                (encoded.as_str(), key),
+                (encoded.as_str(), encoded.as_str()),
+            ] {
+                let uri = format!("vless://test@edge.example:443?{first}=a&{second}=b");
+                assert_eq!(
+                    VlessParser::parse_uri(&uri).unwrap_err().to_string(),
+                    format!("Повтор критичного query-параметра '{key}'")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn duplicate_query_single_keys_and_unknown_repeats_remain_compatible() {
+        let values = [
+            "xtls-rprx-vision",
+            "none",
+            "tcp",
+            "none",
+            "origin.example",
+            "unused",
+            "unused",
+            "unused",
+            "none",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ];
+        assert_eq!(values.len(), CRITICAL_QUERY_KEYS.len());
+        for (key, value) in CRITICAL_QUERY_KEYS.into_iter().zip(values) {
+            let uri = format!("vless://test@edge.example:443?{key}={value}&unknown=a&unknown=b");
+            VlessParser::parse_uri(&uri).unwrap();
+        }
+        // An encoded delimiter in a value is data, not another query key.
+        let profile = VlessParser::parse_uri(
+            "vless://test@edge.example:443?type=ws&path=%2Fws%3Ftype%3Dtcp%26type%3Dgrpc",
+        )
+        .unwrap();
+        assert_eq!(profile.path.as_deref(), Some("/ws?type=tcp&type=grpc"));
+    }
+
+    #[test]
+    fn duplicate_query_does_not_merge_distinct_transport_aliases() {
+        for query in [
+            "host=cdn.example&authority=cdn.example&path=svc&serviceName=svc",
+            "authority=cdn.example&host=cdn.example&serviceName=svc&path=svc",
+        ] {
+            let profile =
+                VlessParser::parse_uri(&format!("vless://test@edge.example:443?type=grpc&{query}"))
+                    .unwrap();
+            assert_eq!(profile.host.as_deref(), Some("cdn.example"));
+            assert_eq!(profile.path.as_deref(), Some("svc"));
+        }
+        for query in [
+            "host=a.example&authority=b.example",
+            "authority=b.example&host=a.example",
+            "path=a&serviceName=b",
+            "serviceName=b&path=a",
+        ] {
+            let error =
+                VlessParser::parse_uri(&format!("vless://test@edge.example:443?type=grpc&{query}"))
+                    .unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("Конфликтующие значения transport-параметров"));
+        }
+    }
 
     #[test]
     fn test_parse_valid_vless_reality_uri() {

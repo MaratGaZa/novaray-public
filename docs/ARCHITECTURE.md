@@ -7,6 +7,11 @@
 
 ## 1. Текущая архитектура
 
+VLESS importer проверяет кратность декодированных критичных query-ключей отдельным проходом
+до интерпретации значений. Повторы не получают семантику last-value-wins; новая ошибка содержит
+только канонический ключ. Это локальный контракт `src/parser.rs`, не полная redaction остальных
+ошибок импортера, не лимит входа и не сетевое evidence.
+
 ```text
 Foreground CLI start / validate / status / pinned-releases
   -> ProxyService -> catalog/version/dialect/checksum checks
