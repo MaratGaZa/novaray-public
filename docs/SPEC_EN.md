@@ -320,6 +320,14 @@ Known critical query-parameter names are case-sensitive; variants such as `Type`
 `HeaderType`, `Host`, `Path`, `ServiceName`, `Authority`, and `Mode` are rejected explicitly instead
 of being ignored.
 
+Each critical key (`flow`, `security`, `type`, `headerType`, `sni`, `pbk`, `sid`, `fp`,
+`encryption`, `host`, `path`, `serviceName`, `authority`, `mode`) may occur at most once.
+Duplicates are checked by decoded name before interpreting query values; identical and empty
+values are not exceptions. Duplicate errors contain only a category and the canonical name,
+not the URI, values, or server address. Distinct aliases retain existing conflict checks;
+unknown keys remain ignored. This is not full importer-error redaction, a URI size limit,
+or evidence of network security.
+
 ### FR-003 — Engine lifecycle
 
 - Pin and verify the engine version and checksum.

@@ -145,6 +145,9 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 - [x] Извлечение `security`, `sni`, `pbk`, `sid`, `fp`, `flow`.
 - [ ] Валидировать обязательные параметры для Reality и XTLS Vision.
 - [ ] Обрабатывать IPv6 literals, IDN/punycode и duplicate query parameters.
+  - [ ] Задача 81 / issue #132 / PR TBD: отклонять повторы декодированных критичных ключей
+    до интерпретации значений, без отражения значений в ошибке повтора. IPv6/IDN и полный
+    контракт безопасного импортера этой задачей не закрываются.
 - [ ] Добавить ограничения длины и безопасные ошибки без отражения secrets.
 - [ ] Ввести canonical normalization и deterministic profile ID без коллизий.
 - [ ] Добавить property/fuzz tests URI parser.
