@@ -661,3 +661,15 @@ CI не проверяет Xcode, signing, NetworkExtension, Windows Service/WFP
 реальный VPN-трафик. Эти claims требуют platform integration/clean-machine environments выше.
 
 Baseline CI не содержит signing certificates, driver keys или privileged runner credentials.
+
+## Задача 81: повторы критичных query-параметров
+
+L1 `duplicate_query_*` в `src/parser.rs` проверяют все 14 критичных ключей: одинаковые,
+конфликтующие и пустые повторы, оба порядка, percent-encoded имена, одиночные значения,
+неизвестные повторы и сохранение правил разных transport alias. Проверка кратности должна
+предшествовать ошибкам значений; декодированные разделители в значении не создают новый ключ.
+L3 `public_import_rejects_security_overrides_without_exposing_uri_data` в
+[`parser_query_policy.rs`](../tests/parser_query_policy.rs) вызывает публичный importer:
+сообщения и цепочка ошибок не зависят от credentials, адреса или имени профиля.
+Это не fuzz/property coverage всего URI parser, не полная redaction, не IPv6/IDN acceptance
+и не packet-level evidence. Родительские пункты roadmap и Gate H остаются открытыми.

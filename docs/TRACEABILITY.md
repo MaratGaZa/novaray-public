@@ -10,6 +10,13 @@ evidence и следующим гейтом. Статус строки явля�
 
 ## Матрица
 
+Задача 81 (issue #132) добавляет L1/L3 evidence для FR-001/FR-002:
+[`parser.rs`](../src/parser.rs) `duplicate_query_*` и
+[`parser_query_policy.rs`](../tests/parser_query_policy.rs) проверяют отказ на повтор критичного
+декодированного query-ключа до интерпретации значений и безопасную форму именно этой ошибки.
+Полная redaction, ограничения размера URI, IPv6/IDN и fuzz coverage не заявляются;
+FR-001/FR-002/NFR-001 остаются `partial`.
+
 | ID | Scope | Roadmap / execution task | Representative test or check | State | Current evidence | Remaining gate |
 |---|---|---|---|---|---|---|
 | `FR-001` | Configuration and profiles | [Roadmap](../learning/05_roadmap_zero_to_hero.md) 1.2, 1.3, 7.4; [plan](./IMPLEMENTATION_PLAN.md) M1/M6, tasks 7, 8, 15 | [config.rs](../src/config.rs) `test_config_json_roundtrip`; [config_and_routing_tests.rs](../tests/config_and_routing_tests.rs) `test_json_schemas_compile_and_validate_examples_and_reject_invalid_instances` | `partial` | L1/L3 schemas, typed enums, semantic validation, URI import and profile selection are covered | Atomic storage/backup, migrations, complete CIDR/GeoIP validation and Keychain-backed secrets remain open |

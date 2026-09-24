@@ -107,10 +107,10 @@
 | 78 | `[x]` | Запись результата отзыва в буфер диагностики | Связывает обязательный containment с одной попыткой безопасной записи; сохраняет первичную ошибку при отказе буфера. | [#126](https://github.com/MaratGaZa/novaray-public/issues/126) | [#127](https://github.com/MaratGaZa/novaray-public/pull/127) |
 | 79 | `[x]` | Ограниченный JSON-preview диагностики в памяти | Готовит неизменяемые байты снимка v1 с проверкой лимита до записи и без частичного результата при отказе. | [#128](https://github.com/MaratGaZa/novaray-public/issues/128) | [#129](https://github.com/MaratGaZa/novaray-public/pull/129) |
 | 80 | `[x]` | Отказоустойчивое выделение памяти JSON-preview | Резервирует payload постепенно и fallible, сохраняет первый отказ без частичных байтов; не гарантирует защиту всего процесса от OOM. | [#130](https://github.com/MaratGaZa/novaray-public/issues/130) | [#131](https://github.com/MaratGaZa/novaray-public/pull/131) |
-| 81 | `[ ]` | Запрет повторов критичных параметров VLESS URI | Проверяет декодированные ключи до интерпретации значений; ошибка повтора не отражает данные URI. | [#132](https://github.com/MaratGaZa/novaray-public/issues/132) | TBD |
+| 81 | `[x]` | Запрет повторов критичных параметров VLESS URI | Проверяет декодированные ключи до интерпретации значений; ошибка повтора не отражает данные URI. | [#132](https://github.com/MaratGaZa/novaray-public/issues/132) | [#133](https://github.com/MaratGaZa/novaray-public/pull/133) |
 
-После слияния PR #131 задача 80 находится в `main`. Задача 81 / issue #132:
-**Запрет повторов критичных параметров VLESS URI** относится к M1, roadmap 1.3.
+После слияния PR #131 задача 80 находится в `main`. Задача 81 / issue #132 / PR #133:
+**Запрет повторов критичных параметров VLESS URI** реализована и проверена локально (M1, roadmap 1.3).
 Это локальный контракт импортера, без сетевых или системных операций.
 CI и независимое review остаются отдельными проверками перед merge.
 Persistent logging backend, bundle export и системное recovery не доказаны.
@@ -1249,7 +1249,7 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Не входят: configurable public limit, глобальная OOM/DoS-защита, abort аллокатора,
     файловый/UI/CLI export, native/root или Gate H. Откат: revert encoder/tests/docs без миграции.
 
-81. [ ] Запрет повторов критичных параметров VLESS URI — issue #132, PR TBD:
+81. [x] Запрет повторов критичных параметров VLESS URI — issue #132, PR #133:
     проверять кратность 14 декодированных критичных ключей до интерпретации query-значений.
     Критерии: одинаковые, конфликтующие и пустые повторы отвергаются; percent-encoding не
     обходит проверку; ошибка содержит только категорию и канонический ключ. Разные alias,
@@ -1258,6 +1258,9 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     doctest, fmt/Clippy, metadata/self-test, ссылки, traceability, mirrors и diff.
     Не входят: полная redaction, лимит URI, UUID/IDN normalization, новые транспорты, native-run.
     FR-001/FR-002/NFR-001 остаются partial, Gate H открыт.
+    Evidence: четыре новых unit tests и один external consumer test; default 410/0/5,
+    feature 426/0/5, 10 doctest; fmt и оба strict Clippy прошли. Три мутации пойманы
+    (обход учёта повторов, исключение encryption, сырые ключи вместо decoded) и восстановлены.
     Откат: revert проверки/тестов/документации, без миграции сохранённых профилей.
 
 ## 7. Зависимости
