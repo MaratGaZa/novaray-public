@@ -320,6 +320,21 @@ Known critical query-parameter names are case-sensitive; variants such as `Type`
 `HeaderType`, `Host`, `Path`, `ServiceName`, `Authority`, and `Mode` are rejected explicitly instead
 of being ignored.
 
+Each critical key (`flow`, `security`, `type`, `headerType`, `sni`, `pbk`, `sid`, `fp`,
+`encryption`, `host`, `path`, `serviceName`, `authority`, `mode`) may occur at most once.
+Duplicate comparison trims leading/trailing Unicode whitespace (`str::trim`) from decoded names,
+but remains case-sensitive. A single padded critical key is also rejected, not accepted as an
+alias; its error contains only the canonical name, never the raw key.
+For `Security=none&security=none` (either order), the case error retains priority over a duplicate.
+This does not normalize internal whitespace or Unicode confusables, or change unknown-key handling.
+Duplicates are checked before interpreting query values; identical and empty
+values are not exceptions. Duplicate error messages (`Display`) contain only a category and the
+canonical name, not the URI, values, or server address. Standard `Debug` rendering of
+`anyhow::Error` may add a backtrace and is not a diagnostic export format.
+Distinct aliases retain existing conflict checks;
+unknown keys remain ignored. This is not full importer-error redaction, a URI size limit,
+or evidence of network security.
+
 ### FR-003 — Engine lifecycle
 
 - Pin and verify the engine version and checksum.
