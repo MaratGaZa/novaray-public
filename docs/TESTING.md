@@ -668,6 +668,12 @@ L1 `duplicate_query_*` в `src/parser.rs` проверяют все 14 крит�
 конфликтующие и пустые повторы, оба порядка, percent-encoded имена, одиночные значения,
 неизвестные повторы и сохранение правил разных transport alias. Проверка кратности должна
 предшествовать ошибкам значений; декодированные разделители в значении не создают новый ключ.
+Follow-up review: `padded_critical_keys_cannot_bypass_duplicate_guard` проверяет все 14 ключей,
+оба порядка и два пробельных ключа, `+`, `%20`, tab/CR/LF, NBSP и em space на краях.
+`padded_single_critical_keys_are_rejected_without_echoing_padding` отвергает одиночные ключи,
+включая неверный регистр, без отражения padding/значений; неизвестные ключи остаются совместимыми.
+`mixed_case_key_keeps_spelling_error_priority_over_duplicate` фиксирует ошибку регистра для
+`Security=none&security=none` в обоих порядках, а не новую ошибку повтора.
 L3 `public_import_rejects_security_overrides_without_exposing_uri_data` в
 [`parser_query_policy.rs`](../tests/parser_query_policy.rs) вызывает публичный importer:
 сообщения и цепочка ошибок не зависят от credentials, адреса или имени профиля.

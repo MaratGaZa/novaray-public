@@ -14,6 +14,8 @@ evidence и следующим гейтом. Статус строки явля�
 [`parser.rs`](../src/parser.rs) `duplicate_query_*` и
 [`parser_query_policy.rs`](../tests/parser_query_policy.rs) проверяют отказ на повтор критичного
 декодированного query-ключа до интерпретации значений и безопасную форму именно этой ошибки.
+Follow-up review добавляет `padded_*` и `mixed_case_key_*`: краевые Unicode-пробелы не обходят
+guard, одиночные пробельные ключи отвергаются; регистр не нормализуется при поиске повторов.
 Полная redaction, ограничения размера URI, IPv6/IDN и fuzz coverage не заявляются;
 FR-001/FR-002/NFR-001 остаются `partial`.
 

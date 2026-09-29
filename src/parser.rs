@@ -29,6 +29,7 @@ fn reject_duplicate_critical_query_keys(url: &Url) -> Result<()> {
     let mut seen = [false; CRITICAL_QUERY_KEYS.len()];
     // Scan decoded keys before interpreting any values, including invalid or empty ones.
     for (key, _) in url.query_pairs() {
+        let key = key.trim();
         if let Some(index) = CRITICAL_QUERY_KEYS.iter().position(|known| *known == key) {
             if seen[index] {
                 return Err(anyhow!(
@@ -42,11 +43,11 @@ fn reject_duplicate_critical_query_keys(url: &Url) -> Result<()> {
     Ok(())
 }
 
-fn mis_cased_critical_query_key(key: &str) -> Option<&'static str> {
+fn noncanonical_critical_query_key(key: &str) -> Option<&'static str> {
     CRITICAL_QUERY_KEYS
         .iter()
         .copied()
-        .find(|canonical| key != *canonical && key.eq_ignore_ascii_case(canonical))
+        .find(|canonical| key != *canonical && key.trim().eq_ignore_ascii_case(canonical))
 }
 
 fn validate_tcp_header_type(value: &str) -> Result<()> {
@@ -165,7 +166,13 @@ impl VlessParser {
                     }
                 }
                 _ => {
-                    if let Some(canonical) = mis_cased_critical_query_key(&k) {
+                    if let Some(canonical) = noncanonical_critical_query_key(&k) {
+                        if k.trim() != k.as_ref() {
+                            return Err(anyhow!(
+                                "Пробелы в имени query-параметра: ожидается '{}'",
+                                canonical
+                            ));
+                        }
                         return Err(anyhow!(
                             "Некорректный регистр query-параметра '{}': ожидается '{}'",
                             k,
@@ -271,6 +278,99 @@ fn set_transport_value(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const PADDED_TEST_KEYS: [&str; 14] = [
+        "flow",
+        "security",
+        "type",
+        "headerType",
+        "sni",
+        "pbk",
+        "sid",
+        "fp",
+        "encryption",
+        "host",
+        "path",
+        "serviceName",
+        "authority",
+        "mode",
+    ];
+
+    #[test]
+    fn padded_critical_keys_cannot_bypass_duplicate_guard() {
+        for key in PADDED_TEST_KEYS {
+            for pad in ["+", "%20", "%09", "%0A", "%0D", "%C2%A0", "%E2%80%83"] {
+                for padded in [
+                    format!("{pad}{key}"),
+                    format!("{key}{pad}"),
+                    format!("{pad}{key}{pad}"),
+                ] {
+                    for (first, second) in [
+                        (key, padded.as_str()),
+                        (padded.as_str(), key),
+                        (padded.as_str(), padded.as_str()),
+                    ] {
+                        let error = VlessParser::parse_uri(&format!(
+                            "vless://test@edge.example:443?{first}=private-a&{second}=private-b"
+                        ))
+                        .unwrap_err();
+                        assert_eq!(
+                            error.to_string(),
+                            format!("Повтор критичного query-параметра '{key}'")
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn padded_single_critical_keys_are_rejected_without_echoing_padding() {
+        for key in PADDED_TEST_KEYS {
+            for spelling in [key.to_string(), key.to_ascii_uppercase()] {
+                for pad in ["+", "%20", "%09", "%0A", "%0D", "%C2%A0", "%E2%80%83"] {
+                    for padded in [format!("{pad}{spelling}"), format!("{spelling}{pad}")] {
+                        let error = VlessParser::parse_uri(&format!(
+                            "vless://test@edge.example:443?{padded}=private-value"
+                        ))
+                        .unwrap_err();
+                        assert_eq!(
+                            error.to_string(),
+                            format!("Пробелы в имени query-параметра: ожидается '{key}'")
+                        );
+                        assert!(error.source().is_none());
+                    }
+                }
+            }
+        }
+        VlessParser::parse_uri(
+            "vless://test@edge.example:443?+unknown+=a&unknown=b&sec%20urity=ignored",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn mixed_case_key_keeps_spelling_error_priority_over_duplicate() {
+        for query in ["Security=none&security=none", "security=none&Security=none"] {
+            let error = VlessParser::parse_uri(&format!("vless://test@edge.example:443?{query}"))
+                .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "Некорректный регистр query-параметра 'Security': ожидается 'security'"
+            );
+        }
+        for query in [
+            "+Security=none&security=none",
+            "security=none&Security%20=none",
+        ] {
+            let error = VlessParser::parse_uri(&format!("vless://test@edge.example:443?{query}"))
+                .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "Пробелы в имени query-параметра: ожидается 'security'"
+            );
+        }
+    }
 
     #[test]
     fn duplicate_query_matrix_rejects_every_critical_key_before_values() {

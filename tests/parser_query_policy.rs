@@ -7,6 +7,10 @@ fn public_import_rejects_security_overrides_without_exposing_uri_data() {
         "security=none&security=reality",
         "security=reality&%73ecurity=none",
         "security=private-invalid-value&security=none",
+        "%20security=reality&security=none",
+        "security%20=reality&security=none",
+        "security=none&+security=reality",
+        "%09%73ecurity%0A=reality&security=none",
     ] {
         let mut errors = Vec::new();
         let mut debug_errors = Vec::new();
