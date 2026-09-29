@@ -19,7 +19,9 @@ Follow-up review добавляет `padded_*` и `mixed_case_key_*`: краев
 guard, одиночные пробельные ключи отвергаются; регистр не нормализуется при поиске повторов.
 Задача 82 добавляет политику непустого ASCII `[A-Za-z0-9_-]` для всех query-имён;
 допустимые неизвестные имена остаются совместимыми, остальные отвергаются.
-Полная redaction, ограничения размера URI, IPv6/IDN и fuzz coverage не заявляются;
+Задача 83 (issue #136) добавляет L1/L3 evidence для лимита исходного VLESS URI
+в 16 KiB до URL-разбора и для ошибок публичного importer без URI-контролируемых данных.
+Redaction остальных API, общий бюджет памяти, IPv6/IDN и fuzz coverage не заявляются;
 FR-001/FR-002/NFR-001 остаются `partial`.
 
 | ID | Scope | Roadmap / execution task | Representative test or check | State | Current evidence | Remaining gate |

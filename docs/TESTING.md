@@ -696,3 +696,14 @@ L1 `invalid_name_matrix_rejects_all_critical_keys_before_values` проверя�
 transport aliases. Предшествующие тесты Task 81 закрепляют приоритет дубликата, пробелов и
 регистра. Проверки ограничены parser L1/L3; они не доказывают полноту redaction, URI limits,
 покрытие Unicode confusables вне query names или системную сетевую безопасность. Gate H открыт.
+
+### VLESS-URI-BOUND-REDACTION
+
+[Контракт и критерии](./IMPLEMENTATION_PLAN.md#vless-uri-bound-redaction): задача 83
+(issue #136) ограничивает исходный UTF-8 VLESS URI 16 KiB до `Url::parse`.
+L3 `public_import_bounds_original_bytes_before_parsing` проверяет точную границу,
+превышение на один байт, многобайтовый символ и приоритет лимита над ошибкой URI.
+L3 `public_import_errors_never_echo_uri_controlled_data` проверяет публичные
+`Display`, `Debug`, цепочку `source()` и категории ошибок для разных путей отказа.
+L1 parser tests проверяют сохранение разбора поддерживаемых URI. Это не redaction
+других API, не общий бюджет RSS и не доказательство сетевой безопасности. Gate H открыт.

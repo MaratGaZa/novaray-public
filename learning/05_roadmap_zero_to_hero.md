@@ -155,7 +155,9 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   `[A-Za-z0-9_-]`; invisible/control и недопустимые неизвестные имена отвергаются до значений.
   Допустимые неизвестные имена и transport aliases сохранены. Только L1/L3 importer evidence;
   полный контракт IPv6/IDN, URI limits и визуальные confusables не закрыты.
-- [ ] Добавить ограничения длины и безопасные ошибки без отражения secrets.
+- [ ] [VLESS-URI-BOUND-REDACTION](../docs/IMPLEMENTATION_PLAN.md#vless-uri-bound-redaction):
+  задача 83 / issue #136. Ограничить исходный URI 16 KiB до разбора и исключить URI-данные
+  из публичных ошибок importer. Остальные API, fuzzing и системная безопасность вне среза.
 - [ ] Ввести canonical normalization и deterministic profile ID без коллизий.
 - [ ] Добавить property/fuzz tests URI parser.
 

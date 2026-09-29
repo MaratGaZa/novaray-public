@@ -336,16 +336,25 @@ previously ignored unknown names outside the allowlist are now rejected. Duplica
 critical names, including edge-whitespace variants, take precedence over the charset error;
 a single whitespace-padded critical name retains its distinct whitespace error. Valid ASCII
 `Security` still receives the case error, including beside `security`. The new charset error is
-static and never echoes the raw name, value, URI, or server context. URI length limits, visual
-confusables in values/other fields, and full redaction remain separate work. Plan and acceptance:
+static and never echoes the raw name, value, URI, or server context. Visual confusables in values
+and other fields remain separate work. Plan and acceptance:
 [QUERY-KEY-CHARSET](./IMPLEMENTATION_PLAN.md#query-key-charset).
 Duplicates are checked before interpreting query values; identical and empty
 values are not exceptions. Duplicate error messages (`Display`) contain only a category and the
 canonical name, not the URI, values, or server address. Standard `Debug` rendering of
 `anyhow::Error` may add a backtrace and is not a diagnostic export format.
 Distinct aliases retain existing conflict checks;
-unknown keys remain ignored. This is not full importer-error redaction, a URI size limit,
-or evidence of network security.
+unknown keys remain ignored.
+
+The `VLESS-URI-BOUND-REDACTION` contract rejects input longer than 16 KiB (16,384 UTF-8 bytes)
+before `Url::parse`, decoding, or value interpretation. Public `parse_uri` errors, including their
+source chain and `Debug` rendering, do not echo URI-controlled values, credentials, hosts,
+addresses, profile identifiers, or fragments. Static categories and canonical critical query-key
+names are allowed. Profile-validation failures use a generic importer category because
+`ServerProfile::validate()` details are unsafe to expose at the import boundary. This bounds the
+original URI string, not total process memory; it does not redact other APIs, prove fuzz safety,
+or establish network security. Plan and acceptance:
+[VLESS-URI-BOUND-REDACTION](./IMPLEMENTATION_PLAN.md#vless-uri-bound-redaction).
 
 ### FR-003 — Engine lifecycle
 
