@@ -150,6 +150,11 @@ universal/Windows ARM64 binaries и дополнительные протоко�
     контракт безопасного импортера этой задачей не закрываются.
     Уточнение review: краевые пробелы не обходят guard; одиночные пробельные ключи отвергаются,
     регистрозависимость сравнения сохраняется. Внутренние пробелы/confusables не нормализуются.
+- [x] [QUERY-KEY-CHARSET](../docs/IMPLEMENTATION_PLAN.md#query-key-charset): задача 82 / issue #134,
+  отдельный follow-up к Task 81. Декодированные имена ограничены непустым ASCII
+  `[A-Za-z0-9_-]`; invisible/control и недопустимые неизвестные имена отвергаются до значений.
+  Допустимые неизвестные имена и transport aliases сохранены. Только L1/L3 importer evidence;
+  полный контракт IPv6/IDN, URI limits и визуальные confusables не закрыты.
 - [ ] Добавить ограничения длины и безопасные ошибки без отражения secrets.
 - [ ] Ввести canonical normalization и deterministic profile ID без коллизий.
 - [ ] Добавить property/fuzz tests URI parser.

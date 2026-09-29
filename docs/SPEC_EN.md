@@ -326,7 +326,19 @@ Duplicate comparison trims leading/trailing Unicode whitespace (`str::trim`) fro
 but remains case-sensitive. A single padded critical key is also rejected, not accepted as an
 alias; its error contains only the canonical name, never the raw key.
 For `Security=none&security=none` (either order), the case error retains priority over a duplicate.
-This does not normalize internal whitespace or Unicode confusables, or change unknown-key handling.
+This does not normalize internal whitespace or Unicode confusables.
+The `QUERY-KEY-CHARSET` contract requires every decoded VLESS query name, including an unknown
+name, to be nonempty ASCII `[A-Za-z0-9_-]`. Names containing invisible/control characters,
+Unicode, internal or edge whitespace, punctuation, or malformed percent/UTF-8 encoding are
+rejected before values are interpreted; characters are never stripped to accept an alias.
+Valid unknown names remain ignored, even when repeated. This deliberately tightens compatibility:
+previously ignored unknown names outside the allowlist are now rejected. Duplicate canonical
+critical names, including edge-whitespace variants, take precedence over the charset error;
+a single whitespace-padded critical name retains its distinct whitespace error. Valid ASCII
+`Security` still receives the case error, including beside `security`. The new charset error is
+static and never echoes the raw name, value, URI, or server context. URI length limits, visual
+confusables in values/other fields, and full redaction remain separate work. Plan and acceptance:
+[QUERY-KEY-CHARSET](./IMPLEMENTATION_PLAN.md#query-key-charset).
 Duplicates are checked before interpreting query values; identical and empty
 values are not exceptions. Duplicate error messages (`Display`) contain only a category and the
 canonical name, not the URI, values, or server address. Standard `Debug` rendering of
