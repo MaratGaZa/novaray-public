@@ -681,3 +681,18 @@ L3 `public_import_rejects_security_overrides_without_exposing_uri_data` в
 стек в `Debug`, поэтому сравниваются два scope, а не весь Debug с коротким Display.
 Это не fuzz/property coverage всего URI parser, не полная redaction, не IPv6/IDN acceptance
 и не packet-level evidence. Родительские пункты roadmap и Gate H остаются открытыми.
+
+### Задача 82: QUERY-KEY-CHARSET
+
+[Контракт и критерии](./IMPLEMENTATION_PLAN.md#query-key-charset): публичный baseline до фикса
+воспроизвёл восемь обходов U+200B/U+200C/U+200D/U+FEFF/U+00AD/U+0000/U+180E/U+2060:
+при `?{pad}security=reality&security=none` профиль принимался с выключенным TLS.
+L1 `invalid_name_matrix_rejects_all_critical_keys_before_values` проверяет все 14 имён,
+восемь закодированных вставок в начало/конец/середину, singleton и обе перестановки с
+каноническим именем. `name_charset_keeps_valid_unknowns_and_rejects_invalid_unknowns`
+проверяет пустые имена, внутренние пробелы, пунктуацию, повреждённый percent/UTF-8 ввод и
+совместимость валидных повторов неизвестных ASCII-имён. L3 в `parser_query_policy.rs`
+проверяет публичный importer, literal Unicode, отсутствие raw key/value в ошибке и прежние
+transport aliases. Предшествующие тесты Task 81 закрепляют приоритет дубликата, пробелов и
+регистра. Проверки ограничены parser L1/L3; они не доказывают полноту redaction, URI limits,
+покрытие Unicode confusables вне query names или системную сетевую безопасность. Gate H открыт.

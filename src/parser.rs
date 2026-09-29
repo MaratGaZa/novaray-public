@@ -50,6 +50,27 @@ fn noncanonical_critical_query_key(key: &str) -> Option<&'static str> {
         .find(|canonical| key != *canonical && key.trim().eq_ignore_ascii_case(canonical))
 }
 
+fn reject_invalid_query_names(url: &Url) -> Result<()> {
+    for (key, _) in url.query_pairs() {
+        if key.is_empty()
+            || !key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        {
+            if let Some(canonical) = noncanonical_critical_query_key(&key) {
+                if key.trim() != key.as_ref() {
+                    return Err(anyhow!(
+                        "Пробелы в имени query-параметра: ожидается '{}'",
+                        canonical
+                    ));
+                }
+            }
+            return Err(anyhow!("Недопустимое имя query-параметра"));
+        }
+    }
+    Ok(())
+}
+
 fn validate_tcp_header_type(value: &str) -> Result<()> {
     match value.trim().to_lowercase().as_str() {
         "none" => Ok(()),
@@ -73,6 +94,7 @@ impl VlessParser {
         }
 
         reject_duplicate_critical_query_keys(&url)?;
+        reject_invalid_query_names(&url)?;
 
         let uuid = url.username().to_string();
         if uuid.trim().is_empty() {
@@ -279,6 +301,85 @@ fn set_transport_value(
 mod tests {
     use super::*;
 
+    #[test]
+    fn invalid_name_matrix_rejects_all_critical_keys_before_values() {
+        // This list intentionally does not read CRITICAL_QUERY_KEYS.
+        for key in [
+            "flow",
+            "security",
+            "type",
+            "headerType",
+            "sni",
+            "pbk",
+            "sid",
+            "fp",
+            "encryption",
+            "host",
+            "path",
+            "serviceName",
+            "authority",
+            "mode",
+        ] {
+            for (encoded, literal) in [
+                ("%E2%80%8B", "\u{200b}"),
+                ("%E2%80%8C", "\u{200c}"),
+                ("%E2%80%8D", "\u{200d}"),
+                ("%EF%BB%BF", "\u{feff}"),
+                ("%C2%AD", "\u{ad}"),
+                ("%00", "%00"),
+                ("%E1%A0%8E", "\u{180e}"),
+                ("%E2%81%A0", "\u{2060}"),
+            ] {
+                for pad in [encoded, literal] {
+                    for malformed in [
+                        format!("{pad}{key}"),
+                        format!("{key}{pad}"),
+                        format!("{}{}{}", &key[..1], pad, &key[1..]),
+                    ] {
+                        for query in [
+                            format!("{malformed}=private-value"),
+                            format!("{malformed}=private-value&{key}=invalid"),
+                            format!("{key}=invalid&{malformed}=private-value"),
+                        ] {
+                            let error = VlessParser::parse_uri(&format!(
+                                "vless://private@edge.example:443?{query}#private-name"
+                            ))
+                            .unwrap_err();
+                            assert_eq!(error.to_string(), "Недопустимое имя query-параметра");
+                            assert!(error.source().is_none());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn name_charset_keeps_valid_unknowns_and_rejects_invalid_unknowns() {
+        VlessParser::parse_uri(
+            "vless://test@edge.example:443?unknown_1=a&unknown_1=b&x-y=c&%78-y=d",
+        )
+        .unwrap();
+        for key in [
+            "",
+            "%00",
+            "sec%20urity",
+            "unknown%20name",
+            "unknown!",
+            "%ZZunknown",
+            "unknown%",
+            "%FFunknown",
+            "%C3%A9",
+            "%E2%80%8Bunknown",
+        ] {
+            let error = VlessParser::parse_uri(&format!(
+                "vless://test@edge.example:443?security=invalid&{key}=private"
+            ))
+            .unwrap_err();
+            assert_eq!(error.to_string(), "Недопустимое имя query-параметра");
+        }
+    }
+
     const PADDED_TEST_KEYS: [&str; 14] = [
         "flow",
         "security",
@@ -343,10 +444,12 @@ mod tests {
                 }
             }
         }
-        VlessParser::parse_uri(
-            "vless://test@edge.example:443?+unknown+=a&unknown=b&sec%20urity=ignored",
-        )
-        .unwrap();
+        for query in ["+unknown+=a", "sec%20urity=ignored"] {
+            let error =
+                VlessParser::parse_uri(&format!("vless://test@edge.example:443?{query}&unknown=b"))
+                    .unwrap_err();
+            assert_eq!(error.to_string(), "Недопустимое имя query-параметра");
+        }
     }
 
     #[test]
