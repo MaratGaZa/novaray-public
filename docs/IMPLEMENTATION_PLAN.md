@@ -109,11 +109,12 @@
 | 80 | `[x]` | Отказоустойчивое выделение памяти JSON-preview | Резервирует payload постепенно и fallible, сохраняет первый отказ без частичных байтов; не гарантирует защиту всего процесса от OOM. | [#130](https://github.com/MaratGaZa/novaray-public/issues/130) | [#131](https://github.com/MaratGaZa/novaray-public/pull/131) |
 | 81 | `[x]` | Запрет повторов критичных параметров VLESS URI | Проверяет декодированные ключи до интерпретации значений; ошибка повтора не отражает данные URI. | [#132](https://github.com/MaratGaZa/novaray-public/issues/132) | [#133](https://github.com/MaratGaZa/novaray-public/pull/133) |
 | 82 | `[x]` | Запрет невидимых и недопустимых имён VLESS query-параметров | Отклоняет пустые и не-ASCII имена до интерпретации значений, сохраняя совместимость допустимых неизвестных ключей. | [#134](https://github.com/MaratGaZa/novaray-public/issues/134) | [#135](https://github.com/MaratGaZa/novaray-public/pull/135) |
+| 83 | `[x]` | Лимит VLESS URI и безопасные ошибки импортера | Ограничивает исходный URI 16 KiB до разбора и не отражает URI-данные в публичных ошибках импортера. | [#136](https://github.com/MaratGaZa/novaray-public/issues/136) | [#137](https://github.com/MaratGaZa/novaray-public/pull/137) |
 
-После слияния PR #133 задача 81 находится в `main`. Задача 82 / issue #134 / PR #135:
-**Запрет невидимых и недопустимых имён VLESS query-параметров** реализована и проверена локально
+После слияния PR #135 задача 82 находится в `main`. Задача 83 / issue #136 / PR #137:
+**Лимит VLESS URI и безопасные ошибки импортера** реализована и проверена локально
 (M1, roadmap 1.3). Это локальный контракт импортера, без сетевых или системных операций.
-CI и независимое review остаются отдельными проверками перед merge.
+CI и независимое review PR #137 остаются отдельными проверками перед merge.
 Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
@@ -1349,6 +1350,20 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Не входят: общий лимит URI, полная redaction, визуальные confusables вне query-имён,
     системные/packet-level проверки. FR-001/FR-002/NFR-001 остаются partial, Gate H открыт.
     Откат: revert parser-policy коммита без миграции, с повторным открытием риска downgrade.
+
+83. [x] Лимит VLESS URI и безопасные ошибки импортера — issue #136, PR #137:
+    исходная строка ограничена 16 KiB UTF-8 байт до `Url::parse`. Публичные ошибки
+    `parse_uri` используют статичные категории и канонические имена критичных ключей;
+    исходные значения, имя сервера и детали `ServerProfile::validate()` не отражаются.
+    L3 проверяет точную границу, многобайтовый ввод, приоритет лимита, 11 путей отказа,
+    `Display`, `Debug` и отсутствие source с URI-данными. Существующие L1 parser tests
+    проверяют сохранение допустимых URI и прежних отказов. Default 419/0/5, feature
+    435/0/5, 10 doctest; fmt, оба strict Clippy, metadata, ссылки, traceability, mirrors
+    и diff прошли локально. CI и review PR #137 ещё не заявлены.
+    Не входят: redaction других API, общий RSS bound, fuzz coverage, IDN/IPv6 и сетевые
+    доказательства. FR-001/FR-002/NFR-001 остаются partial, Gate H открыт.
+    Откат: revert parser и документации задачи без миграции, с возвратом риска
+    отражения URI-данных и приёма чрезмерно длинных ссылок.
 
 ## 7. Зависимости
 
