@@ -2,11 +2,13 @@
 use crate::config::{
     FlowType, ProtocolType, SecurityType, ServerProfile, TlsConfig, TransportType,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use percent_encoding::percent_decode_str;
 use url::Url;
 
 pub struct VlessParser;
+
+pub const MAX_VLESS_URI_BYTES: usize = 16 * 1024;
 
 const CRITICAL_QUERY_KEYS: [&str; 14] = [
     "flow",
@@ -74,9 +76,8 @@ fn reject_invalid_query_names(url: &Url) -> Result<()> {
 fn validate_tcp_header_type(value: &str) -> Result<()> {
     match value.trim().to_lowercase().as_str() {
         "none" => Ok(()),
-        other => Err(anyhow!(
-            "Неподдерживаемый параметр 'headerType': '{}'. Поддерживается только 'none'",
-            other
+        _ => Err(anyhow!(
+            "Неподдерживаемый параметр 'headerType': поддерживается только 'none'"
         )),
     }
 }
@@ -84,13 +85,13 @@ fn validate_tcp_header_type(value: &str) -> Result<()> {
 impl VlessParser {
     /// Парсит ссылку формата `vless://uuid@host:port?query#name`
     pub fn parse_uri(uri_str: &str) -> Result<ServerProfile> {
-        let url = Url::parse(uri_str).context("Некорректный формат URI")?;
+        if uri_str.len() > MAX_VLESS_URI_BYTES {
+            return Err(anyhow!("VLESS URI превышает лимит 16 KiB"));
+        }
+        let url = Url::parse(uri_str).map_err(|_| anyhow!("Некорректный формат URI"))?;
 
         if url.scheme() != "vless" {
-            return Err(anyhow!(
-                "Ожидалась схема 'vless://', получено '{}'",
-                url.scheme()
-            ));
+            return Err(anyhow!("Ожидалась схема 'vless://'"));
         }
 
         reject_duplicate_critical_query_keys(&url)?;
@@ -143,21 +144,21 @@ impl VlessParser {
         for (k, v) in url.query_pairs() {
             match k.as_ref() {
                 "flow" => {
-                    let parsed_flow: FlowType = v
-                        .parse()
-                        .map_err(|e: String| anyhow!("Ошибка параметра 'flow': {}", e))?;
+                    let parsed_flow: FlowType = v.parse().map_err(|_: String| {
+                        anyhow!("Ошибка параметра 'flow': Неподдерживаемый тип flow")
+                    })?;
                     flow = Some(parsed_flow);
                 }
                 "security" => {
-                    let parsed_security: SecurityType = v
-                        .parse()
-                        .map_err(|e: String| anyhow!("Ошибка параметра 'security': {}", e))?;
+                    let parsed_security: SecurityType = v.parse().map_err(|_: String| {
+                        anyhow!("Ошибка параметра 'security': Неподдерживаемый тип безопасности")
+                    })?;
                     security = parsed_security;
                 }
                 "type" => {
-                    transport = v
-                        .parse()
-                        .map_err(|e: String| anyhow!("Ошибка параметра 'type': {}", e))?;
+                    transport = v.parse().map_err(|_: String| {
+                        anyhow!("Ошибка параметра 'type': неподдерживаемый транспорт VLESS")
+                    })?;
                 }
                 "headerType" => validate_tcp_header_type(&v)?,
                 "sni" => sni = v.to_string(),
@@ -165,19 +166,18 @@ impl VlessParser {
                 "sid" => sid = Some(v.to_string()),
                 "fp" => fp = Some(v.to_string()),
                 "host" => {
-                    set_transport_value(&mut transport_host, v.as_ref(), "host", "host")?;
+                    set_transport_value(&mut transport_host, v.as_ref(), "host")?;
                 }
                 "path" => {
-                    set_transport_value(&mut transport_path, v.as_ref(), "path", "path")?;
+                    set_transport_value(&mut transport_path, v.as_ref(), "path")?;
                 }
                 "serviceName" => {
-                    if set_transport_value(&mut transport_path, v.as_ref(), "path", "serviceName")?
-                    {
+                    if set_transport_value(&mut transport_path, v.as_ref(), "path")? {
                         grpc_specific_parameter = Some("serviceName");
                     }
                 }
                 "authority" => {
-                    if set_transport_value(&mut transport_host, v.as_ref(), "host", "authority")? {
+                    if set_transport_value(&mut transport_host, v.as_ref(), "host")? {
                         grpc_specific_parameter = Some("authority");
                     }
                 }
@@ -196,8 +196,7 @@ impl VlessParser {
                             ));
                         }
                         return Err(anyhow!(
-                            "Некорректный регистр query-параметра '{}': ожидается '{}'",
-                            k,
+                            "Некорректный регистр query-параметра: ожидается '{}'",
                             canonical
                         ));
                     }
@@ -209,8 +208,7 @@ impl VlessParser {
             if let Some(mode) = grpc_mode.as_deref() {
                 if mode != "gun" {
                     return Err(anyhow!(
-                        "Неподдерживаемый gRPC mode '{}'. Поддерживается только 'gun'",
-                        mode
+                        "Неподдерживаемый gRPC mode: поддерживается только 'gun'"
                     ));
                 }
             }
@@ -265,7 +263,7 @@ impl VlessParser {
         // Валидируем сформированный профиль
         profile
             .validate()
-            .map_err(|e| anyhow!("Ошибка валидации профиля: {}", e))?;
+            .map_err(|_| anyhow!("Ошибка валидации профиля VLESS"))?;
 
         Ok(profile)
     }
@@ -275,7 +273,6 @@ fn set_transport_value(
     target: &mut Option<String>,
     value: &str,
     canonical_field: &str,
-    query_key: &str,
 ) -> Result<bool> {
     let normalized = value.trim();
     if normalized.is_empty() {
@@ -284,11 +281,8 @@ fn set_transport_value(
     if let Some(existing) = target.as_deref() {
         if existing != normalized {
             return Err(anyhow!(
-                "Конфликтующие значения transport-параметров для '{}': '{}' и '{}={}'",
-                canonical_field,
-                existing,
-                query_key,
-                normalized
+                "Конфликтующие значения transport-параметров для '{}'",
+                canonical_field
             ));
         }
     } else {
@@ -459,7 +453,7 @@ mod tests {
                 .unwrap_err();
             assert_eq!(
                 error.to_string(),
-                "Некорректный регистр query-параметра 'Security': ожидается 'security'"
+                "Некорректный регистр query-параметра: ожидается 'security'"
             );
         }
         for query in [
@@ -683,7 +677,7 @@ mod tests {
         assert!(res
             .unwrap_err()
             .to_string()
-            .contains("для Reality обязателен непустой Server Name (SNI)"));
+            .contains("Ошибка валидации профиля VLESS"));
     }
 
     #[test]
@@ -776,7 +770,7 @@ mod tests {
         let error = VlessParser::parse_uri(&ws)
             .expect_err("Reality + WebSocket должен отклоняться до генерации")
             .to_string();
-        assert!(error.contains("Reality не поддерживается с WebSocket"));
+        assert_eq!(error, "Ошибка валидации профиля VLESS");
 
         let grpc = format!("{base}&type=grpc&serviceName=svc&mode=gun");
         VlessParser::parse_uri(&grpc).expect("Reality + gRPC поддерживается Xray");
@@ -791,7 +785,7 @@ mod tests {
             let error = VlessParser::parse_uri(&uri)
                 .expect_err("ws/grpc без абсолютного path должен отклоняться")
                 .to_string();
-            assert!(error.contains("path, начинающийся с '/'") || error.contains("serviceName"));
+            assert_eq!(error, "Ошибка валидации профиля VLESS");
         }
     }
 
@@ -817,7 +811,7 @@ mod tests {
             let error = VlessParser::parse_uri(&uri)
                 .expect_err("gRPC custom-path syntax вне текущей capability")
                 .to_string();
-            assert!(error.contains("serviceName без пробелов и '/'"));
+            assert_eq!(error, "Ошибка валидации профиля VLESS");
         }
     }
 
@@ -827,7 +821,7 @@ mod tests {
         let error = VlessParser::parse_uri(uri)
             .expect_err("XTLS Vision поверх WebSocket должен отклоняться")
             .to_string();
-        assert!(error.contains("XTLS Vision поддерживается только с TCP"));
+        assert_eq!(error, "Ошибка валидации профиля VLESS");
     }
 
     #[test]
@@ -848,8 +842,8 @@ mod tests {
                 .to_string();
 
             assert!(error.contains("Ошибка параметра 'type'"));
-            assert!(error.contains("Неподдерживаемый транспорт VLESS"));
-            assert!(error.contains(transport));
+            assert!(error.contains("неподдерживаемый транспорт VLESS"));
+            assert!(!error.contains(transport));
         }
     }
 
@@ -866,7 +860,7 @@ mod tests {
                 .expect_err("Неподдерживаемый TCP headerType обязан отклоняться")
                 .to_string();
             assert!(error.contains("Неподдерживаемый параметр 'headerType'"));
-            assert!(error.contains(header_type));
+            assert!(!error.contains(header_type));
         }
     }
 

@@ -1,4 +1,103 @@
-use novaray_core::parser::VlessParser;
+use novaray_core::parser::{VlessParser, MAX_VLESS_URI_BYTES};
+
+#[test]
+fn public_import_bounds_original_bytes_before_parsing() {
+    let prefix = "vless://test@edge.example:443#";
+    let at_limit = format!("{prefix}{}", "x".repeat(MAX_VLESS_URI_BYTES - prefix.len()));
+    assert_eq!(at_limit.len(), MAX_VLESS_URI_BYTES);
+    VlessParser::parse_uri(&at_limit).expect("exact byte limit remains eligible");
+
+    for oversized in [
+        format!("{at_limit}x"),
+        format!(
+            "{}{}",
+            "not a uri PRIVATE-SENTINEL",
+            "x".repeat(MAX_VLESS_URI_BYTES)
+        ),
+        format!(
+            "{prefix}{}é",
+            "x".repeat(MAX_VLESS_URI_BYTES - prefix.len() - 1)
+        ),
+    ] {
+        let error = VlessParser::parse_uri(&oversized).unwrap_err();
+        assert_eq!(error.to_string(), "VLESS URI превышает лимит 16 KiB");
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn public_import_errors_never_echo_uri_controlled_data() {
+    let host = "private-host.example";
+    let fragment = "PRIVATE-FRAGMENT";
+    let uuid = "PRIVATE-UUID";
+    let base = format!("vless://{uuid}@{host}:443");
+    let cases = [
+        format!("not-a-uri-{uuid}@{host}"),
+        format!("https://{uuid}@{host}:443#{fragment}"),
+        format!("PRIVATE-SCHEME-MARKER://{uuid}@{host}:443#{fragment}"),
+        format!("{base}?flow=PRIVATE-FLOW#{fragment}"),
+        format!("{base}?security=PRIVATE-SECURITY#{fragment}"),
+        format!("{base}?type=PRIVATE-TRANSPORT#{fragment}"),
+        format!("{base}?headerType=PRIVATE-HEADER#{fragment}"),
+        format!("{base}?type=grpc&serviceName=svc&mode=PRIVATE-MODE#{fragment}"),
+        format!("{base}?type=grpc&serviceName=svc&path=PRIVATE-PATH#{fragment}"),
+        format!("{base}?security=reality&pbk=PRIVATE-KEY#{fragment}"),
+        format!("{base}?security=tls&sni=PRIVATE-SNI?#{fragment}"),
+        format!("{base}?Security=PRIVATE-SECURITY#{fragment}"),
+    ];
+    for uri in cases {
+        let error = VlessParser::parse_uri(&uri).unwrap_err();
+        let display = error.to_string();
+        let alternate = format!("{error:#}");
+        let debug = format!("{error:?}");
+        assert!(error.source().is_none(), "unexpected source for {display}");
+        for rendered in [&display, &alternate, &debug] {
+            for marker in [
+                "PRIVATE-",
+                "private-",
+                host,
+                uuid,
+                fragment,
+                "private-host",
+                "private-uuid",
+            ] {
+                assert!(
+                    !rendered.contains(marker),
+                    "URI data in importer error: {rendered}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn public_profile_validation_errors_hide_identity_and_fragment() {
+    let base = "vless://PRIVATE-UUID@private-host.example:443";
+    let fragment = "PRIVATE-FRAGMENT";
+    let valid = VlessParser::parse_uri(&format!("{base}?type=ws&path=%2Fws#{fragment}"))
+        .expect("WebSocket fixture reaches profile validation");
+    assert_eq!(valid.name, fragment);
+    assert!(valid.id.contains("private-host"));
+
+    let error = VlessParser::parse_uri(&format!(
+        "{base}?flow=xtls-rprx-vision&type=ws&path=%2Fws#{fragment}"
+    ))
+    .unwrap_err();
+    assert_eq!(error.to_string(), "Ошибка валидации профиля VLESS");
+    assert!(error.source().is_none());
+    for rendered in [
+        error.to_string(),
+        format!("{error:#}"),
+        format!("{error:?}"),
+    ] {
+        for marker in ["PRIVATE-", "private-", &valid.id] {
+            assert!(
+                !rendered.contains(marker),
+                "profile data in importer error: {rendered}"
+            );
+        }
+    }
+}
 
 #[test]
 fn public_import_rejects_invisible_query_names_without_exposing_uri_data() {
