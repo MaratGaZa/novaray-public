@@ -34,6 +34,7 @@ fn public_import_errors_never_echo_uri_controlled_data() {
     let cases = [
         format!("not-a-uri-{uuid}@{host}"),
         format!("https://{uuid}@{host}:443#{fragment}"),
+        format!("PRIVATE-SCHEME-MARKER://{uuid}@{host}:443#{fragment}"),
         format!("{base}?flow=PRIVATE-FLOW#{fragment}"),
         format!("{base}?security=PRIVATE-SECURITY#{fragment}"),
         format!("{base}?type=PRIVATE-TRANSPORT#{fragment}"),
@@ -53,6 +54,7 @@ fn public_import_errors_never_echo_uri_controlled_data() {
         for rendered in [&display, &alternate, &debug] {
             for marker in [
                 "PRIVATE-",
+                "private-",
                 host,
                 uuid,
                 fragment,
@@ -64,6 +66,35 @@ fn public_import_errors_never_echo_uri_controlled_data() {
                     "URI data in importer error: {rendered}"
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn public_profile_validation_errors_hide_identity_and_fragment() {
+    let base = "vless://PRIVATE-UUID@private-host.example:443";
+    let fragment = "PRIVATE-FRAGMENT";
+    let valid = VlessParser::parse_uri(&format!("{base}?type=ws&path=%2Fws#{fragment}"))
+        .expect("WebSocket fixture reaches profile validation");
+    assert_eq!(valid.name, fragment);
+    assert!(valid.id.contains("private-host"));
+
+    let error = VlessParser::parse_uri(&format!(
+        "{base}?flow=xtls-rprx-vision&type=ws&path=%2Fws#{fragment}"
+    ))
+    .unwrap_err();
+    assert_eq!(error.to_string(), "Ошибка валидации профиля VLESS");
+    assert!(error.source().is_none());
+    for rendered in [
+        error.to_string(),
+        format!("{error:#}"),
+        format!("{error:?}"),
+    ] {
+        for marker in ["PRIVATE-", "private-", &valid.id] {
+            assert!(
+                !rendered.contains(marker),
+                "profile data in importer error: {rendered}"
+            );
         }
     }
 }
