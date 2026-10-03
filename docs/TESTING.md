@@ -715,9 +715,22 @@ L1 parser tests проверяют сохранение разбора подд�
 ### VLESS-IPV6-SERVER
 
 [Контракт и критерии](./IMPLEMENTATION_PLAN.md#vless-ipv6-server): задача 84 / issue #138.
-Планируемые L1/L3 проверки: канонический unbracketed IPv6 server, эквивалентные написания,
-IPv4/domain compatibility, неизменные legacy ID/name, explicit/implicit SNI и Reality.
-Публичный importer → оба генератора должен сохранять точный адрес и порт в JSON.
-Negative corpus проверяет malformed, unbracketed и zone-scoped IPv6 и redaction ошибок.
+[`parser_ipv6_hosts.rs`](../tests/parser_ipv6_hosts.rs) содержит шесть public L3 тестов:
+- `public_ipv6_server_is_canonical_in_both_generator_formats`: семь написаний IPv6,
+  точный canonical address/server и порт в Xray/sing-box JSON.
+- `public_ipv6_preserves_legacy_identity_and_display_name`: URI-host остаётся источником
+  legacy ID и fallback name; явное fragment-name сохраняется.
+- `public_ipv6_sni_and_reality_policy_are_preserved`: нет implicit IP SNI;
+  explicit SNI сохраняется, Reality без SNI отвергается.
+- `public_invalid_ipv6_hosts_fail_without_echo_or_source`: malformed, unbracketed,
+  zone-scoped и percent-encoded host отвергаются без URI в error/Debug/source.
+- `public_ipv4_and_domain_representation_remain_unchanged`: IPv4/domain compatibility.
+- `public_ipv6_transport_aliases_keep_explicit_identity`: WS/gRPC alias и SNI не меняются.
+
+L1 existing IPv6 TLS test также проверяет unbracketed server. Baseline нового набора:
+2 passed / 4 failed; после правки 6 passed. Четыре мутации (URI-скобки в server,
+canonical host в fallback name/legacy ID, implicit IP SNI) пойманы; исходник восстановлен.
+Локально 2026-10-04: default 426/0/5, feature 442/0/5, отдельно 10 doctests;
+fmt и strict Clippy в обоих режимах проходят.
 Это не engine runtime/preflight, IDN/punycode, DNS, packet flow или миграция хранилища.
 Родительский IPv6/IDN checkbox и Gate H остаются открытыми.

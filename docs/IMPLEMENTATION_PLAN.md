@@ -110,7 +110,7 @@
 | 81 | `[x]` | Запрет повторов критичных параметров VLESS URI | Проверяет декодированные ключи до интерпретации значений; ошибка повтора не отражает данные URI. | [#132](https://github.com/MaratGaZa/novaray-public/issues/132) | [#133](https://github.com/MaratGaZa/novaray-public/pull/133) |
 | 82 | `[x]` | Запрет невидимых и недопустимых имён VLESS query-параметров | Отклоняет пустые и не-ASCII имена до интерпретации значений, сохраняя совместимость допустимых неизвестных ключей. | [#134](https://github.com/MaratGaZa/novaray-public/issues/134) | [#135](https://github.com/MaratGaZa/novaray-public/pull/135) |
 | 83 | `[x]` | Лимит VLESS URI и безопасные ошибки импортера | Ограничивает исходный URI 16 KiB до разбора и не отражает URI-данные в публичных ошибках импортера. | [#136](https://github.com/MaratGaZa/novaray-public/issues/136) | [#137](https://github.com/MaratGaZa/novaray-public/pull/137) |
-| 84 | `[ ]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | TBD |
+| 84 | `[x]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | [#139](https://github.com/MaratGaZa/novaray-public/pull/139) |
 
 После слияния PR #137 задача 83 находится в `main`. Ближайший одобренный срез — задача 84
 / issue #138: **Канонический IPv6 адрес сервера при VLESS импорте** (M1, roadmap 1.3).
@@ -1372,11 +1372,17 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     validate пойманы, исходник восстановлен. Default 420/0/5, feature 436/0/5.
     Это дополнение evidence той же задачи, не изменение production-контракта.
 
-84. [ ] Канонический IPv6 адрес сервера при VLESS импорте — issue #138, PR TBD:
+84. [x] Канонический IPv6 адрес сервера при VLESS импорте — issue #138, PR #139:
     typed IPv6 host преобразуется в unbracketed server; legacy ID/name и явный SNI
     сохраняются. Критерии и границы: [VLESS-IPV6-SERVER](#vless-ipv6-server).
     Зависимости: задачи 81–83, существующие url и оба engine generators.
     Откат: revert importer-кода и документации; сохранённые профили не меняются.
+    Evidence 2026-10-04: шесть public integration tests в `parser_ipv6_hosts.rs`;
+    baseline 2 passed / 4 failed, после правки 6 passed. Четыре мутации canonical
+    server, fallback name, legacy ID и implicit IP SNI пойманы, исходник восстановлен.
+    Default 426/0/5, feature 442/0/5; отдельно 10 doctests. Fmt и strict Clippy
+    в обоих режимах, metadata, ссылки, traceability и mirrors проходят.
+    Только L1/L3 importer/generator JSON; runtime IPv6 и Gate H не доказаны.
 
 ### VLESS-IPV6-SERVER
 
