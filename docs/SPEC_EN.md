@@ -356,6 +356,16 @@ original URI string, not total process memory; it does not redact other APIs, pr
 or establish network security. Plan and acceptance:
 [VLESS-URI-BOUND-REDACTION](./IMPLEMENTATION_PLAN.md#vless-uri-bound-redaction).
 
+The `VLESS-IPV6-SERVER` contract converts a bracketed IPv6 URI host through typed
+`url::Host::Ipv6` into canonical `Ipv6Addr::to_string()` without brackets in
+`ServerProfile.server`. Both generators receive an address, not URI framing. IPv6 never
+becomes implicit SNI; explicit SNI and Reality checks are preserved. The fallback profile
+name and legacy ID still use the bracketed URI host; IPv4 and domains are unchanged.
+Malformed IPv6, missing required brackets, and zone identifiers are rejected with redacted
+error categories. Stored profiles are not migrated. This is an L1/L3 representation contract,
+not IDN/punycode, a new ID algorithm, DNS, or evidence of IPv6 traffic. Plan and acceptance:
+[VLESS-IPV6-SERVER](./IMPLEMENTATION_PLAN.md#vless-ipv6-server).
+
 ### FR-003 — Engine lifecycle
 
 - Pin and verify the engine version and checksum.

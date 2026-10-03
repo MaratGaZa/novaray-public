@@ -711,3 +711,13 @@ L3 `public_import_errors_never_echo_uri_controlled_data` проверяет пу
 имени профиля; importer возвращает только общую категорию без цепочки причин.
 L1 parser tests проверяют сохранение разбора поддерживаемых URI. Это не redaction
 других API, не общий бюджет RSS и не доказательство сетевой безопасности. Gate H открыт.
+
+### VLESS-IPV6-SERVER
+
+[Контракт и критерии](./IMPLEMENTATION_PLAN.md#vless-ipv6-server): задача 84 / issue #138.
+Планируемые L1/L3 проверки: канонический unbracketed IPv6 server, эквивалентные написания,
+IPv4/domain compatibility, неизменные legacy ID/name, explicit/implicit SNI и Reality.
+Публичный importer → оба генератора должен сохранять точный адрес и порт в JSON.
+Negative corpus проверяет malformed, unbracketed и zone-scoped IPv6 и redaction ошибок.
+Это не engine runtime/preflight, IDN/punycode, DNS, packet flow или миграция хранилища.
+Родительский IPv6/IDN checkbox и Gate H остаются открытыми.

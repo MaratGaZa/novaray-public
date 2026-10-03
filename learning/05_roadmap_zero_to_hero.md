@@ -159,6 +159,10 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   задача 83 / issue #136 / PR #137. Исходный URI ограничен 16 KiB до разбора; публичные
   ошибки importer не отражают URI-данные. Остальные API, fuzzing и системная безопасность
   вне среза.
+- [ ] [VLESS-IPV6-SERVER](../docs/IMPLEMENTATION_PLAN.md#vless-ipv6-server):
+  задача 84 / issue #138 / PR TBD. Канонический IPv6 `server` без URI-скобок;
+  legacy ID/name, SNI и IPv4/domain сохраняются. Только importer/generator evidence;
+  IDN/punycode, сохранённые профили и реальный IPv6-трафик не входят в срез.
 - [ ] Ввести canonical normalization и deterministic profile ID без коллизий.
 - [ ] Добавить property/fuzz tests URI parser.
 

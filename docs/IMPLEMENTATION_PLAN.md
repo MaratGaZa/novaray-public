@@ -110,11 +110,11 @@
 | 81 | `[x]` | Запрет повторов критичных параметров VLESS URI | Проверяет декодированные ключи до интерпретации значений; ошибка повтора не отражает данные URI. | [#132](https://github.com/MaratGaZa/novaray-public/issues/132) | [#133](https://github.com/MaratGaZa/novaray-public/pull/133) |
 | 82 | `[x]` | Запрет невидимых и недопустимых имён VLESS query-параметров | Отклоняет пустые и не-ASCII имена до интерпретации значений, сохраняя совместимость допустимых неизвестных ключей. | [#134](https://github.com/MaratGaZa/novaray-public/issues/134) | [#135](https://github.com/MaratGaZa/novaray-public/pull/135) |
 | 83 | `[x]` | Лимит VLESS URI и безопасные ошибки импортера | Ограничивает исходный URI 16 KiB до разбора и не отражает URI-данные в публичных ошибках импортера. | [#136](https://github.com/MaratGaZa/novaray-public/issues/136) | [#137](https://github.com/MaratGaZa/novaray-public/pull/137) |
+| 84 | `[ ]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | TBD |
 
-После слияния PR #135 задача 82 находится в `main`. Задача 83 / issue #136 / PR #137:
-**Лимит VLESS URI и безопасные ошибки импортера** реализована и проверена локально
-(M1, roadmap 1.3). Это локальный контракт импортера, без сетевых или системных операций.
-CI и независимое review PR #137 остаются отдельными проверками перед merge.
+После слияния PR #137 задача 83 находится в `main`. Ближайший одобренный срез — задача 84
+/ issue #138: **Канонический IPv6 адрес сервера при VLESS импорте** (M1, roadmap 1.3).
+Это локальный контракт представления адреса, без сетевых или системных операций.
 Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
@@ -1371,6 +1371,29 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     в ошибке импортера. Три уникально нацеленные мутации эха flow, схемы и ошибки
     validate пойманы, исходник восстановлен. Default 420/0/5, feature 436/0/5.
     Это дополнение evidence той же задачи, не изменение production-контракта.
+
+84. [ ] Канонический IPv6 адрес сервера при VLESS импорте — issue #138, PR TBD:
+    typed IPv6 host преобразуется в unbracketed server; legacy ID/name и явный SNI
+    сохраняются. Критерии и границы: [VLESS-IPV6-SERVER](#vless-ipv6-server).
+    Зависимости: задачи 81–83, существующие url и оба engine generators.
+    Откат: revert importer-кода и документации; сохранённые профили не меняются.
+
+### VLESS-IPV6-SERVER
+
+Task 84 — один срез roadmap 1.3. Владелец представления адреса — VLESS importer,
+а не генераторы или privileged executor. Зависимости уже в main; readiness: ready.
+
+- `url::Host::Ipv6` даёт канонический `Ipv6Addr::to_string()` без скобок в `server`.
+- Эквивалентные написания IPv6 дают одинаковый server, parseable как `Ipv6Addr`.
+- L3 public importer → Xray/sing-box JSON проверяет точный address/server и порт.
+- L1/L3 проверяют отсутствие implicit IP SNI, явный SNI и Reality с/без SNI.
+- URI-host остаётся источником legacy ID и fallback name; IPv4/domain не меняются.
+- Malformed/unbracketed/scoped IPv6 отвергаются без эха URI в error/source/Debug.
+- Проверки: default/feature all-targets, отдельные doctest, fmt, strict Clippy,
+  targeted mutations, metadata, ссылки, traceability, mirrors и diff.
+- Non-goals: миграция сохранённых profiles, IDN/punycode, collision-free ID, DNS,
+  реальные engine preflight/IPv6 packets и Gate H. FR-001/FR-002/NFR-001 остаются partial.
+- Stop: после этого среза, артефактов и PR; следующая задача требует отдельной команды.
 
 ## 7. Зависимости
 
