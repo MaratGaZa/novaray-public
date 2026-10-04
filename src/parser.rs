@@ -4,7 +4,7 @@ use crate::config::{
 };
 use anyhow::{anyhow, Result};
 use percent_encoding::percent_decode_str;
-use url::Url;
+use url::{Host, Url};
 
 pub struct VlessParser;
 
@@ -102,10 +102,14 @@ impl VlessParser {
             return Err(anyhow!("UUID не может быть пустым"));
         }
 
-        let host = url
+        let uri_host = url
             .host_str()
-            .ok_or_else(|| anyhow!("Хост сервера отсутствует в URI"))?
-            .to_string();
+            .ok_or_else(|| anyhow!("Хост сервера отсутствует в URI"))?;
+        // Keep URI brackets for legacy identity, but not for the engine server address.
+        let host = match url.host() {
+            Some(Host::Ipv6(address)) => address.to_string(),
+            _ => uri_host.to_string(),
+        };
 
         let port = url
             .port()
@@ -115,13 +119,10 @@ impl VlessParser {
             Some(frag) if !frag.trim().is_empty() => {
                 percent_decode_str(frag).decode_utf8_lossy().to_string()
             }
-            _ => format!("{}:{}", host, port),
+            _ => format!("{}:{}", uri_host, port),
         };
 
-        let is_ip_host = host.parse::<std::net::IpAddr>().is_ok()
-            || (host.starts_with('[')
-                && host.ends_with(']')
-                && host[1..host.len() - 1].parse::<std::net::IpAddr>().is_ok());
+        let is_ip_host = host.parse::<std::net::IpAddr>().is_ok();
 
         // Query параметры
         let mut flow: Option<FlowType> = None;
@@ -243,7 +244,7 @@ impl VlessParser {
             transport_host = Some(sni.clone());
         }
 
-        let safe_host_id = host.replace(['.', ':', '[', ']'], "-");
+        let safe_host_id = uri_host.replace(['.', ':', '[', ']'], "-");
         let profile_id = format!("vless-{}-{}", safe_host_id, port);
 
         let profile = ServerProfile {
@@ -651,7 +652,7 @@ mod tests {
         let tls = profile.tls.expect("TLS должен быть включен");
         assert_eq!(tls.security, SecurityType::Tls);
         assert_eq!(tls.server_name, "");
-        assert_eq!(profile.server, "[2001:db8::1]");
+        assert_eq!(profile.server, "2001:db8::1");
         assert_eq!(profile.port, 443);
     }
 

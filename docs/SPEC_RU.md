@@ -335,6 +335,19 @@ credentials, host, адреса, идентификаторы профиля и�
 это не redaction иных API, не fuzz-proof и не доказательство сетевой безопасности.
 План и критерии: [VLESS-URI-BOUND-REDACTION](./IMPLEMENTATION_PLAN.md#vless-uri-bound-redaction).
 
+Контракт `VLESS-IPV6-SERVER`: при импорте bracketed IPv6 URI typed `url::Host::Ipv6`
+преобразуется в каноническую строку `Ipv6Addr::to_string()` без квадратных скобок в
+`ServerProfile.server`. Поля Xray `vnext[].address` и sing-box `server` получают адрес
+без URI-обрамления. HTTP `Host` (WS) и `authority` (gRPC) при fallback на IPv6 server
+получают литерал в квадратных скобках, без добавления порта. Приоритет явного transport
+host/authority, затем непустого SNI, затем server сохраняется; явные значения не меняются. IPv6 не
+становится неявным SNI; явный SNI и проверки Reality сохраняются. Имя профиля по умолчанию
+и legacy ID по-прежнему строятся из URI-host со скобками; IPv4 и домены не меняются.
+Некорректный IPv6, отсутствие обязательных скобок и zone identifier отклоняются с безопасной
+категорией ошибки. Сохранённые профили не мигрируются. Это L1/L3 контракт представления,
+не IDN/punycode, не новый алгоритм ID, не DNS или доказательство IPv6-трафика.
+План и критерии: [VLESS-IPV6-SERVER](./IMPLEMENTATION_PLAN.md#vless-ipv6-server).
+
 Текущий MVP не должен архитектурно закрывать добавление других поддерживаемых движком протоколов.
 UI, helper/IPC contract и policy model не должны предполагать, что единственный возможный outbound
 protocol — VLESS: протокол выбирается типизированным profile field и транслируется в engine-specific
