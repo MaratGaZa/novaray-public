@@ -1,5 +1,6 @@
 //! Модели конфигурации серверов и пользовательских настроек
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
 use std::net::IpAddr;
@@ -310,8 +311,9 @@ impl ServerProfile {
         Ok(())
     }
 
-    pub(crate) fn effective_transport_host(&self) -> &str {
-        self.host
+    pub(crate) fn effective_transport_host(&self) -> Cow<'_, str> {
+        let explicit = self
+            .host
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -320,8 +322,16 @@ impl ServerProfile {
                     .as_ref()
                     .map(|tls| tls.server_name.trim())
                     .filter(|value| !value.is_empty())
-            })
-            .unwrap_or_else(|| self.server.trim())
+            });
+        if let Some(host) = explicit {
+            return Cow::Borrowed(host);
+        }
+        let server = self.server.trim();
+        // HTTP Host / :authority needs brackets, unlike engine address/server.
+        if server.parse::<std::net::Ipv6Addr>().is_ok() {
+            return Cow::Owned(format!("[{server}]"));
+        }
+        Cow::Borrowed(server)
     }
 }
 

@@ -1383,6 +1383,11 @@ Windows 11 x64; идентичность пакета, подписи и отк�
     Default 426/0/5, feature 442/0/5; отдельно 10 doctests. Fmt и strict Clippy
     в обоих режимах, metadata, ссылки, traceability и mirrors проходят.
     Только L1/L3 importer/generator JSON; runtime IPv6 и Gate H не доказаны.
+    Review follow-up 2026-10-04: исправлен HTTP fallback для WS/gRPC IPv6:
+    Host/authority со скобками, address/server без них; explicit identity/SNI
+    сохраняются. Два новых public теста: до fix 7/1, после 8/0; три мутации
+    пойманы и восстановлены. Default 428/0/5, feature 444/0/5, doctests 10;
+    это дополнение evidence задачи 84, не новая execution task.
 
 ### VLESS-IPV6-SERVER
 
@@ -1392,6 +1397,8 @@ Task 84 — один срез roadmap 1.3. Владелец представле
 - `url::Host::Ipv6` даёт канонический `Ipv6Addr::to_string()` без скобок в `server`.
 - Эквивалентные написания IPv6 дают одинаковый server, parseable как `Ipv6Addr`.
 - L3 public importer → Xray/sing-box JSON проверяет точный address/server и порт.
+- WS/gRPC fallback на IPv6 server обрамляется скобками в HTTP Host/authority,
+  не в address/server; explicit transport identity → SNI → server сохраняется.
 - L1/L3 проверяют отсутствие implicit IP SNI, явный SNI и Reality с/без SNI.
 - URI-host остаётся источником legacy ID и fallback name; IPv4/domain не меняются.
 - Malformed/unbracketed/scoped IPv6 отвергаются без эха URI в error/source/Debug.

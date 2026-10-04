@@ -715,7 +715,7 @@ L1 parser tests проверяют сохранение разбора подд�
 ### VLESS-IPV6-SERVER
 
 [Контракт и критерии](./IMPLEMENTATION_PLAN.md#vless-ipv6-server): задача 84 / issue #138.
-[`parser_ipv6_hosts.rs`](../tests/parser_ipv6_hosts.rs) содержит шесть public L3 тестов:
+[`parser_ipv6_hosts.rs`](../tests/parser_ipv6_hosts.rs) содержит восемь public L3 тестов:
 - `public_ipv6_server_is_canonical_in_both_generator_formats`: семь написаний IPv6,
   точный canonical address/server и порт в Xray/sing-box JSON.
 - `public_ipv6_preserves_legacy_identity_and_display_name`: URI-host остаётся источником
@@ -726,11 +726,21 @@ L1 parser tests проверяют сохранение разбора подд�
   zone-scoped и percent-encoded host отвергаются без URI в error/Debug/source.
 - `public_ipv4_and_domain_representation_remain_unchanged`: IPv4/domain compatibility.
 - `public_ipv6_transport_aliases_keep_explicit_identity`: WS/gRPC alias и SNI не меняются.
+- `public_ipv6_http_fallback_is_bracketed_in_both_generator_formats`: WS/gRPC,
+  три IPv6 написания, без security/с none/с TLS без SNI; HTTP поля со скобками,
+  address/server без скобок, точный порт и path/serviceName в обоих JSON.
+- `public_http_fallback_preserves_identity_precedence_and_legacy_hosts`: explicit
+  host/authority → SNI → server, IPv4/domain и старый bracketed server без двойных скобок.
 
 L1 existing IPv6 TLS test также проверяет unbracketed server. Baseline нового набора:
 2 passed / 4 failed; после правки 6 passed. Четыре мутации (URI-скобки в server,
 canonical host в fallback name/legacy ID, implicit IP SNI) пойманы; исходник восстановлен.
 Локально 2026-10-04: default 426/0/5, feature 442/0/5, отдельно 10 doctests;
 fmt и strict Clippy в обоих режимах проходят.
+Review follow-up 2026-10-04: новый fallback тест до исправления 7/1, после 8/0.
+Три мутации (нет скобок у IPv6 fallback, скобки у всех server fallback,
+игнорирование explicit identity) пойманы; каждая дала 1 failed, исходник восстановлен.
+Повторный полный набор: default 428/0/5, feature 444/0/5, отдельно 10 doctests;
+targeted suite с `RUST_BACKTRACE=full` — 8/0. Это исправление той же задачи 84 / PR #139.
 Это не engine runtime/preflight, IDN/punycode, DNS, packet flow или миграция хранилища.
 Родительский IPv6/IDN checkbox и Gate H остаются открытыми.

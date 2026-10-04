@@ -358,7 +358,10 @@ or establish network security. Plan and acceptance:
 
 The `VLESS-IPV6-SERVER` contract converts a bracketed IPv6 URI host through typed
 `url::Host::Ipv6` into canonical `Ipv6Addr::to_string()` without brackets in
-`ServerProfile.server`. Both generators receive an address, not URI framing. IPv6 never
+`ServerProfile.server`. Xray `vnext[].address` and sing-box `server` receive an address
+without URI framing. HTTP `Host` (WS) and `authority` (gRPC) falling back to an IPv6 server
+receive a bracketed literal without an added port. Precedence remains explicit transport
+host/authority, then non-empty SNI, then server; explicit values are unchanged. IPv6 never
 becomes implicit SNI; explicit SNI and Reality checks are preserved. The fallback profile
 name and legacy ID still use the bracketed URI host; IPv4 and domains are unchanged.
 Malformed IPv6, missing required brackets, and zone identifiers are rejected with redacted
