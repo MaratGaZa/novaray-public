@@ -370,14 +370,17 @@ not IDN/punycode, a new ID algorithm, DNS, or evidence of IPv6 traffic. Plan and
 [VLESS-IPV6-SERVER](./IMPLEMENTATION_PLAN.md#vless-ipv6-server).
 
 The `VLESS-CANONICAL-PROFILE-ID` contract normalizes imported VLESS configuration parameters
-into a canonical representation and derives a deterministic, collision-free `profile.id`.
-Normalization converts UUIDs to lowercase, domain names of the server, transport host, and SNI
+into a canonical representation and derives a deterministic `profile.id`.
+Normalization converts recognized standard UUIDs to lowercase (preserving original casing of
+arbitrary string user identifiers), domain names of the server, transport host, and SNI
 to lowercase ASCII, uTLS fingerprint and Reality short_id to lowercase, and trims edge whitespace
 on transport path/serviceName and Reality public_key. The profile identifier is generated as
 `vless-{safe_host}-{port}-{hash16}`, where `{hash16}` is a 16-character hex digest (64-bit truncated
-SHA-256) over the canonical tuple of connection parameters (protocol, canonical server, port, uuid,
-transport, flow, host, path, security, sni, fp, pbk, sid). Distinct configurations sharing the same
-host and port are guaranteed to produce distinct profile IDs; equivalent URIs differing only in
+SHA-256) over the canonical tuple of connection parameters using length-prefixed and tagged field
+framing (protocol, canonical server, port, uuid, transport, flow, host, path, security, sni, fp,
+pbk, sid). Explicit length-prefixed framing prevents boundary-shifting collisions across fields;
+the 64-bit digest provides cryptographic collision resistance across local profile collections
+(with residual collision risk bounded by the 2³² birthday bound). Equivalent URIs differing only in
 casing or query parameter ordering produce the identical canonical ID. Display name fragments
 (`#name`) do not alter connection identity. Stored profiles are not migrated. This is an L1/L3
 importer contract, not IDN/punycode, network evidence, or Gate H completion. Plan and acceptance:

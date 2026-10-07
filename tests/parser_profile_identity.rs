@@ -167,3 +167,56 @@ fn public_vless_profile_id_format_is_stable_and_deterministic() {
     assert_eq!(p_frag1.id, baseline.id);
     assert_eq!(p_frag2.id, baseline.id);
 }
+
+#[test]
+fn public_vless_field_framing_prevents_boundary_shifting_collisions() {
+    let uuid = "00000000-0000-4000-8000-000000000001";
+    // Candidate collision: boundary shift across authority and serviceName with delimiter '|'
+    let uri_a = format!(
+        "vless://{uuid}@edge.example.com:443?type=grpc&mode=gun&authority=a%7Cb&serviceName=c"
+    );
+    let uri_b = format!(
+        "vless://{uuid}@edge.example.com:443?type=grpc&mode=gun&authority=a&serviceName=b%7Cc"
+    );
+
+    let profile_a = VlessParser::parse_uri(&uri_a).expect("URI A parses");
+    let profile_b = VlessParser::parse_uri(&uri_b).expect("URI B parses");
+
+    assert_eq!(profile_a.host.as_deref(), Some("a|b"));
+    assert_eq!(profile_a.path.as_deref(), Some("c"));
+    assert_eq!(profile_b.host.as_deref(), Some("a"));
+    assert_eq!(profile_b.path.as_deref(), Some("b|c"));
+
+    assert_ne!(
+        profile_a.id, profile_b.id,
+        "Length-prefixed field framing must prevent boundary shifting collisions"
+    );
+}
+
+#[test]
+fn public_vless_preserves_custom_string_user_id_case_while_normalizing_standard_uuids() {
+    // 1. Standard RFC 4122 UUID is case-insensitively normalized to lowercase
+    let standard_upper =
+        "vless://A1B2C3D4-E5F6-47A8-89B0-C1D2E3F4A5B6@edge.example.com:443?security=none";
+    let standard_lower =
+        "vless://a1b2c3d4-e5f6-47a8-89b0-c1d2e3f4a5b6@edge.example.com:443?security=none";
+    let p_std_u = VlessParser::parse_uri(standard_upper).expect("upper UUID parses");
+    let p_std_l = VlessParser::parse_uri(standard_lower).expect("lower UUID parses");
+
+    assert_eq!(p_std_u.uuid, "a1b2c3d4-e5f6-47a8-89b0-c1d2e3f4a5b6");
+    assert_eq!(p_std_l.uuid, "a1b2c3d4-e5f6-47a8-89b0-c1d2e3f4a5b6");
+    assert_eq!(p_std_u.id, p_std_l.id);
+
+    // 2. Custom non-standard user string (Xray short ID) preserves case
+    let custom_upper = "vless://ReviewUser@edge.example.com:443?security=none";
+    let custom_lower = "vless://reviewuser@edge.example.com:443?security=none";
+    let p_cust_u = VlessParser::parse_uri(custom_upper).expect("custom upper parses");
+    let p_cust_l = VlessParser::parse_uri(custom_lower).expect("custom lower parses");
+
+    assert_eq!(p_cust_u.uuid, "ReviewUser");
+    assert_eq!(p_cust_l.uuid, "reviewuser");
+    assert_ne!(
+        p_cust_u.id, p_cust_l.id,
+        "Custom non-UUID strings must preserve case and distinct identities"
+    );
+}

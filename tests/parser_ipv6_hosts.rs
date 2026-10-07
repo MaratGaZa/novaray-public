@@ -66,7 +66,7 @@ fn public_ipv6_preserves_legacy_identity_and_display_name() {
         let uri = format!("vless://{USER}@[{host}]:443");
         let profile = VlessParser::parse_uri(&uri).unwrap();
         assert_eq!(profile.server, "2001:db8::1");
-        assert_eq!(profile.id, "vless--2001-db8--1--443-719c00e29dd80978");
+        assert_eq!(profile.id, "vless-2001-db8--1-443-20e1f44a4ef7b986");
         assert_eq!(profile.name, "[2001:db8::1]:443");
         let named = VlessParser::parse_uri(&format!("{uri}#IPv6%20node")).unwrap();
         assert_eq!(named.name, "IPv6 node");

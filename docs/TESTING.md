@@ -748,7 +748,7 @@ targeted suite с `RUST_BACKTRACE=full` — 8/0. Это исправление �
 ### VLESS-CANONICAL-PROFILE-ID
 
 [Контракт и критерии](./IMPLEMENTATION_PLAN.md#vless-canonical-profile-id): задача 85 / issue #140.
-[`parser_profile_identity.rs`](../tests/parser_profile_identity.rs) содержит четыре public L3 теста:
+[`parser_profile_identity.rs`](../tests/parser_profile_identity.rs) содержит шесть public L3 тестов:
 - `public_vless_canonical_normalization_handles_case_and_formatting`: нормализация регистра
   UUID, домена, SNI, uTLS fingerprint, Reality short_id и пробелов; эквивалентные ссылки дают идентичный результат.
 - `public_vless_deterministic_profile_id_avoids_collisions_on_same_endpoint`: 11 различных конфигураций
@@ -758,7 +758,12 @@ targeted suite с `RUST_BACKTRACE=full` — 8/0. Это исправление �
   (`a.b.example.com` и `a-b.example.com`) получают разные profile ID.
 - `public_vless_profile_id_format_is_stable_and_deterministic`: стабильность ID при повторном
   парсинге, перестановке query-параметров и независимость от `#fragment`.
+- `public_vless_field_framing_prevents_boundary_shifting_collisions`: тегированное кадрирование
+  с префиксами длины предотвращает коллизии при сдвиге границ между authority и serviceName.
+- `public_vless_preserves_custom_string_user_id_case_while_normalizing_standard_uuids`: распознанные
+  стандартные UUID нормализуются к нижнему регистру, а произвольные строковые ID (например, `ReviewUser`)
+  сохраняют исходный регистр.
 
-L1 тесты в [`parser.rs`](../src/parser.rs) проверяют нормализацию регистра и чувствительность
-хэша к изменению каждого из 12 полей конфигурации.
+L1 тесты в [`parser.rs`](../src/parser.rs) проверяют нормализацию регистра, распознавание UUID
+и чувствительность хэша к изменению каждого из полей конфигурации.
 Это контракт импортера, не автоматическая миграция файлов, IDN, packet flow или Gate H.
