@@ -23,6 +23,12 @@ URI-host сохраняется для legacy ID и fallback name. Explicit SNI 
 не меняются, IP не становится implicit SNI. Это importer/generator JSON evidence,
 не миграция сохранённых профилей, IDN/DNS или доказательство IPv6 packet flow.
 
+`VLESS-CANONICAL-PROFILE-ID` нормализует атрибуты профиля при импорте (UUID, domain,
+SNI, short_id, fp к нижнему регистру; trimming) и формирует детерминированный ID
+`vless-{safe_host}-{port}-{hash16}` на основе SHA-256 хэша параметров соединения.
+Различные конфигурации на общем сервере и порту не сталкиваются в `AppConfig`.
+Это локальные гарантии `src/parser.rs`, без миграции файлов, IDN или сетевого evidence.
+
 ```text
 Foreground CLI start / validate / status / pinned-releases
   -> ProxyService -> catalog/version/dialect/checksum checks

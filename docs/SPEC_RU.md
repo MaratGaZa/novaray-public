@@ -348,6 +348,20 @@ host/authority, затем непустого SNI, затем server сохра�
 не IDN/punycode, не новый алгоритм ID, не DNS или доказательство IPv6-трафика.
 План и критерии: [VLESS-IPV6-SERVER](./IMPLEMENTATION_PLAN.md#vless-ipv6-server).
 
+Контракт `VLESS-CANONICAL-PROFILE-ID`: импорт VLESS нормализует конфигурационные параметры
+к каноническому виду и формирует детерминированный идентификатор профиля `profile.id` без коллизий.
+Нормализация приводит UUID к нижнему регистру, доменные имена сервера, transport host и SNI —
+к нижнему регистру ASCII, uTLS fingerprint и Reality short_id — к нижнему регистру, а строковые
+параметры path/serviceName и Reality public_key — к очищенным от краевых пробелов значениям.
+Идентификатор профиля генерируется в формате `vless-{safe_host}-{port}-{hash16}`, где `{hash16}` —
+16-символьный hex-дайджест (64-битный усечённый SHA-256) от канонического кортежа параметров
+соединения (protocol, canonical server, port, uuid, transport, flow, host, path, security, sni, fp,
+pbk, sid). Различные конфигурации с одинаковыми хостом и портом гарантированно получают разные ID;
+эквивалентные ссылки с разным регистром или порядком query-параметров получают идентичный канонический
+ID. Пользовательский фрагмент (`#name`) не меняет идентификатор соединения. Сохранённые профили
+не мигрируются. Это L1/L3 контракт импортера, не IDN/punycode, не сетевое evidence и не закрытие Gate H.
+План и критерии: [VLESS-CANONICAL-PROFILE-ID](./IMPLEMENTATION_PLAN.md#vless-canonical-profile-id).
+
 Текущий MVP не должен архитектурно закрывать добавление других поддерживаемых движком протоколов.
 UI, helper/IPC contract и policy model не должны предполагать, что единственный возможный outbound
 protocol — VLESS: протокол выбирается типизированным profile field и транслируется в engine-specific

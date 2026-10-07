@@ -744,3 +744,21 @@ Review follow-up 2026-10-04: новый fallback тест до исправле�
 targeted suite с `RUST_BACKTRACE=full` — 8/0. Это исправление той же задачи 84 / PR #139.
 Это не engine runtime/preflight, IDN/punycode, DNS, packet flow или миграция хранилища.
 Родительский IPv6/IDN checkbox и Gate H остаются открытыми.
+
+### VLESS-CANONICAL-PROFILE-ID
+
+[Контракт и критерии](./IMPLEMENTATION_PLAN.md#vless-canonical-profile-id): задача 85 / issue #140.
+[`parser_profile_identity.rs`](../tests/parser_profile_identity.rs) содержит четыре public L3 теста:
+- `public_vless_canonical_normalization_handles_case_and_formatting`: нормализация регистра
+  UUID, домена, SNI, uTLS fingerprint, Reality short_id и пробелов; эквивалентные ссылки дают идентичный результат.
+- `public_vless_deterministic_profile_id_avoids_collisions_on_same_endpoint`: 11 различных конфигураций
+  на одном хосте и порту (security, transport, path, SNI, keys, UUID) получают уникальные ID;
+  `AppConfig::validate()` проходит без коллизий ID.
+- `public_vless_profile_id_disambiguates_hyphen_colliding_hosts`: домены с общим дефисным слагом
+  (`a.b.example.com` и `a-b.example.com`) получают разные profile ID.
+- `public_vless_profile_id_format_is_stable_and_deterministic`: стабильность ID при повторном
+  парсинге, перестановке query-параметров и независимость от `#fragment`.
+
+L1 тесты в [`parser.rs`](../src/parser.rs) проверяют нормализацию регистра и чувствительность
+хэша к изменению каждого из 12 полей конфигурации.
+Это контракт импортера, не автоматическая миграция файлов, IDN, packet flow или Gate H.

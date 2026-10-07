@@ -111,10 +111,11 @@
 | 82 | `[x]` | Запрет невидимых и недопустимых имён VLESS query-параметров | Отклоняет пустые и не-ASCII имена до интерпретации значений, сохраняя совместимость допустимых неизвестных ключей. | [#134](https://github.com/MaratGaZa/novaray-public/issues/134) | [#135](https://github.com/MaratGaZa/novaray-public/pull/135) |
 | 83 | `[x]` | Лимит VLESS URI и безопасные ошибки импортера | Ограничивает исходный URI 16 KiB до разбора и не отражает URI-данные в публичных ошибках импортера. | [#136](https://github.com/MaratGaZa/novaray-public/issues/136) | [#137](https://github.com/MaratGaZa/novaray-public/pull/137) |
 | 84 | `[x]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | [#139](https://github.com/MaratGaZa/novaray-public/pull/139) |
+| 85 | `[ ]` | Каноническая нормализация и детерминированный ID профиля без коллизий | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} без коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | TBD |
 
-После слияния PR #137 задача 83 находится в `main`. Ближайший одобренный срез — задача 84
-/ issue #138: **Канонический IPv6 адрес сервера при VLESS импорте** (M1, roadmap 1.3).
-Это локальный контракт представления адреса, без сетевых или системных операций.
+После слияния PR #139 задача 84 находится в `main`. Ближайший одобренный срез — задача 85
+/ issue #140: **Каноническая нормализация и детерминированный ID профиля без коллизий** (M1, roadmap 1.3).
+Это локальный контракт нормализации и генерации идентификатора, без сетевых или системных операций.
 Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
@@ -1406,6 +1407,38 @@ Task 84 — один срез roadmap 1.3. Владелец представле
   targeted mutations, metadata, ссылки, traceability, mirrors и diff.
 - Non-goals: миграция сохранённых profiles, IDN/punycode, collision-free ID, DNS,
   реальные engine preflight/IPv6 packets и Gate H. FR-001/FR-002/NFR-001 остаются partial.
+- Stop: после этого среза, артефактов и PR; следующая задача требует отдельной команды.
+
+85. [ ] Каноническая нормализация и детерминированный ID профиля без коллизий — issue #140, PR TBD:
+    канонизирует атрибуты VLESS профиля (UUID, domains, SNI, short_id, fp к нижнему регистру;
+    trimming) и вычисляет детерминированный `profile.id` как `vless-{safe_host}-{port}-{hash16}`
+    на основе SHA-256 хэша канонического кортежа параметров соединения.
+    Зависимости: задачи 81–84, существующие `url`, `sha2`, `hex`.
+    Критерии и границы: [VLESS-CANONICAL-PROFILE-ID](#vless-canonical-profile-id).
+    Откат: revert изменений парсера и тестов; сохранённые профили не меняются.
+
+### VLESS-CANONICAL-PROFILE-ID
+
+Task 85 — срез roadmap 1.3. Владелец нормализации и генерации идентификатора — VLESS importer.
+Зависимости уже в main; readiness: ready.
+
+- Нормализация атрибутов при импорте:
+  - UUID приводится к каноническому нижнему регистру.
+  - Доменные имена сервера приводятся к нижнему регистру ASCII.
+  - Transport host и SNI триммируются и приводятся к нижнему регистру ASCII для доменов.
+  - uTLS fingerprint приводится к нижнему регистру.
+  - Reality short_id приводится к нижнему регистру hex.
+  - Transport path / serviceName и Reality public_key очищаются от краевых пробелов.
+- Детерминированный ID профиля без коллизий:
+  - Вычисляется как `vless-{safe_host}-{port}-{hash16}`, где `{hash16}` — 16 hex-символов (64-битный усечённый SHA-256) от канонического представления параметров соединения.
+  - Разные конфигурации на одном и том же `host:port` (разные UUID, transport, path, security, SNI, ключи, flow) получают разные `profile.id` и не конфликтуют в `AppConfig`.
+  - Разные хосты с одинаковым дефисным слагом (например, `a.b` и `a-b`) получают разные `profile.id`.
+  - Эквивалентные ссылки с разным регистром дают идентичные профили и идентичный `profile.id`.
+  - Display name (#fragment) остаётся отделённым от идентификатора соединения.
+- Проверки: default/feature all-targets, отдельные doctests, fmt, strict Clippy,
+  targeted mutations, metadata, ссылки, traceability, mirrors и diff.
+- Non-goals: автоматическая миграция старых профилей в JSON файлах, IDN/punycode, DNS,
+  реальный трафик и Gate H. FR-001/FR-002/NFR-001 остаются partial.
 - Stop: после этого среза, артефактов и PR; следующая задача требует отдельной команды.
 
 ## 7. Зависимости
