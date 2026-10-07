@@ -111,11 +111,11 @@
 | 82 | `[x]` | Запрет невидимых и недопустимых имён VLESS query-параметров | Отклоняет пустые и не-ASCII имена до интерпретации значений, сохраняя совместимость допустимых неизвестных ключей. | [#134](https://github.com/MaratGaZa/novaray-public/issues/134) | [#135](https://github.com/MaratGaZa/novaray-public/pull/135) |
 | 83 | `[x]` | Лимит VLESS URI и безопасные ошибки импортера | Ограничивает исходный URI 16 KiB до разбора и не отражает URI-данные в публичных ошибках импортера. | [#136](https://github.com/MaratGaZa/novaray-public/issues/136) | [#137](https://github.com/MaratGaZa/novaray-public/pull/137) |
 | 84 | `[x]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | [#139](https://github.com/MaratGaZa/novaray-public/pull/139) |
-| 85 | `[ ]` | Каноническая нормализация и детерминированный ID профиля без коллизий | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} без коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | TBD |
+| 85 | `[x]` | Каноническая нормализация и детерминированный ID профиля без коллизий | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} без коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | [#141](https://github.com/MaratGaZa/novaray-public/pull/141) |
 
-После слияния PR #139 задача 84 находится в `main`. Ближайший одобренный срез — задача 85
-/ issue #140: **Каноническая нормализация и детерминированный ID профиля без коллизий** (M1, roadmap 1.3).
-Это локальный контракт нормализации и генерации идентификатора, без сетевых или системных операций.
+После слияния PR #139 задача 84 находится в `main`. Задача 85 / issue #140 / PR #141:
+**Каноническая нормализация и детерминированный ID профиля без коллизий** реализована и проверена локально
+(M1, roadmap 1.3). Это локальный контракт нормализации и генерации идентификатора, без сетевых или системных операций.
 Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
@@ -1409,13 +1409,18 @@ Task 84 — один срез roadmap 1.3. Владелец представле
   реальные engine preflight/IPv6 packets и Gate H. FR-001/FR-002/NFR-001 остаются partial.
 - Stop: после этого среза, артефактов и PR; следующая задача требует отдельной команды.
 
-85. [ ] Каноническая нормализация и детерминированный ID профиля без коллизий — issue #140, PR TBD:
+85. [x] Каноническая нормализация и детерминированный ID профиля без коллизий — issue #140, PR #141:
     канонизирует атрибуты VLESS профиля (UUID, domains, SNI, short_id, fp к нижнему регистру;
     trimming) и вычисляет детерминированный `profile.id` как `vless-{safe_host}-{port}-{hash16}`
     на основе SHA-256 хэша канонического кортежа параметров соединения.
     Зависимости: задачи 81–84, существующие `url`, `sha2`, `hex`.
     Критерии и границы: [VLESS-CANONICAL-PROFILE-ID](#vless-canonical-profile-id).
     Откат: revert изменений парсера и тестов; сохранённые профили не меняются.
+    Evidence 2026-10-08: четыре public integration tests в `tests/parser_profile_identity.rs`,
+    два L1 unit tests в `src/parser.rs`. Три мутации (потеря UUID в хэше, отсутствие lowercase safe_host,
+    возврат legacy ID без хэша) пойманы и восстановлены. Default 434/0/5, feature 450/0/5,
+    10 doctests; fmt, strict Clippy в обоих режимах, metadata, ссылки, traceability и diff проходят.
+    Это L1/L3 importer evidence, не миграция файлов и не сетевое evidence.
 
 ### VLESS-CANONICAL-PROFILE-ID
 
