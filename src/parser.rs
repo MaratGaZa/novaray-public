@@ -85,22 +85,19 @@ fn validate_tcp_header_type(value: &str) -> Result<()> {
 
 fn is_standard_uuid(s: &str) -> bool {
     let bytes = s.as_bytes();
-    if bytes.len() == 36 {
-        for (i, &b) in bytes.iter().enumerate() {
-            if i == 8 || i == 13 || i == 18 || i == 23 {
-                if b != b'-' {
-                    return false;
-                }
-            } else if !b.is_ascii_hexdigit() {
+    if bytes.len() != 36 {
+        return false;
+    }
+    for (i, &b) in bytes.iter().enumerate() {
+        if i == 8 || i == 13 || i == 18 || i == 23 {
+            if b != b'-' {
                 return false;
             }
+        } else if !b.is_ascii_hexdigit() {
+            return false;
         }
-        true
-    } else if bytes.len() == 32 {
-        bytes.iter().all(|b| b.is_ascii_hexdigit())
-    } else {
-        false
     }
+    true
 }
 
 fn normalize_uuid(raw: &str) -> String {

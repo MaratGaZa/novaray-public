@@ -19,7 +19,7 @@ VLESS importer проверяет кратность декодированны�
 `VLESS-IPV6-SERVER` разделяет представления IPv6: typed `url::Host::Ipv6` даёт
 канонический адрес без URI-скобок для `ServerProfile.server` и engine address/server;
 `effective_transport_host()` обрамляет IPv6 server fallback для HTTP Host/authority.
-URI-host сохраняется для legacy ID и fallback name. Explicit SNI и transport alias
+URI-host сохраняется для fallback name. Explicit SNI и transport alias
 не меняются, IP не становится implicit SNI. Это importer/generator JSON evidence,
 не миграция сохранённых профилей, IDN/DNS или доказательство IPv6 packet flow.
 

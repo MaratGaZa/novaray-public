@@ -141,6 +141,7 @@ fn public_vless_profile_id_format_is_stable_and_deterministic() {
     );
 
     let baseline = VlessParser::parse_uri(&uri).unwrap();
+    assert_eq!(baseline.id, "vless-edge-example-com-8443-80fde350f02fa7de");
 
     // 1. Repeated parsing yields identical ID
     for _ in 0..50 {
@@ -218,5 +219,18 @@ fn public_vless_preserves_custom_string_user_id_case_while_normalizing_standard_
     assert_ne!(
         p_cust_u.id, p_cust_l.id,
         "Custom non-UUID strings must preserve case and distinct identities"
+    );
+
+    // 3. 32-character hex string without hyphens is treated as arbitrary user string (preserves case)
+    let hex32_upper = "vless://A1B2C3D4E5F647A889B0C1D2E3F4A5B6@edge.example.com:443?security=none";
+    let hex32_lower = "vless://a1b2c3d4e5f647a889b0c1d2e3f4a5b6@edge.example.com:443?security=none";
+    let p_hex_u = VlessParser::parse_uri(hex32_upper).expect("32-hex upper parses");
+    let p_hex_l = VlessParser::parse_uri(hex32_lower).expect("32-hex lower parses");
+
+    assert_eq!(p_hex_u.uuid, "A1B2C3D4E5F647A889B0C1D2E3F4A5B6");
+    assert_eq!(p_hex_l.uuid, "a1b2c3d4e5f647a889b0c1d2e3f4a5b6");
+    assert_ne!(
+        p_hex_u.id, p_hex_l.id,
+        "32-hex strings without hyphens must preserve case"
     );
 }

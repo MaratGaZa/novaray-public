@@ -363,7 +363,7 @@ without URI framing. HTTP `Host` (WS) and `authority` (gRPC) falling back to an 
 receive a bracketed literal without an added port. Precedence remains explicit transport
 host/authority, then non-empty SNI, then server; explicit values are unchanged. IPv6 never
 becomes implicit SNI; explicit SNI and Reality checks are preserved. The fallback profile
-name and legacy ID still use the bracketed URI host; IPv4 and domains are unchanged.
+name still uses the bracketed URI host; IPv4 and domains are unchanged.
 Malformed IPv6, missing required brackets, and zone identifiers are rejected with redacted
 error categories. Stored profiles are not migrated. This is an L1/L3 representation contract,
 not IDN/punycode, a new ID algorithm, DNS, or evidence of IPv6 traffic. Plan and acceptance:
