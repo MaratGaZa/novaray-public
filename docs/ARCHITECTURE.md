@@ -26,8 +26,8 @@ URI-host сохраняется для fallback name. Explicit SNI и transport 
 `VLESS-CANONICAL-PROFILE-ID` нормализует атрибуты профиля при импорте (стандартные UUID,
 domain, SNI, short_id, fp к нижнему регистру; trimming; сохранение регистра строковых user ID)
 и формирует детерминированный ID `vless-{safe_host}-{port}-{hash16}` на основе SHA-256 хэша
-с префиксами длины и тегами полей. Различные конфигурации на общем сервере и порту не сталкиваются
-в `AppConfig`. Это локальные гарантии `src/parser.rs`, без миграции файлов, IDN или сетевого evidence.
+с префиксами длины и тегами полей. Структурированное кадрирование и 64-битный хэш обеспечивают
+устойчивость к коллизиям в `AppConfig`. Это локальные гарантии `src/parser.rs`, без миграции файлов, IDN или сетевого evidence.
 
 ```text
 Foreground CLI start / validate / status / pinned-releases

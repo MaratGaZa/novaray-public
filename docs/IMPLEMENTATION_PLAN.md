@@ -111,10 +111,10 @@
 | 82 | `[x]` | Запрет невидимых и недопустимых имён VLESS query-параметров | Отклоняет пустые и не-ASCII имена до интерпретации значений, сохраняя совместимость допустимых неизвестных ключей. | [#134](https://github.com/MaratGaZa/novaray-public/issues/134) | [#135](https://github.com/MaratGaZa/novaray-public/pull/135) |
 | 83 | `[x]` | Лимит VLESS URI и безопасные ошибки импортера | Ограничивает исходный URI 16 KiB до разбора и не отражает URI-данные в публичных ошибках импортера. | [#136](https://github.com/MaratGaZa/novaray-public/issues/136) | [#137](https://github.com/MaratGaZa/novaray-public/pull/137) |
 | 84 | `[x]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | [#139](https://github.com/MaratGaZa/novaray-public/pull/139) |
-| 85 | `[x]` | Каноническая нормализация и детерминированный ID профиля без коллизий | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} без коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | [#141](https://github.com/MaratGaZa/novaray-public/pull/141) |
+| 85 | `[x]` | Каноническая нормализация и детерминированный ID профиля | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} с защитой от коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | [#141](https://github.com/MaratGaZa/novaray-public/pull/141) |
 
 После слияния PR #139 задача 84 находится в `main`. Задача 85 / issue #140 / PR #141:
-**Каноническая нормализация и детерминированный ID профиля без коллизий** реализована и проверена локально
+**Каноническая нормализация и детерминированный ID профиля** реализована и проверена локально
 (M1, roadmap 1.3). Это локальный контракт нормализации и генерации идентификатора, без сетевых или системных операций.
 Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
@@ -1409,7 +1409,7 @@ Task 84 — один срез roadmap 1.3. Владелец представле
   реальные engine preflight/IPv6 packets и Gate H. FR-001/FR-002/NFR-001 остаются partial.
 - Stop: после этого среза, артефактов и PR; следующая задача требует отдельной команды.
 
-85. [x] Каноническая нормализация и детерминированный ID профиля без коллизий — issue #140, PR #141:
+85. [x] Каноническая нормализация и детерминированный ID профиля — issue #140, PR #141:
     канонизирует атрибуты VLESS профиля (стандартные UUID, domains, SNI, short_id, fp к нижнему регистру;
     сохранение регистра произвольных user-string; trimming) и вычисляет детерминированный `profile.id`
     как `vless-{safe_host}-{port}-{hash16}` на основе SHA-256 хэша канонического кортежа параметров соединения

@@ -753,7 +753,7 @@ targeted suite с `RUST_BACKTRACE=full` — 8/0. Это исправление �
   UUID, домена, SNI, uTLS fingerprint, Reality short_id и пробелов; эквивалентные ссылки дают идентичный результат.
 - `public_vless_deterministic_profile_id_avoids_collisions_on_same_endpoint`: 11 различных конфигураций
   на одном хосте и порту (security, transport, path, SNI, keys, UUID) получают уникальные ID;
-  `AppConfig::validate()` проходит без коллизий ID.
+  `AppConfig::validate()` проходит без ошибок дубликатов ID.
 - `public_vless_profile_id_disambiguates_hyphen_colliding_hosts`: домены с общим дефисным слагом
   (`a.b.example.com` и `a-b.example.com`) получают разные profile ID.
 - `public_vless_profile_id_format_is_stable_and_deterministic`: стабильность ID при повторном

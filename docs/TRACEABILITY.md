@@ -33,7 +33,7 @@ FR-001/FR-002/NFR-001 остаются `partial`; Gate H открыт.
 
 Задача 85 (issue #140 / PR #141) добавляет L1/L3 evidence [`parser_profile_identity.rs`](../tests/parser_profile_identity.rs):
 каноническая нормализация атрибутов и детерминированный `profile.id` формата
-`vless-{safe_host}-{port}-{hash16}` без коллизий для разных конфигураций на общем хосте и порту.
+`vless-{safe_host}-{port}-{hash16}` с устойчивостью к коллизиям для разных конфигураций на общем хосте и порту.
 Миграция файлов, IDN, packet flow и Gate H не заявляются; FR-001/FR-002/NFR-001 остаются `partial`.
 
 | ID | Scope | Roadmap / execution task | Representative test or check | State | Current evidence | Remaining gate |
