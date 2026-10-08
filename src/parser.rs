@@ -4,6 +4,7 @@ use crate::config::{
 };
 use anyhow::{anyhow, Result};
 use percent_encoding::percent_decode_str;
+use sha2::{Digest, Sha256};
 use url::{Host, Url};
 
 pub struct VlessParser;
@@ -82,6 +83,48 @@ fn validate_tcp_header_type(value: &str) -> Result<()> {
     }
 }
 
+fn is_standard_uuid(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() != 36 {
+        return false;
+    }
+    for (i, &b) in bytes.iter().enumerate() {
+        if i == 8 || i == 13 || i == 18 || i == 23 {
+            if b != b'-' {
+                return false;
+            }
+        } else if !b.is_ascii_hexdigit() {
+            return false;
+        }
+    }
+    true
+}
+
+fn normalize_uuid(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if is_standard_uuid(trimmed) {
+        trimmed.to_ascii_lowercase()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn hash_field(hasher: &mut Sha256, tag: u8, value: &[u8]) {
+    hasher.update([tag]);
+    hasher.update((value.len() as u64).to_le_bytes());
+    hasher.update(value);
+}
+
+fn hash_opt_field(hasher: &mut Sha256, tag: u8, value: Option<&str>) {
+    match value {
+        Some(v) => hash_field(hasher, tag, v.as_bytes()),
+        None => {
+            hasher.update([tag]);
+            hasher.update(0u64.to_le_bytes());
+        }
+    }
+}
+
 impl VlessParser {
     /// Парсит ссылку формата `vless://uuid@host:port?query#name`
     pub fn parse_uri(uri_str: &str) -> Result<ServerProfile> {
@@ -97,18 +140,21 @@ impl VlessParser {
         reject_duplicate_critical_query_keys(&url)?;
         reject_invalid_query_names(&url)?;
 
-        let uuid = url.username().to_string();
-        if uuid.trim().is_empty() {
+        let raw_uuid = url.username();
+        if raw_uuid.trim().is_empty() {
             return Err(anyhow!("UUID не может быть пустым"));
         }
+        let uuid = normalize_uuid(raw_uuid);
 
         let uri_host = url
             .host_str()
             .ok_or_else(|| anyhow!("Хост сервера отсутствует в URI"))?;
-        // Keep URI brackets for legacy identity, but not for the engine server address.
+        // Keep URI brackets for legacy identity slug, but canonicalize unbracketed address.
         let host = match url.host() {
             Some(Host::Ipv6(address)) => address.to_string(),
-            _ => uri_host.to_string(),
+            Some(Host::Ipv4(address)) => address.to_string(),
+            Some(Host::Domain(domain)) => domain.to_ascii_lowercase(),
+            _ => uri_host.to_ascii_lowercase(),
         };
 
         let port = url
@@ -162,10 +208,32 @@ impl VlessParser {
                     })?;
                 }
                 "headerType" => validate_tcp_header_type(&v)?,
-                "sni" => sni = v.to_string(),
-                "pbk" => pbk = Some(v.to_string()),
-                "sid" => sid = Some(v.to_string()),
-                "fp" => fp = Some(v.to_string()),
+                "sni" => {
+                    let trimmed = v.trim();
+                    sni = if trimmed.parse::<std::net::IpAddr>().is_ok() {
+                        trimmed.to_string()
+                    } else {
+                        trimmed.to_ascii_lowercase()
+                    };
+                }
+                "pbk" => {
+                    let trimmed = v.trim();
+                    if !trimmed.is_empty() {
+                        pbk = Some(trimmed.to_string());
+                    }
+                }
+                "sid" => {
+                    let trimmed = v.trim();
+                    if !trimmed.is_empty() {
+                        sid = Some(trimmed.to_ascii_lowercase());
+                    }
+                }
+                "fp" => {
+                    let trimmed = v.trim();
+                    if !trimmed.is_empty() {
+                        fp = Some(trimmed.to_ascii_lowercase());
+                    }
+                }
                 "host" => {
                     set_transport_value(&mut transport_host, v.as_ref(), "host")?;
                 }
@@ -244,11 +312,8 @@ impl VlessParser {
             transport_host = Some(sni.clone());
         }
 
-        let safe_host_id = uri_host.replace(['.', ':', '[', ']'], "-");
-        let profile_id = format!("vless-{}-{}", safe_host_id, port);
-
-        let profile = ServerProfile {
-            id: profile_id,
+        let mut profile = ServerProfile {
+            id: String::new(),
             name,
             protocol: ProtocolType::Vless,
             server: host,
@@ -261,12 +326,54 @@ impl VlessParser {
             tls,
         };
 
+        profile.id = Self::compute_profile_id(&profile);
+
         // Валидируем сформированный профиль
         profile
             .validate()
             .map_err(|_| anyhow!("Ошибка валидации профиля VLESS"))?;
 
         Ok(profile)
+    }
+
+    /// Computes deterministic profile id: `vless-{safe_host}-{port}-{hash16}`
+    /// Uses length-prefixed field hashing with unique tags to prevent boundary ambiguity.
+    pub fn compute_profile_id(profile: &ServerProfile) -> String {
+        let safe_host_id = profile
+            .server
+            .to_ascii_lowercase()
+            .replace(['.', ':', '[', ']'], "-");
+        let mut hasher = Sha256::new();
+
+        hash_field(&mut hasher, 1, b"vless");
+        hash_field(&mut hasher, 2, profile.server.as_bytes());
+        hasher.update([3]);
+        hasher.update(profile.port.to_le_bytes());
+        hash_field(&mut hasher, 4, profile.uuid.as_bytes());
+        hash_field(&mut hasher, 5, profile.transport.to_string().as_bytes());
+        hash_opt_field(
+            &mut hasher,
+            6,
+            profile.flow.as_ref().map(|f| match f {
+                FlowType::XtlsRprxVision => "xtls-rprx-vision",
+            }),
+        );
+        hash_opt_field(&mut hasher, 7, profile.host.as_deref());
+        hash_opt_field(&mut hasher, 8, profile.path.as_deref());
+        if let Some(ref tls) = profile.tls {
+            hasher.update([9, 1]); // Tag 9: TLS present
+            hash_field(&mut hasher, 10, tls.security.to_string().as_bytes());
+            hash_field(&mut hasher, 11, tls.server_name.as_bytes());
+            hash_opt_field(&mut hasher, 12, tls.fingerprint.as_deref());
+            hash_opt_field(&mut hasher, 13, tls.public_key.as_deref());
+            hash_opt_field(&mut hasher, 14, tls.short_id.as_deref());
+        } else {
+            hasher.update([9, 0]); // Tag 9: TLS absent
+        }
+
+        let digest = hasher.finalize();
+        let hash_hex = hex::encode(&digest[..8]);
+        format!("vless-{safe_host_id}-{}-{hash_hex}", profile.port)
     }
 }
 
@@ -275,10 +382,21 @@ fn set_transport_value(
     value: &str,
     canonical_field: &str,
 ) -> Result<bool> {
-    let normalized = value.trim();
-    if normalized.is_empty() {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
         return Ok(false);
     }
+    let normalized = if canonical_field == "host" {
+        if trimmed.parse::<std::net::IpAddr>().is_ok()
+            || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+        {
+            trimmed.to_string()
+        } else {
+            trimmed.to_ascii_lowercase()
+        }
+    } else {
+        trimmed.to_string()
+    };
     if let Some(existing) = target.as_deref() {
         if existing != normalized {
             return Err(anyhow!(
@@ -287,7 +405,7 @@ fn set_transport_value(
             ));
         }
     } else {
-        *target = Some(normalized.to_string());
+        *target = Some(normalized);
     }
     Ok(true)
 }
@@ -914,5 +1032,105 @@ mod tests {
         let uri = "vless://uuid@host";
         let res = VlessParser::parse_uri(uri);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_canonical_normalization_casing_and_trim() {
+        let uri = "vless://A1B2C3D4-E5F6-47A8-89B0-C1D2E3F4A5B6@EDGE.EXAMPLE:443?security=reality&sni=MY-SNI.EXAMPLE&fp=CHROME&sid=0A1B2C3D&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+        let profile = VlessParser::parse_uri(uri).expect("valid URI");
+        assert_eq!(profile.uuid, "a1b2c3d4-e5f6-47a8-89b0-c1d2e3f4a5b6");
+        assert_eq!(profile.server, "edge.example");
+        let tls = profile.tls.as_ref().unwrap();
+        assert_eq!(tls.server_name, "my-sni.example");
+        assert_eq!(tls.fingerprint.as_deref(), Some("chrome"));
+        assert_eq!(tls.short_id.as_deref(), Some("0a1b2c3d"));
+    }
+
+    #[test]
+    fn test_deterministic_profile_id_detects_any_field_change() {
+        let base_profile = ServerProfile {
+            id: String::new(),
+            name: "test".to_string(),
+            protocol: ProtocolType::Vless,
+            server: "edge.example".to_string(),
+            port: 443,
+            uuid: "00000000-0000-4000-8000-000000000001".to_string(),
+            transport: TransportType::Tcp,
+            host: None,
+            path: None,
+            flow: None,
+            tls: Some(TlsConfig {
+                enabled: true,
+                security: SecurityType::Reality,
+                server_name: "edge.example".to_string(),
+                public_key: Some("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8".to_string()),
+                short_id: Some("0a1b".to_string()),
+                fingerprint: Some("chrome".to_string()),
+            }),
+        };
+
+        let base_id = VlessParser::compute_profile_id(&base_profile);
+        assert!(base_id.starts_with("vless-edge-example-443-"));
+
+        // 1. Change server
+        let mut p = base_profile.clone();
+        p.server = "other.example".to_string();
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 2. Change port
+        let mut p = base_profile.clone();
+        p.port = 8443;
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 3. Change uuid
+        let mut p = base_profile.clone();
+        p.uuid = "00000000-0000-4000-8000-000000000002".to_string();
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 4. Change transport
+        let mut p = base_profile.clone();
+        p.transport = TransportType::Ws;
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 5. Change flow
+        let mut p = base_profile.clone();
+        p.flow = Some(FlowType::XtlsRprxVision);
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 6. Change host
+        let mut p = base_profile.clone();
+        p.host = Some("front.example".to_string());
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 7. Change path
+        let mut p = base_profile.clone();
+        p.path = Some("/ws".to_string());
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 8. Change security
+        let mut p = base_profile.clone();
+        p.tls.as_mut().unwrap().security = SecurityType::Tls;
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 9. Change server_name
+        let mut p = base_profile.clone();
+        p.tls.as_mut().unwrap().server_name = "other-sni.example".to_string();
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 10. Change public_key
+        let mut p = base_profile.clone();
+        p.tls.as_mut().unwrap().public_key =
+            Some("AQECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8".to_string());
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 11. Change short_id
+        let mut p = base_profile.clone();
+        p.tls.as_mut().unwrap().short_id = Some("ffff".to_string());
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
+
+        // 12. Change fingerprint
+        let mut p = base_profile.clone();
+        p.tls.as_mut().unwrap().fingerprint = Some("firefox".to_string());
+        assert_ne!(VlessParser::compute_profile_id(&p), base_id);
     }
 }

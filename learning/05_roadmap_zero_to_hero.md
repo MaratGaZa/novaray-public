@@ -163,7 +163,9 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   задача 84 / issue #138 / PR #139. Канонический IPv6 `server` без URI-скобок;
   legacy ID/name, SNI и IPv4/domain сохраняются. Только importer/generator evidence;
   IDN/punycode, сохранённые профили и реальный IPv6-трафик не входят в срез.
-- [ ] Ввести canonical normalization и deterministic profile ID без коллизий.
+- [x] [VLESS-CANONICAL-PROFILE-ID](../docs/IMPLEMENTATION_PLAN.md#vless-canonical-profile-id):
+  задача 85 / issue #140 / PR #141. Каноническая нормализация атрибутов и детерминированный
+  `profile.id` формата `vless-{host}-{port}-{hash16}` с устойчивостью к коллизиям на общем хосте и порту.
 - [ ] Добавить property/fuzz tests URI parser.
 
 ### 1.4. Error model и observability

@@ -66,7 +66,7 @@ fn public_ipv6_preserves_legacy_identity_and_display_name() {
         let uri = format!("vless://{USER}@[{host}]:443");
         let profile = VlessParser::parse_uri(&uri).unwrap();
         assert_eq!(profile.server, "2001:db8::1");
-        assert_eq!(profile.id, "vless--2001-db8--1--443");
+        assert_eq!(profile.id, "vless-2001-db8--1-443-20e1f44a4ef7b986");
         assert_eq!(profile.name, "[2001:db8::1]:443");
         let named = VlessParser::parse_uri(&format!("{uri}#IPv6%20node")).unwrap();
         assert_eq!(named.name, "IPv6 node");
@@ -122,14 +122,14 @@ fn public_invalid_ipv6_hosts_fail_without_echo_or_source() {
 
 #[test]
 fn public_ipv4_and_domain_representation_remain_unchanged() {
-    for (host, id, sni) in [
-        ("192.0.2.10", "vless-192-0-2-10-443", ""),
-        ("edge.example", "vless-edge-example-443", "edge.example"),
+    for (host, id_prefix, sni) in [
+        ("192.0.2.10", "vless-192-0-2-10-443-", ""),
+        ("edge.example", "vless-edge-example-443-", "edge.example"),
     ] {
         let profile =
             VlessParser::parse_uri(&format!("vless://{USER}@{host}:443?security=tls")).unwrap();
         assert_eq!(profile.server, host);
-        assert_eq!(profile.id, id);
+        assert!(profile.id.starts_with(id_prefix));
         assert_eq!(profile.name, format!("{host}:443"));
         assert_eq!(profile.tls.unwrap().server_name, sni);
     }
