@@ -719,7 +719,7 @@ L1 parser tests проверяют сохранение разбора подд�
 - `public_ipv6_server_is_canonical_in_both_generator_formats`: семь написаний IPv6,
   точный canonical address/server и порт в Xray/sing-box JSON.
 - `public_ipv6_preserves_legacy_identity_and_display_name`: URI-host остаётся источником
-  legacy ID и fallback name; явное fragment-name сохраняется.
+  fallback name, а ID строится из канонического адреса сервера; явное fragment-name сохраняется.
 - `public_ipv6_sni_and_reality_policy_are_preserved`: нет implicit IP SNI;
   explicit SNI сохраняется, Reality без SNI отвергается.
 - `public_invalid_ipv6_hosts_fail_without_echo_or_source`: malformed, unbracketed,

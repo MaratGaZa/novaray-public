@@ -1401,7 +1401,7 @@ Task 84 — один срез roadmap 1.3. Владелец представле
 - WS/gRPC fallback на IPv6 server обрамляется скобками в HTTP Host/authority,
   не в address/server; explicit transport identity → SNI → server сохраняется.
 - L1/L3 проверяют отсутствие implicit IP SNI, явный SNI и Reality с/без SNI.
-- URI-host остаётся источником legacy ID и fallback name; IPv4/domain не меняются.
+- URI-host остаётся источником fallback name; IPv4/domain не меняются.
 - Malformed/unbracketed/scoped IPv6 отвергаются без эха URI в error/source/Debug.
 - Проверки: default/feature all-targets, отдельные doctest, fmt, strict Clippy,
   targeted mutations, metadata, ссылки, traceability, mirrors и diff.
@@ -1423,6 +1423,8 @@ Task 84 — один срез roadmap 1.3. Владелец представле
     user string регистра проверены. Default 436/0/5, feature 452/0/5, 10 doctests; fmt, strict Clippy
     в обоих режимах, metadata, ссылки, traceability и diff проходят.
     Это L1/L3 importer evidence, не миграция файлов и не сетевое evidence.
+    Уточнение review 2026-10-08: критерий задачи 84 про сохранение legacy ID со скобками
+    заменён кадрированным хэшированным ID Task 85 (скобки URI сохраняются только для fallback name).
 
 ### VLESS-CANONICAL-PROFILE-ID
 
