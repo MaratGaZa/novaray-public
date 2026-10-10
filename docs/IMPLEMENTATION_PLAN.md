@@ -112,11 +112,12 @@
 | 83 | `[x]` | Лимит VLESS URI и безопасные ошибки импортера | Ограничивает исходный URI 16 KiB до разбора и не отражает URI-данные в публичных ошибках импортера. | [#136](https://github.com/MaratGaZa/novaray-public/issues/136) | [#137](https://github.com/MaratGaZa/novaray-public/pull/137) |
 | 84 | `[x]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | [#139](https://github.com/MaratGaZa/novaray-public/pull/139) |
 | 85 | `[x]` | Каноническая нормализация и детерминированный ID профиля | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} с защитой от коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | [#141](https://github.com/MaratGaZa/novaray-public/pull/141) |
-| 86 | `[ ]` | Воспроизводимые property-based проверки VLESS importer | Проверяет существующие parser-контракты на ограниченных синтетических выборках с фиксированными seed; coverage-guided fuzzing остаётся открытым. | [#142](https://github.com/MaratGaZa/novaray-public/issues/142) | TBD |
+| 86 | `[x]` | Воспроизводимые property-based проверки VLESS importer | Проверяет существующие parser-контракты на ограниченных синтетических выборках с фиксированными seed; coverage-guided fuzzing остаётся открытым. | [#142](https://github.com/MaratGaZa/novaray-public/issues/142) | [#143](https://github.com/MaratGaZa/novaray-public/pull/143) |
 
 После слияния PR #141 задача 85 находится в `main` (`c3a75ba`). Текущий срез:
-**Задача 86 / issue #142: воспроизводимые property-based проверки VLESS importer**
-(M1, roadmap 1.3), без изменения production-семантики, сетевых или системных операций.
+**Задача 86 / issue #142 / PR #143: воспроизводимые property-based проверки VLESS importer**
+реализована и проверена локально (M1, roadmap 1.3), без изменения production-семантики,
+сетевых или системных операций. Coverage-guided fuzzing остаётся открытым.
 Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
@@ -1456,9 +1457,17 @@ Task 85 — срез roadmap 1.3. Владелец нормализации и �
   реальный трафик и Gate H. FR-001/FR-002/NFR-001 остаются partial.
 - Stop: после этого среза, артефактов и PR; следующая задача требует отдельной команды.
 
-86. [ ] Воспроизводимые property-based проверки VLESS importer — issue #142, PR TBD:
+86. [x] Воспроизводимые property-based проверки VLESS importer — issue #142, PR #143:
     фиксированные seed, bounded cases/shrinking, синтетический ввод и независимые
     property-oracles для публичного parse_uri. Критерии: [VLESS-PARSER-PROPERTIES](#vless-parser-properties).
+    Evidence 2026-10-11: семь properties (3 seeds × 128 cases), три пойманные мутации;
+    default all-targets с `--test-threads=1` 443/0/5, feature 459/0/5, doctests 10/0.
+    Первый перекрывающийся default-прогон упал в пяти неизменённых CLI/mock timing tests;
+    последующие feature и последовательный default прошли. Причина не установлена.
+    После двух уточнений test oracle (unknown-prefix и invalid URL syntax) финальный
+    suite повторён в default и feature с `RUST_BACKTRACE=full`: 7/0 в каждом режиме.
+    Fmt, strict Clippy default/feature и docs validators проходят; CI проверяется для head PR.
+    Production не менялся, native/packet evidence и полный fuzzing не заявляются.
 
 ### VLESS-PARSER-PROPERTIES
 

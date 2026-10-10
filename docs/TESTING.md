@@ -770,7 +770,7 @@ L1 тесты в [`parser.rs`](../src/parser.rs) проверяют нормал
 
 ### VLESS-PARSER-PROPERTIES
 
-Задача 86 / issue #142, [критерии](./IMPLEMENTATION_PLAN.md#vless-parser-properties).
+Задача 86 / issue #142 / PR #143, [критерии](./IMPLEMENTATION_PLAN.md#vless-parser-properties).
 `cargo test --locked --test parser_properties` запускает семь свойств через dev-only
 proptest (lockfile фиксирует версию); они также входят в обычный `--all-targets` на всех CI OS.
 Каждое свойство: 128 случаев на каждом из трёх фиксированных ChaCha seed

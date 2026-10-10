@@ -36,7 +36,7 @@ FR-001/FR-002/NFR-001 остаются `partial`; Gate H открыт.
 `vless-{safe_host}-{port}-{hash16}` с устойчивостью к коллизиям для разных конфигураций на общем хосте и порту.
 Миграция файлов, IDN, packet flow и Gate H не заявляются; FR-001/FR-002/NFR-001 остаются `partial`.
 
-Задача 86 (issue #142) добавляет bounded L2 property evidence существующих контрактов
+Задача 86 (issue #142 / PR #143) добавляет bounded L2 property evidence существующих контрактов
 импортера в `tests/parser_properties.rs`. Фиксированные seed и синтетические данные не
 доказывают исчерпывающее fuzz-покрытие, RSS bound или сетевую безопасность;
 FR-001/FR-002/NFR-001 остаются `partial`, Gate H открыт.
