@@ -113,15 +113,14 @@
 | 84 | `[x]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | [#139](https://github.com/MaratGaZa/novaray-public/pull/139) |
 | 85 | `[x]` | Каноническая нормализация и детерминированный ID профиля | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} с защитой от коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | [#141](https://github.com/MaratGaZa/novaray-public/pull/141) |
 | 86 | `[x]` | Воспроизводимые property-based проверки VLESS importer | Проверяет существующие parser-контракты на ограниченных синтетических выборках с фиксированными seed; coverage-guided fuzzing остаётся открытым. | [#142](https://github.com/MaratGaZa/novaray-public/issues/142) | [#143](https://github.com/MaratGaZa/novaray-public/pull/143) |
+| 87 | `[x]` | Типизированные ошибки ConfigValidationError в моделях конфигурации | Заменяет нетипизированный Result<(), String> на перечисление ConfigValidationError (thiserror) в моделях AppConfig, ServerProfile, TlsConfig и UserSettings. | [#144](https://github.com/MaratGaZa/novaray-public/issues/144) | [#145](https://github.com/MaratGaZa/novaray-public/pull/145) |
 
-После слияния PR #141 задача 85 находится в `main` (`c3a75ba`). Текущий срез:
-**Задача 86 / issue #142 / PR #143: воспроизводимые property-based проверки VLESS importer**
-реализована и проверена локально (M1, roadmap 1.3), без изменения production-семантики,
-сетевых или системных операций. Coverage-guided fuzzing остаётся открытым.
-Persistent logging backend, bundle export и системное recovery не доказаны.
-Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
-Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
-не входят в текущую задачу. Следующая execution task требует отдельной команды владельца.
+После слияния PR #143 задача 86 находится в `main` (`4c3fe91`). Текущий срез:
+**Задача 87 / issue #144 / PR #145: типизированные ошибки ConfigValidationError в моделях конфигурации**
+реализована и проверена локально (M1, roadmap 1.4), без изменения сетевых, FFI или системных операций.
+Методы validate() возвращают типизированный ConfigValidationError с сохранением семантики текстов ошибок.
+FFI error codes, coverage-guided fuzzing, системное recovery и Gate H остаются открытыми.
+Следующая execution task требует отдельной команды владельца.
 
 Протокол [изолированной проверки системного права](./AUTHORIZATION_RIGHT_NATIVE_VALIDATION.md)
 уже включён в проект, но его слияние не разрешает эксперимент. Для реального запуска нужны
@@ -1488,6 +1487,55 @@ Task 86, roadmap 1.3. Owner: test-only public importer harness. Dependencies: Ta
 - Non-goals: coverage-guided fuzz campaign, exhaustiveness, RSS/DoS proof, production changes,
   миграция профилей, реальные secrets/engine/network. FR-001/FR-002/NFR-001 остаются partial.
 - Rollback: удалить тестовый срез и dev dependency; production и данные не изменяются.
+- Stop: один PR с внешними review/learning/memory artifacts, без merge и следующей задачи.
+
+87. [x] Типизированные ошибки ConfigValidationError в моделях конфигурации — issue #144, PR #145:
+    замена нетипизированного `Result<(), String>` в `AppConfig::validate`, `ServerProfile::validate`,
+    `TlsConfig::validate`, `UserSettings::validate` и `SplitTunnelingSettings::validate` на
+    строго типизированное перечисление `ConfigValidationError` с реализацией `thiserror::Error` и `PartialEq`.
+    Критерии: [CONFIG-TYPED-VALIDATION-ERROR](#config-typed-validation-error).
+    Evidence 2026-10-11: `ConfigValidationError` enum добавлен с 24 типизированными вариантами,
+    все методы `.validate()` переведены на `Result<(), ConfigValidationError>`.
+    Сохранена полная эквивалентность строковых представлений ошибок через `Display`.
+    Default all-targets с `--test-threads=1` 443/0/5, feature 459/0/5, doctests 10/0.
+    Fmt, strict Clippy в обоих режимах и 4 валидатора документации пройдены.
+    FFI export кодов ошибок, сетевые проверки и Gate H остаются открытыми.
+
+### CONFIG-TYPED-VALIDATION-ERROR
+
+Task 87, roadmap 1.4. Владелец: Core configuration models (`src/config.rs`).
+Зависимости: Tasks 81–86 в main. Readiness: ready.
+
+- Ошибки семантической валидации конфигурации выражаются типизированным enum `ConfigValidationError`:
+  - `EmptyProfiles`: пустой список профилей серверов.
+  - `ActiveProfileNotFound { id: String }`: активный профиль не найден в списке.
+  - `DuplicateProfileId { id: String }`: обнаружен дубликат ID профиля.
+  - `EmptyServerAddress { profile_id: String }`: пустой адрес сервера профиля.
+  - `ZeroPort { profile_id: String }`: нулевой порт сервера.
+  - `EmptyUuid { profile_id: String }`: пустой UUID профиля.
+  - `IncompatibleFlowTransport { profile_id: String }`: XTLS Vision поддерживается только с TCP.
+  - `IncompatibleRealityTransport { profile_id: String }`: Reality не поддерживается с WebSocket.
+  - `IncompatibleTcpTransportParams { profile_id: String }`: host/path не применимы к TCP.
+  - `InvalidWebSocketPath { profile_id: String }`: для WebSocket обязателен path, начинающийся с '/'.
+  - `InvalidGrpcServiceName { profile_id: String }`: для gRPC обязателен стандартный serviceName.
+  - `InvalidTransportHost { profile_id: String, host: String }`: некорректный transport host.
+  - `UnsupportedFingerprint { profile_id: String, fingerprint: String }`: неподдерживаемый uTLS fingerprint.
+  - `MissingRealitySni { profile_id: String }`: для Reality обязателен непустой SNI.
+  - `InvalidSniHostname { profile_id: String, sni: String }`: некорректный формат SNI.
+  - `MissingRealityPublicKey { profile_id: String }`: для Reality обязателен public_key.
+  - `InvalidRealityPublicKey { profile_id: String, public_key: String }`: некорректный public_key (Base64 32 байта).
+  - `InvalidRealityShortId { profile_id: String, short_id: String }`: некорректный short_id (четный hex до 16 символов).
+  - `ZeroProxyPort`: локальные порты прокси равны 0.
+  - `ProxyPortCollision`: порты SOCKS5 и HTTP совпадают.
+  - `EmptyDomainRule`: правило домена — пустая строка.
+  - `UnsupportedGeositeCategory { category: String }`: неподдерживаемая категория geosite.
+  - `EmptyIpRule`: правило IP — пустая строка.
+  - `InvalidIpRule { rule: String }`: некорректное или неподдерживаемое правило IP.
+- Текстовые представления через `Display` / `#[error(...)]` сохраняют прежние формулировки сообщений для совместимости с CLI и выводом ошибок.
+- Методы `.validate()` возвращают `Result<(), ConfigValidationError>`.
+- Вызовы `.validate()` в `src/cli.rs`, `src/parser.rs`, а также во всех unit и integration тестах обновляются.
+- Non-goals: FFI export кодов ошибок (отдельная задача roadmap 1.4), миграция дисковых файлов, изменение engine JSON generator, сетевые вызовы.
+- Rollback: возврат `Result<(), String>` в `src/config.rs`; данные конфигураций не мигрируются.
 - Stop: один PR с внешними review/learning/memory artifacts, без merge и следующей задачи.
 
 ## 7. Зависимости

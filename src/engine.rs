@@ -958,10 +958,10 @@ impl ProxyService {
         // 1. Валидация конфигурации в Core
         config
             .validate()
-            .map_err(EngineError::ConfigValidationError)?;
+            .map_err(|e| EngineError::ConfigValidationError(e.to_string()))?;
         settings
             .validate()
-            .map_err(EngineError::ConfigValidationError)?;
+            .map_err(|e| EngineError::ConfigValidationError(e.to_string()))?;
 
         let active_profile = config.find_active_profile().ok_or_else(|| {
             EngineError::ConfigValidationError("Активный профиль не найден".to_string())

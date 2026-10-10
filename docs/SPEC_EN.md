@@ -281,7 +281,7 @@ Legend: `[x]` implemented, `[~]` partial prototype, `[ ]` absent.
 - [x] Provide versioned JSON schemas under `schema/` (`config.schema.json`, `settings.schema.json`) validated in tests and CI.
 - [x] Store server profiles in `config.json` and routing/client preferences in `settings.json`.
 - [x] Replace protocol, security, flow, transport, and mode strings with typed enums/value objects.
-- [~] Validate UUID, host, port, TLS/Reality requirements (SNI, Base64 public_key, hex short_id, uTLS fingerprint), proxy ports, domain/IP rules (CIDR and GeoIP datasets deferred to M2).
+- [~] Validate UUID, host, port, TLS/Reality requirements (SNI, Base64 public_key, hex short_id, uTLS fingerprint), proxy ports, domain/IP rules (CIDR and GeoIP datasets deferred to M2). Configuration validation errors are typed via `ConfigValidationError` (`CONFIG-TYPED-VALIDATION-ERROR`).
 - [ ] Write configuration atomically and preserve the last valid backup.
 - [ ] Keep secrets out of logs and use the platform credential store where appropriate.
 - [x] URI import rejects incomplete Reality settings (validates mandatory `public_key`, fail-closed for unsupported `security`, `flow`, and transport `type`).
