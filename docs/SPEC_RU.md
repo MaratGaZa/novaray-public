@@ -265,7 +265,7 @@ Direct Developer ID distribution сохраняется как целевая м
 - [x] Версионированные JSON-схемы созданы в `schema/` (`config.schema.json`, `settings.schema.json`) и проверяются в тестах и CI.
 - [x] `config.json` хранит серверные профили; `settings.json` — параметры клиента и routing policy.
 - [x] Заменить строковые protocol, security, flow, transport и mode на типизированные перечисления (`ProtocolType`, `SecurityType`, `FlowType`, `TransportType`, `SplitTunnelMode`).
-- [~] Валидировать UUID, host, port, обязательные Reality/TLS-параметры (SNI, Base64 public_key, hex short_id, uTLS fingerprint), порты прокси и правила доменов/IP (CIDR и GeoIP датасеты отложены до M2).
+- [~] Валидировать UUID, host, port, обязательные Reality/TLS-параметры (SNI, Base64 public_key, hex short_id, uTLS fingerprint), порты прокси и правила доменов/IP (CIDR и GeoIP датасеты отложены до M2). Ошибки валидации конфигураций типизированы в `ConfigValidationError` (`CONFIG-TYPED-VALIDATION-ERROR`).
 - [ ] Запись выполняется атомарно: temp file, `fsync`, rename, резервная копия последней валидной версии.
 - [ ] Секреты не логируются и при необходимости хранятся через Keychain.
 - [x] Импорт URI не должен принимать неполные Reality-настройки (валидирует обязательный `public_key`, fail-closed для неподдерживаемых `security`, `flow` и transport `type`).
