@@ -366,6 +366,15 @@ uuid, transport, flow, host, path, security, sni, fp, pbk, sid). Кортеж с
 не сетевое evidence и не закрытие Gate H.
 План и критерии: [VLESS-CANONICAL-PROFILE-ID](./IMPLEMENTATION_PLAN.md#vless-canonical-profile-id).
 
+`VLESS-PARSER-PROPERTIES` добавляет ограниченное L2 evidence существующих контрактов importer:
+генерируемые синтетические URI проверяют отсутствие panic, детерминизм, статичные категории
+ошибок, лимит исходных UTF-8 байтов, query guards, допустимую канонизацию и границы полей ID.
+Прогоны используют фиксированные seed и ограниченные числа случаев и шагов shrinking;
+изменение семантики парсинга не входит в срез. Это конечная выборка, не доказательство
+отсутствия всех ошибок, глобального RSS bound или математической уникальности ID.
+Coverage-guided fuzzing, реальные credentials/engine/network и Gate H остаются вне среза.
+План и критерии: [VLESS-PARSER-PROPERTIES](./IMPLEMENTATION_PLAN.md#vless-parser-properties).
+
 Текущий MVP не должен архитектурно закрывать добавление других поддерживаемых движком протоколов.
 UI, helper/IPC contract и policy model не должны предполагать, что единственный возможный outbound
 protocol — VLESS: протокол выбирается типизированным profile field и транслируется в engine-specific

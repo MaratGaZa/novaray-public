@@ -767,3 +767,39 @@ targeted suite с `RUST_BACKTRACE=full` — 8/0. Это исправление �
 L1 тесты в [`parser.rs`](../src/parser.rs) проверяют нормализацию регистра, распознавание UUID
 и чувствительность хэша к изменению каждого из полей конфигурации.
 Это контракт импортера, не автоматическая миграция файлов, IDN, packet flow или Gate H.
+
+### VLESS-PARSER-PROPERTIES
+
+Задача 86 / issue #142, [критерии](./IMPLEMENTATION_PLAN.md#vless-parser-properties).
+`cargo test --locked --test parser_properties` запускает семь свойств через dev-only
+proptest (lockfile фиксирует версию); они также входят в обычный `--all-targets` на всех CI OS.
+Каждое свойство: 128 случаев на каждом из трёх фиксированных ChaCha seed
+`0x4e4f564152415901`, `0x4e4f564152415902`, `0x4e4f564152415903`, до 2048 shrink iterations.
+При отказе runner печатает seed и минимизированный синтетический ввод; failure persistence
+отключена, поэтому тест не пишет корпус в checkout. Реальные URI/credentials не загружаются.
+
+- Произвольные bounded UTF-8 строки и query: отсутствие panic, повторяемость результата,
+  успешный профиль проходит validate; ошибки входят в независимую allowlist и не имеют source.
+- Структурированные отказы проверяют статичный Display/alternate/первую строку Debug,
+  отсутствие маркера в полном Debug, включая ошибки, нормализующие регистр.
+- Generated valid TCP/gRPC Reality URI сохраняют профиль при safe casing, обратном порядке
+  query и percent-encoded именах; display fragment не влияет на ID.
+- Все 14 критичных ключей перечислены независимо от production: generated дубликаты
+  отвергаются даже до ошибки пустого credential. Недопустимые неизвестные имена с control
+  и Unicode проверяются до значений в начале/середине/конце имени.
+- Граница 16384 исходных байта проверяется на ASCII и UTF-8, включая zero-width и 4-byte
+  символ; превышение побеждает ошибку URL syntax. Числовой oracle не берётся из production constant.
+- Generated delimiter shifts в host/path и path/TLS дают разные ID в проверенном наборе.
+
+Верхняя граница сгенерированного сырого входа — 67996 байт (16999 четырёхбайтовых символов);
+она намеренно превышает importer limit. Это bounded L2 sample, не coverage-guided fuzzing,
+не доказательство полного отсутствия panic/DoS или RSS bound. Фиксированные seed не расширяют
+покрытие при повторном CI: найденный контрпример следует закреплять отдельным regression-тестом.
+Parent property/fuzz checkbox, FR-001/FR-002/NFR-001 и Gate H не закрываются этим срезом.
+
+Adversarial pass задачи 86: три уникально нацеленные мутации пойманы новым suite:
+`>` → `>=` в byte bound; пропуск duplicate guard; замена тегов/длин в hash_field
+на разделитель `|`. Shrinking дал соответственно `('a', 1)`, пустые значения пары
+дубликатов и `("a", "a", "a")` для host/path. После каждой мутации исходник восстановлен;
+production-файлы не входят в итоговый diff. Это проверка трёх конкретных регрессий,
+не исчерпывающая mutation coverage.
