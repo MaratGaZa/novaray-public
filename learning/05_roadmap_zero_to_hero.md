@@ -167,6 +167,9 @@ universal/Windows ARM64 binaries и дополнительные протоко�
   задача 85 / issue #140 / PR #141. Каноническая нормализация атрибутов и детерминированный
   `profile.id` формата `vless-{host}-{port}-{hash16}` с устойчивостью к коллизиям на общем хосте и порту.
 - [ ] Добавить property/fuzz tests URI parser.
+  - [x] [VLESS-PARSER-PROPERTIES](../docs/IMPLEMENTATION_PLAN.md#vless-parser-properties):
+    задача 86 / issue #142 / PR #143. Ограниченные воспроизводимые property-based проверки публичного
+    importer; coverage-guided fuzzing и полный родительский пункт остаются открытыми.
 
 ### 1.4. Error model и observability
 

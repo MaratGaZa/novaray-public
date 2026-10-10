@@ -386,6 +386,15 @@ casing or query parameter ordering produce the identical canonical ID. Display n
 importer contract, not IDN/punycode, network evidence, or Gate H completion. Plan and acceptance:
 [VLESS-CANONICAL-PROFILE-ID](./IMPLEMENTATION_PLAN.md#vless-canonical-profile-id).
 
+`VLESS-PARSER-PROPERTIES` adds bounded L2 evidence for existing importer contracts:
+generated synthetic URIs check absence of panics, determinism, static error categories,
+the original UTF-8 byte limit, query guards, supported canonicalization and ID field boundaries.
+Runs use fixed seeds and bounded case and shrinking counts; parsing semantics are unchanged.
+This is a finite sample, not proof of freedom from all bugs, a global RSS bound or mathematical
+ID uniqueness. Coverage-guided fuzzing, real credentials/engine/network and Gate H remain
+outside this slice. Plan and acceptance:
+[VLESS-PARSER-PROPERTIES](./IMPLEMENTATION_PLAN.md#vless-parser-properties).
+
 ### FR-003 — Engine lifecycle
 
 - Pin and verify the engine version and checksum.

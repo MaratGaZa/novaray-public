@@ -112,10 +112,12 @@
 | 83 | `[x]` | Лимит VLESS URI и безопасные ошибки импортера | Ограничивает исходный URI 16 KiB до разбора и не отражает URI-данные в публичных ошибках импортера. | [#136](https://github.com/MaratGaZa/novaray-public/issues/136) | [#137](https://github.com/MaratGaZa/novaray-public/pull/137) |
 | 84 | `[x]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | [#139](https://github.com/MaratGaZa/novaray-public/pull/139) |
 | 85 | `[x]` | Каноническая нормализация и детерминированный ID профиля | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} с защитой от коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | [#141](https://github.com/MaratGaZa/novaray-public/pull/141) |
+| 86 | `[x]` | Воспроизводимые property-based проверки VLESS importer | Проверяет существующие parser-контракты на ограниченных синтетических выборках с фиксированными seed; coverage-guided fuzzing остаётся открытым. | [#142](https://github.com/MaratGaZa/novaray-public/issues/142) | [#143](https://github.com/MaratGaZa/novaray-public/pull/143) |
 
-После слияния PR #139 задача 84 находится в `main`. Задача 85 / issue #140 / PR #141:
-**Каноническая нормализация и детерминированный ID профиля** реализована и проверена локально
-(M1, roadmap 1.3). Это локальный контракт нормализации и генерации идентификатора, без сетевых или системных операций.
+После слияния PR #141 задача 85 находится в `main` (`c3a75ba`). Текущий срез:
+**Задача 86 / issue #142 / PR #143: воспроизводимые property-based проверки VLESS importer**
+реализована и проверена локально (M1, roadmap 1.3), без изменения production-семантики,
+сетевых или системных операций. Coverage-guided fuzzing остаётся открытым.
 Persistent logging backend, bundle export и системное recovery не доказаны.
 Системная ротация, active session, отзыв пакетов и интеграция с network executor остаются открытыми.
 Gate H не закрывается частичными L1-тестами; kernel context, packet-level evidence и native-run
@@ -1454,6 +1456,39 @@ Task 85 — срез roadmap 1.3. Владелец нормализации и �
 - Non-goals: автоматическая миграция старых профилей в JSON файлах, IDN/punycode, DNS,
   реальный трафик и Gate H. FR-001/FR-002/NFR-001 остаются partial.
 - Stop: после этого среза, артефактов и PR; следующая задача требует отдельной команды.
+
+86. [x] Воспроизводимые property-based проверки VLESS importer — issue #142, PR #143:
+    фиксированные seed, bounded cases/shrinking, синтетический ввод и независимые
+    property-oracles для публичного parse_uri. Критерии: [VLESS-PARSER-PROPERTIES](#vless-parser-properties).
+    Evidence 2026-10-11: семь properties (3 seeds × 128 cases), три пойманные мутации;
+    default all-targets с `--test-threads=1` 443/0/5, feature 459/0/5, doctests 10/0.
+    Первый перекрывающийся default-прогон упал в пяти неизменённых CLI/mock timing tests;
+    последующие feature и последовательный default прошли. Причина не установлена.
+    После двух уточнений test oracle (unknown-prefix и invalid URL syntax) финальный
+    suite повторён в default и feature с `RUST_BACKTRACE=full`: 7/0 в каждом режиме.
+    Fmt, strict Clippy default/feature и docs validators проходят; CI проверяется для head PR.
+    Production не менялся, native/packet evidence и полный fuzzing не заявляются.
+
+### VLESS-PARSER-PROPERTIES
+
+Task 86, roadmap 1.3. Owner: test-only public importer harness. Dependencies: Tasks 81–85
+в main. Readiness: ready; Apple/native/network gates не требуются и не закрываются.
+
+- Proptest как dev-only dependency, фиксированные seed, bounded inputs/cases/shrinking.
+- Произвольные UTF-8 строки и структурированные отрицательные URI: отсутствие panic,
+  повторяемость результата, независимая allowlist ошибок без source/raw input.
+- Валидные generated URI: перестановка query, percent-encoded имена и разрешённый casing
+  сохраняют canonical connection identity; фрагмент меняет только display name.
+- Все 14 критичных ключей проверяются независимо от production-константы; дубликаты
+  и невалидные имена отвергаются раньше семантики значений.
+- Точная граница 16384 байта, многобайтовый UTF-8 и превышение лимита до URL parsing.
+- Generated delimiter shifts не смешивают host/path и path/TLS в проверенном наборе ID.
+- Acceptance: targeted properties, representative caught mutations, default/feature all-targets,
+  doctests, fmt, strict Clippy, четыре docs validators, base-to-head diff check.
+- Non-goals: coverage-guided fuzz campaign, exhaustiveness, RSS/DoS proof, production changes,
+  миграция профилей, реальные secrets/engine/network. FR-001/FR-002/NFR-001 остаются partial.
+- Rollback: удалить тестовый срез и dev dependency; production и данные не изменяются.
+- Stop: один PR с внешними review/learning/memory artifacts, без merge и следующей задачи.
 
 ## 7. Зависимости
 
