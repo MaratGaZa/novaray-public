@@ -1468,7 +1468,7 @@ Task 85 — срез roadmap 1.3. Владелец нормализации и �
     suite повторён в default и feature с `RUST_BACKTRACE=full`: 7/0 в каждом режиме.
     Fmt, strict Clippy default/feature и docs validators проходят; CI проверяется для head PR.
     Production не менялся, native/packet evidence и полный fuzzing не заявляются.
-    Follow-up 2026-10-11, issue #146: в отдельном worktree от 4c3fe91 с отдельным
+    Follow-up 2026-10-11, issue #146 / PR #147: в отдельном worktree от 4c3fe91 с отдельным
     CARGO_TARGET_DIR закрыт пробел printable ASCII в одном property: все 31 запрещённый
     символ, включая U+0020, проверяются на каждом generated контексте в трёх позициях.
     Две изолированные мутации (разрешение пунктуации / только пробела) пойманы именно
