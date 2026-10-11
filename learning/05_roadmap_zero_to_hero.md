@@ -174,6 +174,9 @@ universal/Windows ARM64 binaries и дополнительные протоко�
 ### 1.4. Error model и observability
 
 - [ ] Заменить `Result<(), String>` на типизированные ошибки.
+  - [ ] [CONFIG-TYPED-VALIDATION-ERROR](../docs/IMPLEMENTATION_PLAN.md#config-typed-validation-error):
+    задача 87 / issue #144 / PR #145. Типизированное перечисление ошибок валидации `ConfigValidationError`
+    для `AppConfig`, `ServerProfile`, `TlsConfig`, `UserSettings` и `SplitTunnelingSettings`.
 - [ ] Ввести стабильные error codes для FFI/UI.
 - [ ] Добавить connection-attempt correlation ID.
 - [ ] Реализовать redaction UUID, keys, tokens, endpoint по policy.
