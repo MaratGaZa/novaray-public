@@ -113,7 +113,7 @@
 | 84 | `[x]` | Канонический IPv6 адрес сервера при VLESS импорте | Убирает URI-скобки из server через typed IPv6, сохраняя legacy ID/name, SNI и остальные host. | [#138](https://github.com/MaratGaZa/novaray-public/issues/138) | [#139](https://github.com/MaratGaZa/novaray-public/pull/139) |
 | 85 | `[x]` | Каноническая нормализация и детерминированный ID профиля | Нормализует атрибуты VLESS профиля и генерирует устойчивый ID vless-{host}-{port}-{hash16} с защитой от коллизий. | [#140](https://github.com/MaratGaZa/novaray-public/issues/140) | [#141](https://github.com/MaratGaZa/novaray-public/pull/141) |
 | 86 | `[x]` | Воспроизводимые property-based проверки VLESS importer | Проверяет существующие parser-контракты на ограниченных синтетических выборках с фиксированными seed; coverage-guided fuzzing остаётся открытым. | [#142](https://github.com/MaratGaZa/novaray-public/issues/142) | [#143](https://github.com/MaratGaZa/novaray-public/pull/143) |
-| 87 | `[ ]` | Типизированные ошибки ConfigValidationError в моделях конфигурации | Заменяет нетипизированный Result<(), String> на перечисление ConfigValidationError (thiserror) в моделях AppConfig, ServerProfile, TlsConfig и UserSettings. | [#144](https://github.com/MaratGaZa/novaray-public/issues/144) | [#145](https://github.com/MaratGaZa/novaray-public/pull/145) |
+| 87 | `[x]` | Типизированные ошибки ConfigValidationError в моделях конфигурации | Заменяет нетипизированный Result<(), String> на перечисление ConfigValidationError (thiserror) в моделях AppConfig, ServerProfile, TlsConfig и UserSettings. | [#144](https://github.com/MaratGaZa/novaray-public/issues/144) | [#145](https://github.com/MaratGaZa/novaray-public/pull/145) |
 
 После слияния PR #143 задача 86 находится в `main` (`4c3fe91`). Текущий срез:
 **Задача 87 / issue #144 / PR #145: типизированные ошибки ConfigValidationError в моделях конфигурации**
@@ -1489,7 +1489,7 @@ Task 86, roadmap 1.3. Owner: test-only public importer harness. Dependencies: Ta
 - Rollback: удалить тестовый срез и dev dependency; production и данные не изменяются.
 - Stop: один PR с внешними review/learning/memory artifacts, без merge и следующей задачи.
 
-87. [ ] Типизированные ошибки ConfigValidationError в моделях конфигурации — issue #144, PR #145:
+87. [x] Типизированные ошибки ConfigValidationError в моделях конфигурации — issue #144, PR #145:
     замена нетипизированного `Result<(), String>` в `AppConfig::validate`, `ServerProfile::validate`,
     `TlsConfig::validate`, `UserSettings::validate` и `SplitTunnelingSettings::validate` на
     строго типизированное перечисление `ConfigValidationError` с реализацией `thiserror::Error` и `PartialEq`.
