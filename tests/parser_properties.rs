@@ -234,6 +234,7 @@ fn generated_duplicates_precede_invalid_values_for_every_critical_key() {
 
 #[test]
 fn generated_invalid_unknown_names_fail_before_values() {
+    const FORBIDDEN_PRINTABLE_ASCII: &str = " !\"#$%&'()*+,./:;<=>?@[\\]^`{|}~";
     let forbidden = prop_oneof![0u32..=31, 127u32..0x11_0000]
         .prop_map(|codepoint| char::from_u32(codepoint).unwrap_or('\0'));
     check(
@@ -241,19 +242,27 @@ fn generated_invalid_unknown_names_fail_before_values() {
         |(label, bad, value)| {
             let label = format!("unknown_{label}");
             // Unknown names cannot be silently ignored merely because they are not critical.
-            for name in [
-                format!("{bad}{label}"),
-                format!("{label}{bad}"),
-                format!("a{bad}{label}"),
-            ] {
-                let error = VlessParser::parse_uri(&format!(
-                    "vless://@edge.example:443?{}={}",
-                    encoded(&name),
-                    encoded(&value)
-                ))
-                .unwrap_err();
-                prop_assert_eq!(error.to_string(), "Недопустимое имя query-параметра");
-                safe_error(&error)?;
+            // Sweep printable exclusions so their coverage does not depend on seed selection.
+            for bad in std::iter::once(bad).chain(FORBIDDEN_PRINTABLE_ASCII.chars()) {
+                for name in [
+                    format!("{bad}{label}"),
+                    format!("{label}{bad}"),
+                    format!("a{bad}{label}"),
+                ] {
+                    let error = VlessParser::parse_uri(&format!(
+                        "vless://@edge.example:443?{}={}",
+                        encoded(&name),
+                        encoded(&value)
+                    ))
+                    .unwrap_err();
+                    prop_assert_eq!(
+                        error.to_string(),
+                        "Недопустимое имя query-параметра",
+                        "forbidden character U+{:04X}",
+                        bad as u32
+                    );
+                    safe_error(&error)?;
+                }
             }
             Ok(())
         },
