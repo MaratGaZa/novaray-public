@@ -1468,6 +1468,15 @@ Task 85 — срез roadmap 1.3. Владелец нормализации и �
     suite повторён в default и feature с `RUST_BACKTRACE=full`: 7/0 в каждом режиме.
     Fmt, strict Clippy default/feature и docs validators проходят; CI проверяется для head PR.
     Production не менялся, native/packet evidence и полный fuzzing не заявляются.
+    Follow-up 2026-10-11, issue #146 / PR #147: в отдельном worktree от 4c3fe91 с отдельным
+    CARGO_TARGET_DIR закрыт пробел printable ASCII в одном property: все 31 запрещённый
+    символ, включая U+0020, проверяются на каждом generated контексте в трёх позициях.
+    Две изолированные мутации (разрешение пунктуации / только пробела) пойманы именно
+    этим property; исходник восстановлен. Default/feature all-targets с
+    --no-fail-fast и --test-threads=1: 443/0/5 и 459/0/5; doctests 10/0,
+    properties с RUST_BACKTRACE=full 7/0; fmt, strict Clippy обоих режимов,
+    metadata 26/70, ссылки 54/0, traceability 16/16/16, mirrors 25/0, diff check чисты.
+    Это уточнение evidence задачи 86, не изменение production-контракта или закрытие fuzzing.
 
 ### VLESS-PARSER-PROPERTIES
 
