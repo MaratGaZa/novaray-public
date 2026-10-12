@@ -5,6 +5,98 @@ use std::collections::HashSet;
 use std::fmt;
 use std::net::IpAddr;
 use std::str::FromStr;
+use thiserror::Error;
+
+/// Ошибки семантической валидации конфигурации и настроек
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ConfigValidationError {
+    #[error("Список профилей серверов пуст")]
+    EmptyProfiles,
+
+    #[error("Активный профиль '{0}' не найден в списке профилей")]
+    ActiveProfileNotFound(String),
+
+    #[error("Обнаружен дубликат ID профиля: '{0}'")]
+    DuplicateProfileId(String),
+
+    #[error("Профиль '{profile_id}': адрес сервера не может быть пустым")]
+    EmptyServerAddress { profile_id: String },
+
+    #[error("Профиль '{profile_id}': порт не может быть 0")]
+    ZeroPort { profile_id: String },
+
+    #[error("Профиль '{profile_id}': UUID не может быть пустым")]
+    EmptyUuid { profile_id: String },
+
+    #[error("Профиль '{profile_id}': XTLS Vision поддерживается только с TCP transport")]
+    IncompatibleFlowTransport { profile_id: String },
+
+    #[error("Профиль '{profile_id}': Reality не поддерживается с WebSocket transport; используйте TCP/RAW или gRPC")]
+    IncompatibleRealityTransport { profile_id: String },
+
+    #[error("Профиль '{profile_id}': host/path не применимы к TCP transport")]
+    IncompatibleTcpTransportParams { profile_id: String },
+
+    #[error("Профиль '{profile_id}': для WebSocket обязателен path, начинающийся с '/'")]
+    InvalidWebSocketPath { profile_id: String },
+
+    #[error("Профиль '{profile_id}': для gRPC обязателен непустой стандартный serviceName без пробелов и '/'")]
+    InvalidGrpcServiceName { profile_id: String },
+
+    #[error("Профиль '{profile_id}': некорректный transport host '{host}'")]
+    InvalidTransportHost { profile_id: String, host: String },
+
+    #[error("Профиль '{profile_id}': неподдерживаемый uTLS fingerprint '{fingerprint}'")]
+    UnsupportedFingerprint {
+        profile_id: String,
+        fingerprint: String,
+    },
+
+    #[error("Профиль '{profile_id}': для Reality обязателен непустой Server Name (SNI)")]
+    MissingRealitySni { profile_id: String },
+
+    #[error("Профиль '{profile_id}': некорректный формат Server Name (SNI) '{sni}'")]
+    InvalidSniHostname { profile_id: String, sni: String },
+
+    #[error("Профиль '{profile_id}': для Reality обязателен непустой public_key")]
+    MissingRealityPublicKey { profile_id: String },
+
+    #[error(
+        "Профиль '{profile_id}': некорректный public_key (ожидается 32-байтный Base64 ключ Reality, получено '{public_key}')"
+    )]
+    InvalidRealityPublicKey {
+        profile_id: String,
+        public_key: String,
+    },
+
+    #[error(
+        "Профиль '{profile_id}': short_id должен быть hex-строкой четной длины до 16 символов, получено '{short_id}'"
+    )]
+    InvalidRealityShortId {
+        profile_id: String,
+        short_id: String,
+    },
+
+    #[error("Локальные порты прокси не могут быть 0")]
+    ZeroProxyPort,
+
+    #[error("Порты SOCKS5 и HTTP не должны совпадать")]
+    ProxyPortCollision,
+
+    #[error("Правило домена не может быть пустой строкой")]
+    EmptyDomainRule,
+
+    #[error("Неподдерживаемая категория geosite: '{category}'. Допустима только 'category-ru'")]
+    UnsupportedGeositeCategory { category: String },
+
+    #[error("Правило IP не может быть пустой строкой")]
+    EmptyIpRule,
+
+    #[error(
+        "Неподдерживаемое или некорректное IP правило: '{rule}'. Допустимы только 'geoip:private' или валидный IP-адрес"
+    )]
+    InvalidIpRule { rule: String },
+}
 
 /// Поддерживаемые сетевые протоколы
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -185,21 +277,22 @@ impl AppConfig {
             .find(|p| p.id == self.active_profile_id)
     }
 
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigValidationError> {
         if self.profiles.is_empty() {
-            return Err("Список профилей серверов пуст".to_string());
+            return Err(ConfigValidationError::EmptyProfiles);
         }
         if self.find_active_profile().is_none() {
-            return Err(format!(
-                "Активный профиль '{}' не найден в списке профилей",
-                self.active_profile_id
+            return Err(ConfigValidationError::ActiveProfileNotFound(
+                self.active_profile_id.clone(),
             ));
         }
 
         let mut seen_ids = HashSet::new();
         for profile in &self.profiles {
             if !seen_ids.insert(&profile.id) {
-                return Err(format!("Обнаружен дубликат ID профиля: '{}'", profile.id));
+                return Err(ConfigValidationError::DuplicateProfileId(
+                    profile.id.clone(),
+                ));
             }
             profile.validate()?;
         }
@@ -229,24 +322,26 @@ pub struct ServerProfile {
 }
 
 impl ServerProfile {
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigValidationError> {
         if self.server.trim().is_empty() {
-            return Err(format!(
-                "Профиль '{}': адрес сервера не может быть пустым",
-                self.id
-            ));
+            return Err(ConfigValidationError::EmptyServerAddress {
+                profile_id: self.id.clone(),
+            });
         }
         if self.port == 0 {
-            return Err(format!("Профиль '{}': порт не может быть 0", self.id));
+            return Err(ConfigValidationError::ZeroPort {
+                profile_id: self.id.clone(),
+            });
         }
         if self.uuid.trim().is_empty() {
-            return Err(format!("Профиль '{}': UUID не может быть пустым", self.id));
+            return Err(ConfigValidationError::EmptyUuid {
+                profile_id: self.id.clone(),
+            });
         }
         if self.flow.is_some() && self.transport != TransportType::Tcp {
-            return Err(format!(
-                "Профиль '{}': XTLS Vision поддерживается только с TCP transport",
-                self.id
-            ));
+            return Err(ConfigValidationError::IncompatibleFlowTransport {
+                profile_id: self.id.clone(),
+            });
         }
         if self.transport == TransportType::Ws
             && self
@@ -254,27 +349,24 @@ impl ServerProfile {
                 .as_ref()
                 .is_some_and(|tls| tls.enabled && tls.security == SecurityType::Reality)
         {
-            return Err(format!(
-                "Профиль '{}': Reality не поддерживается с WebSocket transport; используйте TCP/RAW или gRPC",
-                self.id
-            ));
+            return Err(ConfigValidationError::IncompatibleRealityTransport {
+                profile_id: self.id.clone(),
+            });
         }
         match self.transport {
             TransportType::Tcp => {
                 if self.host.is_some() || self.path.is_some() {
-                    return Err(format!(
-                        "Профиль '{}': host/path не применимы к TCP transport",
-                        self.id
-                    ));
+                    return Err(ConfigValidationError::IncompatibleTcpTransportParams {
+                        profile_id: self.id.clone(),
+                    });
                 }
             }
             TransportType::Ws => {
                 let path = self.path.as_deref().map(str::trim).unwrap_or_default();
                 if path.is_empty() || !path.starts_with('/') {
-                    return Err(format!(
-                        "Профиль '{}': для WebSocket обязателен path, начинающийся с '/'",
-                        self.id
-                    ));
+                    return Err(ConfigValidationError::InvalidWebSocketPath {
+                        profile_id: self.id.clone(),
+                    });
                 }
                 self.validate_transport_host()?;
             }
@@ -286,10 +378,9 @@ impl ServerProfile {
                         .chars()
                         .any(|c| c.is_whitespace() || c.is_control())
                 {
-                    return Err(format!(
-                        "Профиль '{}': для gRPC обязателен непустой стандартный serviceName без пробелов и '/'",
-                        self.id
-                    ));
+                    return Err(ConfigValidationError::InvalidGrpcServiceName {
+                        profile_id: self.id.clone(),
+                    });
                 }
                 self.validate_transport_host()?;
             }
@@ -300,13 +391,13 @@ impl ServerProfile {
         Ok(())
     }
 
-    fn validate_transport_host(&self) -> Result<(), String> {
+    fn validate_transport_host(&self) -> Result<(), ConfigValidationError> {
         let host = self.effective_transport_host();
         if host.chars().any(|c| c.is_whitespace() || c.is_control()) || host.contains('/') {
-            return Err(format!(
-                "Профиль '{}': некорректный transport host '{}'",
-                self.id, host
-            ));
+            return Err(ConfigValidationError::InvalidTransportHost {
+                profile_id: self.id.clone(),
+                host: host.into_owned(),
+            });
         }
         Ok(())
     }
@@ -350,7 +441,7 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
-    pub fn validate(&self, profile_id: &str) -> Result<(), String> {
+    pub fn validate(&self, profile_id: &str) -> Result<(), ConfigValidationError> {
         let sni = self.server_name.trim();
 
         // Валидация uTLS fingerprint для TLS и Reality
@@ -358,10 +449,10 @@ impl TlsConfig {
             if let Some(ref fp) = self.fingerprint {
                 let fp_trimmed = fp.trim();
                 if !fp_trimmed.is_empty() && !is_valid_fingerprint(fp_trimmed) {
-                    return Err(format!(
-                        "Профиль '{}': неподдерживаемый uTLS fingerprint '{}'",
-                        profile_id, fp_trimmed
-                    ));
+                    return Err(ConfigValidationError::UnsupportedFingerprint {
+                        profile_id: profile_id.to_string(),
+                        fingerprint: fp_trimmed.to_string(),
+                    });
                 }
             }
         }
@@ -369,39 +460,36 @@ impl TlsConfig {
         match self.security {
             SecurityType::Reality => {
                 if sni.is_empty() {
-                    return Err(format!(
-                        "Профиль '{}': для Reality обязателен непустой Server Name (SNI)",
-                        profile_id
-                    ));
+                    return Err(ConfigValidationError::MissingRealitySni {
+                        profile_id: profile_id.to_string(),
+                    });
                 }
                 if !is_valid_sni_hostname(sni) {
-                    return Err(format!(
-                        "Профиль '{}': некорректный формат Server Name (SNI) '{}'",
-                        profile_id, sni
-                    ));
+                    return Err(ConfigValidationError::InvalidSniHostname {
+                        profile_id: profile_id.to_string(),
+                        sni: sni.to_string(),
+                    });
                 }
 
                 match self.public_key {
                     Some(ref pk) => {
                         let pk_trimmed = pk.trim();
                         if pk_trimmed.is_empty() {
-                            return Err(format!(
-                                "Профиль '{}': для Reality обязателен непустой public_key",
-                                profile_id
-                            ));
+                            return Err(ConfigValidationError::MissingRealityPublicKey {
+                                profile_id: profile_id.to_string(),
+                            });
                         }
                         if !is_valid_reality_public_key(pk_trimmed) {
-                            return Err(format!(
-                                "Профиль '{}': некорректный public_key (ожидается 32-байтный Base64 ключ Reality, получено '{}')",
-                                profile_id, pk_trimmed
-                            ));
+                            return Err(ConfigValidationError::InvalidRealityPublicKey {
+                                profile_id: profile_id.to_string(),
+                                public_key: pk_trimmed.to_string(),
+                            });
                         }
                     }
                     None => {
-                        return Err(format!(
-                            "Профиль '{}': для Reality обязателен непустой public_key",
-                            profile_id
-                        ));
+                        return Err(ConfigValidationError::MissingRealityPublicKey {
+                            profile_id: profile_id.to_string(),
+                        });
                     }
                 }
 
@@ -412,19 +500,19 @@ impl TlsConfig {
                             || sid_trimmed.len() > 16
                             || sid_trimmed.len() % 2 != 0)
                     {
-                        return Err(format!(
-                            "Профиль '{}': short_id должен быть hex-строкой четной длины до 16 символов, получено '{}'",
-                            profile_id, sid_trimmed
-                        ));
+                        return Err(ConfigValidationError::InvalidRealityShortId {
+                            profile_id: profile_id.to_string(),
+                            short_id: sid_trimmed.to_string(),
+                        });
                     }
                 }
             }
             SecurityType::Tls => {
                 if !sni.is_empty() && !is_valid_sni_hostname(sni) {
-                    return Err(format!(
-                        "Профиль '{}': некорректный формат Server Name (SNI) '{}'",
-                        profile_id, sni
-                    ));
+                    return Err(ConfigValidationError::InvalidSniHostname {
+                        profile_id: profile_id.to_string(),
+                        sni: sni.to_string(),
+                    });
                 }
             }
             SecurityType::None => {}
@@ -531,12 +619,12 @@ pub struct UserSettings {
 }
 
 impl UserSettings {
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigValidationError> {
         if self.client.local_socks_port == 0 || self.client.local_http_port == 0 {
-            return Err("Локальные порты прокси не могут быть 0".to_string());
+            return Err(ConfigValidationError::ZeroProxyPort);
         }
         if self.client.local_socks_port == self.client.local_http_port {
-            return Err("Порты SOCKS5 и HTTP не должны совпадать".to_string());
+            return Err(ConfigValidationError::ProxyPortCollision);
         }
         self.split_tunneling.validate()?;
         Ok(())
@@ -565,34 +653,32 @@ pub struct SplitTunnelingSettings {
 }
 
 impl SplitTunnelingSettings {
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigValidationError> {
         for rule in &self.direct_domains {
             let trimmed = rule.trim();
             if trimmed.is_empty() {
-                return Err("Правило домена не может быть пустой строкой".to_string());
+                return Err(ConfigValidationError::EmptyDomainRule);
             }
             if let Some(geosite) = trimmed.strip_prefix("geosite:") {
                 if geosite != "category-ru" {
-                    return Err(format!(
-                        "Неподдерживаемая категория geosite: '{}'. Допустима только 'category-ru'",
-                        trimmed
-                    ));
+                    return Err(ConfigValidationError::UnsupportedGeositeCategory {
+                        category: trimmed.to_string(),
+                    });
                 }
             }
         }
         for rule in &self.direct_ips {
             let trimmed = rule.trim();
             if trimmed.is_empty() {
-                return Err("Правило IP не может быть пустой строкой".to_string());
+                return Err(ConfigValidationError::EmptyIpRule);
             }
             if trimmed == "geoip:private" {
                 continue;
             }
             if trimmed.parse::<IpAddr>().is_err() {
-                return Err(format!(
-                    "Неподдерживаемое или некорректное IP правило: '{}'. Допустимы только 'geoip:private' или валидный IP-адрес",
-                    trimmed
-                ));
+                return Err(ConfigValidationError::InvalidIpRule {
+                    rule: trimmed.to_string(),
+                });
             }
         }
         Ok(())
@@ -704,7 +790,12 @@ mod tests {
         assert!(config
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("дубликат ID профиля"));
+        assert_eq!(
+            config.validate().unwrap_err(),
+            ConfigValidationError::DuplicateProfileId("p1".to_string())
+        );
     }
 
     #[test]
@@ -791,7 +882,14 @@ mod tests {
         assert!(profile
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("Server Name (SNI)"));
+        assert_eq!(
+            profile.validate().unwrap_err(),
+            ConfigValidationError::MissingRealitySni {
+                profile_id: "p1".to_string()
+            }
+        );
 
         let profile_invalid_sni = ServerProfile {
             id: "p1".to_string(),
@@ -818,7 +916,15 @@ mod tests {
         assert!(profile_invalid_sni
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("некорректный формат Server Name (SNI)"));
+        assert_eq!(
+            profile_invalid_sni.validate().unwrap_err(),
+            ConfigValidationError::InvalidSniHostname {
+                profile_id: "p1".to_string(),
+                sni: "invalid sni/with/slash".to_string(),
+            }
+        );
 
         // IP literal as SNI is forbidden
         let profile_ip_sni = ServerProfile {
@@ -845,7 +951,15 @@ mod tests {
         assert!(profile_ip_sni
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("некорректный формат Server Name (SNI)"));
+        assert_eq!(
+            profile_ip_sni.validate().unwrap_err(),
+            ConfigValidationError::InvalidSniHostname {
+                profile_id: "p1".to_string(),
+                sni: "203.0.113.30".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -947,7 +1061,14 @@ mod tests {
         assert!(profile_no_pk
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("обязателен непустой public_key"));
+        assert_eq!(
+            profile_no_pk.validate().unwrap_err(),
+            ConfigValidationError::MissingRealityPublicKey {
+                profile_id: "p1".to_string()
+            }
+        );
     }
 
     #[test]
@@ -976,7 +1097,15 @@ mod tests {
         assert!(profile_bad_pk
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("некорректный public_key"));
+        assert_eq!(
+            profile_bad_pk.validate().unwrap_err(),
+            ConfigValidationError::InvalidRealityPublicKey {
+                profile_id: "p1".to_string(),
+                public_key: "invalid public key with spaces #$^".to_string(),
+            }
+        );
 
         // Odd length short_id (e.g. 3 hex chars)
         let profile_odd_sid = ServerProfile {
@@ -1003,7 +1132,15 @@ mod tests {
         assert!(profile_odd_sid
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("четной длины до 16 символов"));
+        assert_eq!(
+            profile_odd_sid.validate().unwrap_err(),
+            ConfigValidationError::InvalidRealityShortId {
+                profile_id: "p1".to_string(),
+                short_id: "abc".to_string(),
+            }
+        );
 
         let profile_bad_sid = ServerProfile {
             id: "p1".to_string(),
@@ -1029,7 +1166,15 @@ mod tests {
         assert!(profile_bad_sid
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("short_id должен быть hex-строкой"));
+        assert_eq!(
+            profile_bad_sid.validate().unwrap_err(),
+            ConfigValidationError::InvalidRealityShortId {
+                profile_id: "p1".to_string(),
+                short_id: "not_a_hex_short_id_xyz".to_string(),
+            }
+        );
 
         let profile_bad_fp = ServerProfile {
             id: "p1".to_string(),
@@ -1055,7 +1200,15 @@ mod tests {
         assert!(profile_bad_fp
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("неподдерживаемый uTLS fingerprint"));
+        assert_eq!(
+            profile_bad_fp.validate().unwrap_err(),
+            ConfigValidationError::UnsupportedFingerprint {
+                profile_id: "p1".to_string(),
+                fingerprint: "unsupported_custom_browser".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -1134,7 +1287,14 @@ mod tests {
         assert!(settings
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("Неподдерживаемая категория geosite"));
+        assert_eq!(
+            settings.validate().unwrap_err(),
+            ConfigValidationError::UnsupportedGeositeCategory {
+                category: "geosite:unsupported_cat".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -1163,7 +1323,514 @@ mod tests {
         assert!(settings
             .validate()
             .unwrap_err()
+            .to_string()
             .contains("Неподдерживаемое или некорректное IP правило"));
+        assert_eq!(
+            settings.validate().unwrap_err(),
+            ConfigValidationError::InvalidIpRule {
+                rule: "geoip:us".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_all_24_config_validation_error_variants_and_display() {
+        let cases: Vec<(ConfigValidationError, &str)> = vec![
+            (
+                ConfigValidationError::EmptyProfiles,
+                "Список профилей серверов пуст",
+            ),
+            (
+                ConfigValidationError::ActiveProfileNotFound("p-missing".to_string()),
+                "Активный профиль 'p-missing' не найден в списке профилей",
+            ),
+            (
+                ConfigValidationError::DuplicateProfileId("p-dup".to_string()),
+                "Обнаружен дубликат ID профиля: 'p-dup'",
+            ),
+            (
+                ConfigValidationError::EmptyServerAddress {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': адрес сервера не может быть пустым",
+            ),
+            (
+                ConfigValidationError::ZeroPort {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': порт не может быть 0",
+            ),
+            (
+                ConfigValidationError::EmptyUuid {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': UUID не может быть пустым",
+            ),
+            (
+                ConfigValidationError::IncompatibleFlowTransport {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': XTLS Vision поддерживается только с TCP transport",
+            ),
+            (
+                ConfigValidationError::IncompatibleRealityTransport {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': Reality не поддерживается с WebSocket transport; используйте TCP/RAW или gRPC",
+            ),
+            (
+                ConfigValidationError::IncompatibleTcpTransportParams {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': host/path не применимы к TCP transport",
+            ),
+            (
+                ConfigValidationError::InvalidWebSocketPath {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': для WebSocket обязателен path, начинающийся с '/'",
+            ),
+            (
+                ConfigValidationError::InvalidGrpcServiceName {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': для gRPC обязателен непустой стандартный serviceName без пробелов и '/'",
+            ),
+            (
+                ConfigValidationError::InvalidTransportHost {
+                    profile_id: "p1".to_string(),
+                    host: "bad/host".to_string(),
+                },
+                "Профиль 'p1': некорректный transport host 'bad/host'",
+            ),
+            (
+                ConfigValidationError::UnsupportedFingerprint {
+                    profile_id: "p1".to_string(),
+                    fingerprint: "custom_fp".to_string(),
+                },
+                "Профиль 'p1': неподдерживаемый uTLS fingerprint 'custom_fp'",
+            ),
+            (
+                ConfigValidationError::MissingRealitySni {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': для Reality обязателен непустой Server Name (SNI)",
+            ),
+            (
+                ConfigValidationError::InvalidSniHostname {
+                    profile_id: "p1".to_string(),
+                    sni: "bad sni".to_string(),
+                },
+                "Профиль 'p1': некорректный формат Server Name (SNI) 'bad sni'",
+            ),
+            (
+                ConfigValidationError::MissingRealityPublicKey {
+                    profile_id: "p1".to_string(),
+                },
+                "Профиль 'p1': для Reality обязателен непустой public_key",
+            ),
+            (
+                ConfigValidationError::InvalidRealityPublicKey {
+                    profile_id: "p1".to_string(),
+                    public_key: "bad_pk".to_string(),
+                },
+                "Профиль 'p1': некорректный public_key (ожидается 32-байтный Base64 ключ Reality, получено 'bad_pk')",
+            ),
+            (
+                ConfigValidationError::InvalidRealityShortId {
+                    profile_id: "p1".to_string(),
+                    short_id: "xyz".to_string(),
+                },
+                "Профиль 'p1': short_id должен быть hex-строкой четной длины до 16 символов, получено 'xyz'",
+            ),
+            (
+                ConfigValidationError::ZeroProxyPort,
+                "Локальные порты прокси не могут быть 0",
+            ),
+            (
+                ConfigValidationError::ProxyPortCollision,
+                "Порты SOCKS5 и HTTP не должны совпадать",
+            ),
+            (
+                ConfigValidationError::EmptyDomainRule,
+                "Правило домена не может быть пустой строкой",
+            ),
+            (
+                ConfigValidationError::UnsupportedGeositeCategory {
+                    category: "geosite:unknown".to_string(),
+                },
+                "Неподдерживаемая категория geosite: 'geosite:unknown'. Допустима только 'category-ru'",
+            ),
+            (
+                ConfigValidationError::EmptyIpRule,
+                "Правило IP не может быть пустой строкой",
+            ),
+            (
+                ConfigValidationError::InvalidIpRule {
+                    rule: "invalid-ip".to_string(),
+                },
+                "Неподдерживаемое или некорректное IP правило: 'invalid-ip'. Допустимы только 'geoip:private' или валидный IP-адрес",
+            ),
+        ];
+
+        assert_eq!(
+            cases.len(),
+            24,
+            "Все 24 варианта ConfigValidationError должны тестироваться"
+        );
+        for (err, expected_display) in cases {
+            assert_eq!(err.to_string(), expected_display);
+        }
+
+        // Проверка генерации ошибок через .validate() для каждого из типов моделей:
+        // 1. AppConfig: EmptyProfiles
+        let empty_cfg = AppConfig {
+            schema: None,
+            version: 1,
+            active_profile_id: "p1".to_string(),
+            profiles: vec![],
+        };
+        assert_eq!(
+            empty_cfg.validate(),
+            Err(ConfigValidationError::EmptyProfiles)
+        );
+
+        // 2. AppConfig: ActiveProfileNotFound
+        let no_active_cfg = AppConfig {
+            schema: None,
+            version: 1,
+            active_profile_id: "missing".to_string(),
+            profiles: vec![ServerProfile {
+                id: "p1".to_string(),
+                name: "Server".to_string(),
+                protocol: ProtocolType::Vless,
+                server: "1.1.1.1".to_string(),
+                port: 443,
+                uuid: "u1".to_string(),
+                transport: TransportType::Tcp,
+                host: None,
+                path: None,
+                flow: None,
+                tls: None,
+            }],
+        };
+        assert_eq!(
+            no_active_cfg.validate(),
+            Err(ConfigValidationError::ActiveProfileNotFound(
+                "missing".to_string()
+            ))
+        );
+
+        // 3. AppConfig: DuplicateProfileId
+        let dup_cfg = AppConfig {
+            schema: None,
+            version: 1,
+            active_profile_id: "p1".to_string(),
+            profiles: vec![
+                ServerProfile {
+                    id: "p1".to_string(),
+                    name: "Server 1".to_string(),
+                    protocol: ProtocolType::Vless,
+                    server: "1.1.1.1".to_string(),
+                    port: 443,
+                    uuid: "u1".to_string(),
+                    transport: TransportType::Tcp,
+                    host: None,
+                    path: None,
+                    flow: None,
+                    tls: None,
+                },
+                ServerProfile {
+                    id: "p1".to_string(),
+                    name: "Server 2".to_string(),
+                    protocol: ProtocolType::Vless,
+                    server: "1.1.1.1".to_string(),
+                    port: 443,
+                    uuid: "u1".to_string(),
+                    transport: TransportType::Tcp,
+                    host: None,
+                    path: None,
+                    flow: None,
+                    tls: None,
+                },
+            ],
+        };
+        assert_eq!(
+            dup_cfg.validate(),
+            Err(ConfigValidationError::DuplicateProfileId("p1".to_string()))
+        );
+
+        // 4. ServerProfile: EmptyServerAddress
+        let mut p = ServerProfile {
+            id: "p1".to_string(),
+            name: "Server".to_string(),
+            protocol: ProtocolType::Vless,
+            server: "".to_string(),
+            port: 443,
+            uuid: "u1".to_string(),
+            transport: TransportType::Tcp,
+            host: None,
+            path: None,
+            flow: None,
+            tls: None,
+        };
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::EmptyServerAddress {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 5. ServerProfile: ZeroPort
+        p.server = "1.1.1.1".to_string();
+        p.port = 0;
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::ZeroPort {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 6. ServerProfile: EmptyUuid
+        p.port = 443;
+        p.uuid = "  ".to_string();
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::EmptyUuid {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 7. ServerProfile: IncompatibleFlowTransport
+        p.uuid = "u1".to_string();
+        p.transport = TransportType::Ws;
+        p.path = Some("/ws".to_string());
+        p.flow = Some(FlowType::XtlsRprxVision);
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::IncompatibleFlowTransport {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 8. ServerProfile: IncompatibleRealityTransport
+        p.flow = None;
+        p.tls = Some(TlsConfig {
+            enabled: true,
+            security: SecurityType::Reality,
+            server_name: "example.com".to_string(),
+            public_key: Some("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=".to_string()),
+            short_id: None,
+            fingerprint: None,
+        });
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::IncompatibleRealityTransport {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 9. ServerProfile: IncompatibleTcpTransportParams
+        p.tls = None;
+        p.transport = TransportType::Tcp;
+        p.host = Some("example.com".to_string());
+        p.path = None;
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::IncompatibleTcpTransportParams {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 10. ServerProfile: InvalidWebSocketPath
+        p.transport = TransportType::Ws;
+        p.host = None;
+        p.path = Some("no-slash".to_string());
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::InvalidWebSocketPath {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 11. ServerProfile: InvalidGrpcServiceName
+        p.transport = TransportType::Grpc;
+        p.path = Some("service/with/slash".to_string());
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::InvalidGrpcServiceName {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 12. ServerProfile: InvalidTransportHost
+        p.path = Some("service".to_string());
+        p.host = Some("host with space".to_string());
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::InvalidTransportHost {
+                profile_id: "p1".to_string(),
+                host: "host with space".to_string(),
+            })
+        );
+
+        // 13. TlsConfig: UnsupportedFingerprint
+        p.transport = TransportType::Tcp;
+        p.host = None;
+        p.path = None;
+        p.tls = Some(TlsConfig {
+            enabled: true,
+            security: SecurityType::Tls,
+            server_name: "example.com".to_string(),
+            public_key: None,
+            short_id: None,
+            fingerprint: Some("unsupported-fp".to_string()),
+        });
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::UnsupportedFingerprint {
+                profile_id: "p1".to_string(),
+                fingerprint: "unsupported-fp".to_string(),
+            })
+        );
+
+        // 14. TlsConfig: MissingRealitySni
+        p.tls = Some(TlsConfig {
+            enabled: true,
+            security: SecurityType::Reality,
+            server_name: "".to_string(),
+            public_key: Some("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=".to_string()),
+            short_id: None,
+            fingerprint: None,
+        });
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::MissingRealitySni {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 15. TlsConfig: InvalidSniHostname
+        p.tls = Some(TlsConfig {
+            enabled: true,
+            security: SecurityType::Tls,
+            server_name: "invalid/sni".to_string(),
+            public_key: None,
+            short_id: None,
+            fingerprint: None,
+        });
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::InvalidSniHostname {
+                profile_id: "p1".to_string(),
+                sni: "invalid/sni".to_string(),
+            })
+        );
+
+        // 16. TlsConfig: MissingRealityPublicKey
+        p.tls = Some(TlsConfig {
+            enabled: true,
+            security: SecurityType::Reality,
+            server_name: "example.com".to_string(),
+            public_key: None,
+            short_id: None,
+            fingerprint: None,
+        });
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::MissingRealityPublicKey {
+                profile_id: "p1".to_string()
+            })
+        );
+
+        // 17. TlsConfig: InvalidRealityPublicKey
+        p.tls = Some(TlsConfig {
+            enabled: true,
+            security: SecurityType::Reality,
+            server_name: "example.com".to_string(),
+            public_key: Some("not-valid-base64-pk".to_string()),
+            short_id: None,
+            fingerprint: None,
+        });
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::InvalidRealityPublicKey {
+                profile_id: "p1".to_string(),
+                public_key: "not-valid-base64-pk".to_string(),
+            })
+        );
+
+        // 18. TlsConfig: InvalidRealityShortId
+        p.tls = Some(TlsConfig {
+            enabled: true,
+            security: SecurityType::Reality,
+            server_name: "example.com".to_string(),
+            public_key: Some("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=".to_string()),
+            short_id: Some("123".to_string()), // odd length
+            fingerprint: None,
+        });
+        assert_eq!(
+            p.validate(),
+            Err(ConfigValidationError::InvalidRealityShortId {
+                profile_id: "p1".to_string(),
+                short_id: "123".to_string(),
+            })
+        );
+
+        // 19. UserSettings: ZeroProxyPort
+        let mut s = UserSettings {
+            schema: None,
+            version: 1,
+            client: ClientSettings {
+                auto_connect_on_launch: false,
+                kill_switch: false,
+                system_notifications: false,
+                dns_servers: vec![],
+                local_socks_port: 0,
+                local_http_port: 10809,
+            },
+            split_tunneling: SplitTunnelingSettings {
+                enabled: false,
+                mode: SplitTunnelMode::BypassSelected,
+                direct_domains: vec![],
+                direct_ips: vec![],
+                direct_apps: vec![],
+            },
+        };
+        assert_eq!(s.validate(), Err(ConfigValidationError::ZeroProxyPort));
+
+        // 20. UserSettings: ProxyPortCollision
+        s.client.local_socks_port = 10808;
+        s.client.local_http_port = 10808;
+        assert_eq!(s.validate(), Err(ConfigValidationError::ProxyPortCollision));
+
+        // 21. SplitTunnelingSettings: EmptyDomainRule
+        s.client.local_http_port = 10809;
+        s.split_tunneling.direct_domains = vec!["  ".to_string()];
+        assert_eq!(s.validate(), Err(ConfigValidationError::EmptyDomainRule));
+
+        // 22. SplitTunnelingSettings: UnsupportedGeositeCategory
+        s.split_tunneling.direct_domains = vec!["geosite:cn".to_string()];
+        assert_eq!(
+            s.validate(),
+            Err(ConfigValidationError::UnsupportedGeositeCategory {
+                category: "geosite:cn".to_string(),
+            })
+        );
+
+        // 23. SplitTunnelingSettings: EmptyIpRule
+        s.split_tunneling.direct_domains = vec![];
+        s.split_tunneling.direct_ips = vec!["  ".to_string()];
+        assert_eq!(s.validate(), Err(ConfigValidationError::EmptyIpRule));
+
+        // 24. SplitTunnelingSettings: InvalidIpRule
+        s.split_tunneling.direct_ips = vec!["999.999.999.999".to_string()];
+        assert_eq!(
+            s.validate(),
+            Err(ConfigValidationError::InvalidIpRule {
+                rule: "999.999.999.999".to_string(),
+            })
+        );
     }
 
     #[test]

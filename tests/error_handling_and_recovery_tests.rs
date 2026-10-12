@@ -220,6 +220,13 @@ fn test_tls_and_reality_validation_errors() {
     }"#;
     let config_bad_sni: AppConfig = serde_json::from_str(raw_bad_sni).unwrap();
     assert!(config_bad_sni.validate().is_err());
+    assert_eq!(
+        config_bad_sni.validate().unwrap_err(),
+        novaray_core::config::ConfigValidationError::InvalidSniHostname {
+            profile_id: "p1".to_string(),
+            sni: "invalid host/with/slash".to_string(),
+        }
+    );
 
     // IP literal in SNI
     let raw_ip_sni = r#"{
@@ -241,6 +248,13 @@ fn test_tls_and_reality_validation_errors() {
     }"#;
     let config_ip_sni: AppConfig = serde_json::from_str(raw_ip_sni).unwrap();
     assert!(config_ip_sni.validate().is_err());
+    assert_eq!(
+        config_ip_sni.validate().unwrap_err(),
+        novaray_core::config::ConfigValidationError::InvalidSniHostname {
+            profile_id: "p1".to_string(),
+            sni: "203.0.113.30".to_string(),
+        }
+    );
 
     let raw_bad_pk = r#"{
         "version": 1,
@@ -262,6 +276,13 @@ fn test_tls_and_reality_validation_errors() {
     }"#;
     let config_bad_pk: AppConfig = serde_json::from_str(raw_bad_pk).unwrap();
     assert!(config_bad_pk.validate().is_err());
+    assert_eq!(
+        config_bad_pk.validate().unwrap_err(),
+        novaray_core::config::ConfigValidationError::InvalidRealityPublicKey {
+            profile_id: "p1".to_string(),
+            public_key: "bad base64 with spaces & invalid *&^%".to_string(),
+        }
+    );
 
     // Public key valid base64 but not 32 bytes (e.g. 3 bytes or 16 bytes)
     let raw_short_pk = r#"{
@@ -284,6 +305,13 @@ fn test_tls_and_reality_validation_errors() {
     }"#;
     let config_short_pk: AppConfig = serde_json::from_str(raw_short_pk).unwrap();
     assert!(config_short_pk.validate().is_err());
+    assert_eq!(
+        config_short_pk.validate().unwrap_err(),
+        novaray_core::config::ConfigValidationError::InvalidRealityPublicKey {
+            profile_id: "p1".to_string(),
+            public_key: "AAAA".to_string(),
+        }
+    );
 
     let raw_bad_sid = r#"{
         "version": 1,
@@ -306,6 +334,13 @@ fn test_tls_and_reality_validation_errors() {
     }"#;
     let config_bad_sid: AppConfig = serde_json::from_str(raw_bad_sid).unwrap();
     assert!(config_bad_sid.validate().is_err());
+    assert_eq!(
+        config_bad_sid.validate().unwrap_err(),
+        novaray_core::config::ConfigValidationError::InvalidRealityShortId {
+            profile_id: "p1".to_string(),
+            short_id: "1234567890abcdef1234567890".to_string(),
+        }
+    );
 
     // Odd length short_id
     let raw_odd_sid = r#"{
@@ -329,4 +364,11 @@ fn test_tls_and_reality_validation_errors() {
     }"#;
     let config_odd_sid: AppConfig = serde_json::from_str(raw_odd_sid).unwrap();
     assert!(config_odd_sid.validate().is_err());
+    assert_eq!(
+        config_odd_sid.validate().unwrap_err(),
+        novaray_core::config::ConfigValidationError::InvalidRealityShortId {
+            profile_id: "p1".to_string(),
+            short_id: "abc".to_string(),
+        }
+    );
 }
